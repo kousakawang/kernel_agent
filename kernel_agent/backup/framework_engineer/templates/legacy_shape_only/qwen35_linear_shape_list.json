@@ -1,0 +1,81 @@
+{
+  "task_id": "qwen35_gdn_extend_core_h20_YYYYMMDD",
+  "source_trace": {
+    "raw_trace_file": "shape_trace.jsonl",
+    "collection_command": "",
+    "cuda_graph_disabled": true,
+    "aggregation_rule": "group by mode, q/k/v shape+stride, query_start_loc diff pattern, dtype, backend"
+  },
+  "shape_cases": [
+    {
+      "case_id": "extend_hot_001",
+      "priority": "required",
+      "mode": "extend",
+      "count": 0,
+      "reason": "highest-frequency prefill core-kernel shape in target workload",
+      "abi": "gdn_extend_core_v1",
+      "inputs": {
+        "q": {
+          "shape": [1, 2048, 32, 128],
+          "dtype": "bfloat16",
+          "layout": "contiguous",
+          "stride": [8388608, 4096, 128, 1]
+        },
+        "k": {
+          "shape": [1, 2048, 32, 128],
+          "dtype": "bfloat16",
+          "layout": "contiguous",
+          "stride": [8388608, 4096, 128, 1]
+        },
+        "v": {
+          "shape": [1, 2048, 32, 128],
+          "dtype": "bfloat16",
+          "layout": "contiguous",
+          "stride": [8388608, 4096, 128, 1]
+        },
+        "g": {
+          "shape": [2048, 32],
+          "dtype": "float32",
+          "layout": "contiguous"
+        },
+        "beta": {
+          "shape": [2048, 32],
+          "dtype": "float32",
+          "layout": "contiguous"
+        },
+        "ssm_states": {
+          "shape": [128, 32, 128, 128],
+          "dtype": "float32",
+          "layout": "contiguous",
+          "state_init": "captured_or_seeded_by_reference_impl"
+        },
+        "cache_indices": {
+          "shape": [1],
+          "dtype": "int32",
+          "values": [0]
+        },
+        "query_start_loc": {
+          "shape": [2],
+          "dtype": "int32",
+          "values": [0, 2048]
+        }
+      },
+      "outputs": {
+        "core_attn_out": {
+          "shape": "reference_impl decides exact layout",
+          "dtype": "bfloat16"
+        },
+        "last_recurrent_state": {
+          "optional": true
+        },
+        "h": {
+          "optional": true
+        }
+      },
+      "tolerance": {
+        "atol": 0.02,
+        "rtol": 0.02
+      }
+    }
+  ]
+}

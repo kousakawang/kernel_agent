@@ -1,0 +1,28 @@
+{
+  "call_count": 408,
+  "forward_boundary_interface": {
+    "class_path": [
+      "Qwen3_5ForCausalLM"
+    ],
+    "end_line": 1218,
+    "file": "/sgl-workspace/sglang/python/sglang/srt/models/qwen3_5.py",
+    "function_name": "forward",
+    "line": 1148,
+    "module_name": "sglang.srt.models.qwen3_5",
+    "qualified_name": "sglang.srt.models.qwen3_5.Qwen3_5ForCausalLM.forward"
+  },
+  "log_path": "/tmp/qwen35_gdn_extend_task_pack/docs/target_call_probe.jsonl",
+  "service_cmd": "CUDA_VISIBLE_DEVICES=7 SGLANG_VLM_CACHE_SIZE_MB=0 python3 -m sglang.launch_server --model-path /data01/models/Qwen3.5-9B/ --host 127.0.0.1 --port 8080 --mem-fraction-static 0.7 --cuda-graph-max-bs 128 --tensor-parallel-size 1 --mm-attention-backend fa3 --cuda-graph-bs 128 120 112 104 96 88 80 72 64 56 48 40 32 24 16 8 4 2 1  --disable-radix-cache --disable-cuda-graph",
+  "target_interface": {
+    "class_path": [],
+    "end_line": 416,
+    "file": "/sgl-workspace/sglang/python/sglang/srt/layers/attention/fla/chunk_fwd.py",
+    "function_name": "chunk_gated_delta_rule_fwd_intra",
+    "line": 339,
+    "module_name": "sglang.srt.layers.attention.fla.chunk_fwd",
+    "qualified_name": "sglang.srt.layers.attention.fla.chunk_fwd.chunk_gated_delta_rule_fwd_intra"
+  },
+  "target_name": "sglang.srt.layers.attention.fla.chunk_fwd.chunk_gated_delta_rule_fwd_intra",
+  "workload_cmd": "python3 -m sglang.bench_serving --backend sglang-oai-chat --dataset-name image --num-prompts 1 --apply-chat-template --random-output-len 32 --random-input-len 16 --image-resolution 480x720 --image-format jpeg --image-count 1 --image-content random --random-range-ratio 1 --host=127.0.0.1 --port=8080",
+  "workload_returncode": 0
+}

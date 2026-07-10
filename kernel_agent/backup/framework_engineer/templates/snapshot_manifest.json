@@ -1,0 +1,9 @@
+{
+  "schema_version": "phase1.snapshot.v1",
+  "selection_policy": "not_selected_yet",
+  "raw_group_count": 0,
+  "raw_sample_count": 0,
+  "selected_group_count": 0,
+  "selected_sample_count": 0,
+  "case_groups": []
+}

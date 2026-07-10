@@ -1,0 +1,158 @@
+# KernelRequestSpec template.
+# Fill this file before handing a task to Kernel Agent.
+
+task_id: "qwen35_linear_attention_prefill_h20_YYYYMMDD"
+owner: "framework_engineer"
+status: "draft"  # draft | ready_for_kernel_agent | blocked | accepted | delivered
+
+model:
+  name: "Qwen3.5"
+  variant: ""
+  model_path: ""
+  config_summary:
+    hidden_size: null
+    num_layers: null
+    num_attention_heads: null
+    head_dim: null
+    linear_attention_layers: ""
+
+framework:
+  name: "SGLang"
+  version_or_commit: ""
+  source_entrypoints:
+    model_module: "sglang/python/sglang/srt/models/bailing_moe_linear.py"
+    backend_module: "sglang/python/sglang/srt/layers/attention/linear/"
+  launch_command: ""
+
+target_hardware:
+  vendor: "NVIDIA"
+  device: "H20"
+  num_devices: 1
+  cuda_version: ""
+  driver_version: ""
+  profiler: "Nsight Compute / Nsight Systems"
+
+operator_name: "qwen35_linear_attention_prefill_or_decode"
+operator_semantics: |
+  Describe the exact math from inputs to outputs.
+  Include prefill/decode/cache/metadata behavior if relevant.
+
+inputs:
+  - name: "q"
+    dtype: "bf16"
+    shape: "[tokens, heads, head_dim]"
+    layout: "contiguous"
+    stride: ""
+    device: "cuda"
+    description: ""
+  - name: "k"
+    dtype: "bf16"
+    shape: "[tokens, kv_heads, head_dim]"
+    layout: "contiguous"
+    stride: ""
+    device: "cuda"
+    description: ""
+  - name: "v"
+    dtype: "bf16"
+    shape: "[tokens, kv_heads, head_dim]"
+    layout: "contiguous"
+    stride: ""
+    device: "cuda"
+    description: ""
+  - name: "metadata"
+    dtype: "mixed"
+    shape: "see UnitTestHarness"
+    layout: ""
+    stride: ""
+    device: "cuda"
+    description: "Sequence offsets, cache indices, or backend-specific metadata."
+
+outputs:
+  - name: "hidden"
+    dtype: "bf16"
+    shape: "[tokens, heads, head_dim]"
+    layout: "contiguous"
+    stride: ""
+    device: "cuda"
+    description: ""
+
+shape_ranges:
+  priority_order:
+    - "prefill_hot"
+    - "decode_hot"
+    - "boundary"
+  cases:
+    - name: "prefill_hot"
+      tokens: [1024, 2048, 4096, 8192, 16384]
+      batch_size: [1, 4, 8, 16]
+      heads: []
+      head_dim: 128
+    - name: "decode_hot"
+      tokens: [1, 16, 32]
+      batch_size: [1, 8, 16, 32]
+      heads: []
+      head_dim: 128
+
+golden_impl:
+  type: "pytorch"
+  file: "unit_test_harness.py"
+  function: "golden_impl"
+  notes: ""
+
+unit_test_entry:
+  file: "unit_test_harness.py"
+  correctness_command: "python unit_test_harness.py --mode correctness"
+  benchmark_command: "python unit_test_harness.py --mode benchmark"
+  ncu_command: "python unit_test_harness.py --mode ncu-command"
+
+baseline_perf:
+  source: "current SGLang backend or PyTorch golden"
+  command: ""
+  metrics:
+    latency_us: null
+    bandwidth_gbps: null
+    tflops: null
+  notes: ""
+
+target_perf:
+  minimum_speedup: ">= 1.10x over baseline for hot shapes"
+  stretch_goal: ""
+  must_not_regress:
+    - "correctness"
+    - "e2e latency for target workload"
+
+accuracy_tolerance:
+  dtype: "bf16"
+  atol: 0.02
+  rtol: 0.02
+  comparison: "torch.testing.assert_close"
+  notes: "Tighten or relax based on real linear attention accumulation behavior."
+
+allowed_framework_changes:
+  allowed:
+    - "add optional backend flag"
+    - "precompute metadata"
+    - "allocate temporary workspace"
+    - "require contiguous inputs if framework can cheaply provide them"
+  disallowed:
+    - "change model outputs"
+    - "remove fallback path"
+    - "require full model weight format migration in phase 1"
+
+e2e_context:
+  workload: ""
+  hotspot_evidence: ""
+  estimated_e2e_upper_bound: ""
+  acceptance_tests:
+    - "micro correctness passes all shape cases"
+    - "micro benchmark improves hot shapes"
+    - "SGLang e2e workload does not regress accuracy"
+
+known_constraints:
+  - "Phase 1 does not require automatic model profiling."
+  - "Phase 1 does not require multi-hardware support."
+
+attachments:
+  profiler_reports: []
+  logs: []
+  captured_tensor_notes: []

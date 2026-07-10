@@ -1,0 +1,75 @@
+task_id: "qwen35_gdn_extend_core_h20_YYYYMMDD"
+task_type: "core_kernel_optimization"
+owner: "framework_engineer"
+target_model: "Qwen3.5"
+target_framework: "SGLang"
+target_hardware: "NVIDIA H20"
+
+objective: |
+  Optimize the Qwen3.5 GDN linear attention prefill core kernel under the
+  provided kernel ABI and selected snapshots. Kernel Engineer must not change
+  golden semantics, snapshots, snapshot_runtime.py, or benchmark measurement
+  logic.
+
+source_entrypoints:
+  framework_wrapper: "sglang/python/sglang/srt/layers/attention/linear/gdn_backend.py"
+  current_core_kernel: "sglang/python/sglang/srt/layers/attention/linear/kernels/gdn_triton.py"
+
+kernel_abi:
+  name: "gdn_extend_core_v1"
+  candidate_function: "candidate"
+  signature: |
+    candidate(*args, **kwargs)
+  required_semantics: |
+    Match the captured snapshot-golden behavior on all required selected
+    samples in snapshots/manifest.json. The concrete ABI is described by each
+    selected group/sample's args_tree and kwargs_tree.
+  mutable_inputs:
+    - "ssm_states may be read and/or updated only if the reference semantics require it"
+  forbidden_changes:
+    - "Do not change snapshots/"
+    - "Do not change snapshot_runtime.py"
+    - "Do not change shape_list.json except via Framework Engineer snapshot selection"
+    - "Do not change original_impl.py"
+    - "Do not change reference_impl.py"
+    - "Do not relax tolerance in correctness_test.py"
+    - "Do not change benchmark timing/reset rules"
+    - "Do not install new dependencies"
+
+inputs_are_framework_owned: true
+input_construction_policy: |
+  Framework Engineer owns q/k/v/g/beta/ssm_states/cache_indices/query_start_loc
+  construction. Kernel Engineer may inspect values and strides, but must not
+  replace them with unrelated random inputs. selected snapshots are the replay
+  source; shape_list.json is only a summary/index.
+
+commands:
+  correctness: "bash scripts/run_correctness.sh"
+  benchmark: "bash scripts/run_benchmark.sh"
+  profile: "bash scripts/run_ncu.sh"
+
+success_criteria:
+  correctness:
+    - "All required selected snapshot cases pass"
+  performance:
+    - "Hot required cases improve by at least 1.10x, or delivery explains a hardware/launch bound"
+  stability:
+    - "Final benchmark rerun remains within 5% of best measured latency"
+
+allowed_implementation_paths:
+  first_line_jit:
+    - "Triton if env_manifest marks available=true and usable_for_task=true"
+    - "CuTe DSL if env_manifest marks available=true and usable_for_task=true"
+  escalation:
+    - "CUDA extension if JIT paths hit a clear bottleneck and env_manifest proves nvcc/headers/runtime"
+    - "CUTLASS/C++ if the task ABI maps cleanly and env_manifest proves include/library/build path"
+  notes:
+    - "Do not reject CuTe DSL on SM90/H20 solely because a specific existing SGLang CuTe backend requires SM100."
+    - "Non-JIT paths should be considered after profiling or benchmark evidence shows the JIT paths are insufficient."
+
+deliverables:
+  - "candidate_impl.py or kernel_sources/"
+  - "benchmark_report.md"
+  - "kernel_constraints.md"
+  - "kernel_delivery_package.md"
+  - "framework_change_request.yaml if framework-side support is required"

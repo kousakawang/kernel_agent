@@ -1,0 +1,21 @@
+task_id: "unknown_task"
+generated_by: "framework_engineer"
+target_framework: "unknown"
+target_hardware: "unknown"
+
+python:
+  executable: ""
+  version: ""
+
+dependency_policy:
+  kernel_engineer_may_install_packages: false
+  allowed_paths_only: true
+  notes: "Run probe-env to populate concrete toolchain availability."
+
+implementation_policy:
+  preferred_jit_paths:
+    - "Triton if available=true and usable_for_task=true"
+    - "CuTe DSL if available=true and usable_for_task=true"
+  escalation_paths:
+    - "CUDA extension when JIT paths hit a clear bottleneck or need unsupported low-level control"
+    - "CUTLASS/C++ integration when the ABI matches and env_manifest proves headers/libs/build path"

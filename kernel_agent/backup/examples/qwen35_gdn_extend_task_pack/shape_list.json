@@ -1,0 +1,553 @@
+{
+  "note": "Selected snapshot samples are the replay source; this file is only a group index/summary.",
+  "schema_version": "phase1.shape_group_summary.v1",
+  "shape_cases": [
+    {
+      "forward_hit_count": 2,
+      "group_id": "group_b89e5ed7a31b",
+      "group_key": "b89e5ed7a31b894c395c353e",
+      "priority": "required",
+      "selected_sample_count": 6,
+      "shape_hash": "834c9c1bc935043d11752b13",
+      "snapshot_dir": "snapshots/selected/group_b89e5ed7a31b",
+      "tensors": [
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "float32",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 11552,
+          "path": "kwargs.beta",
+          "requires_grad": false,
+          "shape": [
+            1,
+            361,
+            32
+          ],
+          "storage_offset": 0,
+          "stride": [
+            11552,
+            32,
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "int32",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 12,
+          "path": "kwargs.chunk_indices",
+          "requires_grad": false,
+          "shape": [
+            6,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "int32",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 2,
+          "path": "kwargs.cu_seqlens",
+          "requires_grad": false,
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "float32",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 11552,
+          "path": "kwargs.g",
+          "requires_grad": false,
+          "shape": [
+            1,
+            361,
+            32
+          ],
+          "storage_offset": 0,
+          "stride": [
+            11552,
+            32,
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "bfloat16",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 739328,
+          "path": "kwargs.k",
+          "requires_grad": false,
+          "shape": [
+            1,
+            361,
+            16,
+            128
+          ],
+          "storage_offset": 0,
+          "stride": [
+            739328,
+            2048,
+            128,
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "bfloat16",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 1478656,
+          "path": "kwargs.v",
+          "requires_grad": false,
+          "shape": [
+            1,
+            361,
+            32,
+            128
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1478656,
+            4096,
+            128,
+            1
+          ]
+        }
+      ],
+      "total_hit_count": 48
+    },
+    {
+      "forward_hit_count": 1,
+      "group_id": "group_2390ed596348",
+      "group_key": "2390ed596348b85feb54ef8e",
+      "priority": "required",
+      "selected_sample_count": 3,
+      "shape_hash": "29cde68087bf7acf7ae04dbf",
+      "snapshot_dir": "snapshots/selected/group_2390ed596348",
+      "tensors": [
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "float32",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 2560,
+          "path": "kwargs.beta",
+          "requires_grad": false,
+          "shape": [
+            1,
+            80,
+            32
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2560,
+            32,
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "int32",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 4,
+          "path": "kwargs.chunk_indices",
+          "requires_grad": false,
+          "shape": [
+            2,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "int32",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 2,
+          "path": "kwargs.cu_seqlens",
+          "requires_grad": false,
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "float32",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 2560,
+          "path": "kwargs.g",
+          "requires_grad": false,
+          "shape": [
+            1,
+            80,
+            32
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2560,
+            32,
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "bfloat16",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 163840,
+          "path": "kwargs.k",
+          "requires_grad": false,
+          "shape": [
+            1,
+            80,
+            16,
+            128
+          ],
+          "storage_offset": 0,
+          "stride": [
+            163840,
+            2048,
+            128,
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "bfloat16",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 327680,
+          "path": "kwargs.v",
+          "requires_grad": false,
+          "shape": [
+            1,
+            80,
+            32,
+            128
+          ],
+          "storage_offset": 0,
+          "stride": [
+            327680,
+            4096,
+            128,
+            1
+          ]
+        }
+      ],
+      "total_hit_count": 24
+    }
+  ],
+  "shape_groups": [
+    {
+      "forward_hit_count": 2,
+      "group_id": "group_b89e5ed7a31b",
+      "group_key": "b89e5ed7a31b894c395c353e",
+      "priority": "required",
+      "selected_sample_count": 6,
+      "shape_hash": "834c9c1bc935043d11752b13",
+      "snapshot_dir": "snapshots/selected/group_b89e5ed7a31b",
+      "tensors": [
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "float32",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 11552,
+          "path": "kwargs.beta",
+          "requires_grad": false,
+          "shape": [
+            1,
+            361,
+            32
+          ],
+          "storage_offset": 0,
+          "stride": [
+            11552,
+            32,
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "int32",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 12,
+          "path": "kwargs.chunk_indices",
+          "requires_grad": false,
+          "shape": [
+            6,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "int32",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 2,
+          "path": "kwargs.cu_seqlens",
+          "requires_grad": false,
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "float32",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 11552,
+          "path": "kwargs.g",
+          "requires_grad": false,
+          "shape": [
+            1,
+            361,
+            32
+          ],
+          "storage_offset": 0,
+          "stride": [
+            11552,
+            32,
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "bfloat16",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 739328,
+          "path": "kwargs.k",
+          "requires_grad": false,
+          "shape": [
+            1,
+            361,
+            16,
+            128
+          ],
+          "storage_offset": 0,
+          "stride": [
+            739328,
+            2048,
+            128,
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "bfloat16",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 1478656,
+          "path": "kwargs.v",
+          "requires_grad": false,
+          "shape": [
+            1,
+            361,
+            32,
+            128
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1478656,
+            4096,
+            128,
+            1
+          ]
+        }
+      ],
+      "total_hit_count": 48
+    },
+    {
+      "forward_hit_count": 1,
+      "group_id": "group_2390ed596348",
+      "group_key": "2390ed596348b85feb54ef8e",
+      "priority": "required",
+      "selected_sample_count": 3,
+      "shape_hash": "29cde68087bf7acf7ae04dbf",
+      "snapshot_dir": "snapshots/selected/group_2390ed596348",
+      "tensors": [
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "float32",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 2560,
+          "path": "kwargs.beta",
+          "requires_grad": false,
+          "shape": [
+            1,
+            80,
+            32
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2560,
+            32,
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "int32",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 4,
+          "path": "kwargs.chunk_indices",
+          "requires_grad": false,
+          "shape": [
+            2,
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2,
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "int32",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 2,
+          "path": "kwargs.cu_seqlens",
+          "requires_grad": false,
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "stride": [
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "float32",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 2560,
+          "path": "kwargs.g",
+          "requires_grad": false,
+          "shape": [
+            1,
+            80,
+            32
+          ],
+          "storage_offset": 0,
+          "stride": [
+            2560,
+            32,
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "bfloat16",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 163840,
+          "path": "kwargs.k",
+          "requires_grad": false,
+          "shape": [
+            1,
+            80,
+            16,
+            128
+          ],
+          "storage_offset": 0,
+          "stride": [
+            163840,
+            2048,
+            128,
+            1
+          ]
+        },
+        {
+          "device_index": null,
+          "device_type": "cpu",
+          "dtype": "bfloat16",
+          "is_contiguous": true,
+          "layout": "strided",
+          "numel": 327680,
+          "path": "kwargs.v",
+          "requires_grad": false,
+          "shape": [
+            1,
+            80,
+            32,
+            128
+          ],
+          "storage_offset": 0,
+          "stride": [
+            327680,
+            4096,
+            128,
+            1
+          ]
+        }
+      ],
+      "total_hit_count": 24
+    }
+  ],
+  "source": "snapshots/manifest.json"
+}

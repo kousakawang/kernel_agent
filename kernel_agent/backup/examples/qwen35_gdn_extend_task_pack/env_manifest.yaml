@@ -1,0 +1,44 @@
+task_id: "qwen35_gdn_extend_task_pack"
+generated_by: "framework_engineer.cli probe-env"
+python:
+  executable: "/usr/bin/python3"
+  version: "3.12.3"
+pytorch:
+  available: true
+  returncode: 0
+  command: "/usr/bin/python3 -c import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available())"
+  stdout: "2.11.0+cu130\n13.0\nTrue\n"
+  stderr: ""
+gpu:
+  available: true
+  returncode: 0
+  command: "/usr/bin/python3 -c import torch\nprint(torch.cuda.device_count())\np=torch.cuda.get_device_properties(0) if torch.cuda.is_available() else None\nprint('' if p is None else p.name)\nprint('' if p is None else f'{p.major}.{p.minor}')\nprint('' if p is None else p.total_memory)"
+  stdout: "8\nNVIDIA H20\n9.0\n102245335040\n"
+  stderr: ""
+triton:
+  available: true
+  returncode: 0
+  command: "/usr/bin/python3 env_probe/probe_triton.py"
+  stdout: "triton usable: version=3.6.0\n"
+  stderr: ""
+cutedsl:
+  available: true
+  returncode: 0
+  command: "/usr/bin/python3 env_probe/probe_cutedsl.py"
+  stdout: "import ok: cutlass -> /usr/local/lib/python3.12/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/__init__.py\nimport ok: cutlass.cute -> /usr/local/lib/python3.12/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/cute/__init__.py\ncutedsl available: import succeeded. Set usable_for_task=true only after adding/running a minimal compile+run probe.\n"
+  stderr: ""
+cuda_extension:
+  available: true
+  returncode: 0
+  command: "/usr/bin/python3 env_probe/probe_cuda_extension.py"
+  stdout: "cuda extension usable: load_inline compile+run ok\n"
+  stderr: ""
+ncu:
+  available: true
+  returncode: 0
+  command: "bash env_probe/probe_ncu.sh"
+  stdout: "/usr/local/cuda/bin/ncu\nNVIDIA (R) Nsight Compute Command Line Profiler\nCopyright (c) 2018-2025 NVIDIA Corporation\nVersion 2025.3.1.0 (build 36398880) (public-release)\n"
+  stderr: ""
+dependency_policy:
+  kernel_engineer_may_install_packages: false
+  allowed_paths_only: true
