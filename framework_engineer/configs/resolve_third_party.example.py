@@ -61,3 +61,7 @@ explicit_paths = {}
 extra_env = {
     "PYTHONPATH": "/sgl-workspace/sglang/python",
 }
+
+# Optional: proxy applied to every git clone (and embedded into the re-runnable
+# clone_command emitted in the manifest). Can also be passed via --https-proxy.
+https_proxy = "100.68.160.173:3128"
