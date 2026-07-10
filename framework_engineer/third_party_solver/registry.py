@@ -100,11 +100,13 @@ UNIVERSE: tuple[RepoSpec, ...] = (
         archetype="F7",
         version_source="importlib",
         dist_name="sgl-deep-gemm",  # verified: import deep_gemm -> dist sgl-deep-gemm 0.1.2
-        url="https://github.com/deepseek-ai/DeepGEMM",
-        url_kind="official",
+        ref_template="release",  # sgl fork ships from the `release` branch (dist METADATA)
+        url="https://github.com/sgl-project/DeepGEMM",  # verified: METADATA Project-URL Repository
+        url_kind="sgl_fork",
         on_default_path=True,
         backend_flags=("deep_gemm", "deepgemm"),
-        note="JIT/NVRTC GEMM; templates ship in package. Default MoE/GEMM path.",
+        note="JIT/NVRTC GEMM; templates ship in package. Default MoE/GEMM path. "
+        "sgl fork tracked via the `release` branch (no version tag).",
     ),
     RepoSpec(
         name="flash_attn_4",
@@ -186,17 +188,13 @@ UNIVERSE: tuple[RepoSpec, ...] = (
         note="Only norm.cu/renorm.cu compiled into sgl-kernel; distinct pin from "
         "runtime flashinfer (F7). Kept separate so (name,version) never collide.",
     ),
-    RepoSpec(
-        name="triton_kernels",
-        archetype="F3",
-        version_source="cmake_pin",
-        cmake_target="repo-triton",
-        url="https://github.com/triton-lang/triton",
-        url_kind="official",
-        on_default_path=True,
-        backend_flags=("triton",),
-        note="triton_kernels/ installed as a directory by sgl-kernel build.",
-    ),
+    # NOTE: `triton_kernels` is intentionally NOT in this universe. sgl-kernel's
+    # CMake merely `install(DIRECTORY .../python/triton_kernels/ ...)` — it copies
+    # a pure-python dir into the wheel, nothing is compiled into the .so. It ships
+    # as the installed `triton_kernels` package (F1/F6, pure python), so its source
+    # is read in-place by `locate-kernel-source`. Cloning the whole (huge) triton
+    # repo by a pinned tag would be pure waste. sglang's own `@triton.jit` kernels
+    # are F1 and out of scope here too.
     # --- F8: downloaded pre-compiled cubin — NO source, always FAILED -----
     RepoSpec(
         name="flashinfer_cubin",
