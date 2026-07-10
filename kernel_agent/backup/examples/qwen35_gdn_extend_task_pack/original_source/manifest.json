@@ -1,0 +1,27 @@
+{
+  "copied_file": "original_source/chunk_fwd.py",
+  "executable": true,
+  "linked_original": {
+    "callable_resolved": true,
+    "checked": "generate-harness import/callable probe",
+    "executable": true,
+    "importable": true,
+    "mode": "linked",
+    "reason": "linked callable resolved; sample replay is verified by correctness/benchmark"
+  },
+  "purpose": "source reference only; executable replay uses linked original_impl.py against the framework environment",
+  "schema_version": "kernel_agent.original_source.v1",
+  "source_available": true,
+  "source_error": null,
+  "source_file": "/sgl-workspace/sglang/python/sglang/srt/layers/attention/fla/chunk_fwd.py",
+  "source_sha256": "76680de79e5b078e2321fc243382285af8396c91ab47bafa7be0a0738ad91a1d",
+  "target_info": {
+    "class_path": [],
+    "end_line": 416,
+    "file": "/sgl-workspace/sglang/python/sglang/srt/layers/attention/fla/chunk_fwd.py",
+    "function_name": "chunk_gated_delta_rule_fwd_intra",
+    "line": 339,
+    "module_name": "sglang.srt.layers.attention.fla.chunk_fwd",
+    "qualified_name": "sglang.srt.layers.attention.fla.chunk_fwd.chunk_gated_delta_rule_fwd_intra"
+  }
+}

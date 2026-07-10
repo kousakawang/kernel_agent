@@ -1,0 +1,36 @@
+{
+  "dropped_hit_count": 0,
+  "forward_boundary_interface": {
+    "class_path": [
+      "Qwen3_5ForCausalLM"
+    ],
+    "end_line": 1218,
+    "file": "/sgl-workspace/sglang/python/sglang/srt/models/qwen3_5.py",
+    "function_name": "forward",
+    "line": 1148,
+    "module_name": "sglang.srt.models.qwen3_5",
+    "qualified_name": "sglang.srt.models.qwen3_5.Qwen3_5ForCausalLM.forward"
+  },
+  "max_raw_cases_deprecated_alias_used": false,
+  "mutation_warning_count": 0,
+  "raw_group_count": 3,
+  "raw_sample_count": 12,
+  "raw_snapshot_count": 12,
+  "service_cmd": "CUDA_VISIBLE_DEVICES=7 SGLANG_VLM_CACHE_SIZE_MB=0 python3 -m sglang.launch_server --model-path /data01/models/Qwen3.5-9B/ --host 127.0.0.1 --port 8080 --mem-fraction-static 0.7 --cuda-graph-max-bs 128 --tensor-parallel-size 1 --mm-attention-backend fa3 --cuda-graph-bs 128 120 112 104 96 88 80 72 64 56 48 40 32 24 16 8 4 2 1  --disable-radix-cache --disable-cuda-graph",
+  "target_interface": {
+    "class_path": [],
+    "end_line": 416,
+    "file": "/sgl-workspace/sglang/python/sglang/srt/layers/attention/fla/chunk_fwd.py",
+    "function_name": "chunk_gated_delta_rule_fwd_intra",
+    "line": 339,
+    "module_name": "sglang.srt.layers.attention.fla.chunk_fwd",
+    "qualified_name": "sglang.srt.layers.attention.fla.chunk_fwd.chunk_gated_delta_rule_fwd_intra"
+  },
+  "target_name": "sglang.srt.layers.attention.fla.chunk_fwd.chunk_gated_delta_rule_fwd_intra",
+  "total_hit_count": 96,
+  "windowing_mode": "forward_boundary",
+  "workload_cmd": "python3 -m sglang.bench_serving --backend sglang-oai-chat --dataset-name image --num-prompts 1 --apply-chat-template --random-output-len 32 --random-input-len 16 --image-resolution 480x720 --image-format jpeg --image-count 1 --image-content random --random-range-ratio 1 --host=127.0.0.1 --port=8080",
+  "workload_returncode": 0,
+  "workload_stderr_tail": "\n  0%|          | 0/1 [00:00<?, ?it/s]\n100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 1/1 [00:00<00:00,  1.08it/s]\n100%|\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588| 1/1 [00:00<00:00,  1.08it/s]\n",
+  "workload_stdout_tail": "g main benchmark run...\n\n============ Serving Benchmark Result ============\nBackend:                                 sglang-oai-chat\nTraffic request rate:                    inf       \nMax request concurrency:                 not set   \nSuccessful requests:                     1         \nBenchmark duration (s):                  0.93      \nTotal input tokens:                      361       \nTotal input text tokens:                 29        \nTotal input vision tokens:               332       \nTotal generated tokens:                  32        \nTotal generated tokens (retokenized):    32        \nRequest throughput (req/s):              1.08      \nInput token throughput (tok/s):          388.34    \nOutput token throughput (tok/s):         34.42     \nPeak output token throughput (tok/s):    32.00     \nPeak concurrent requests:                1         \nTotal token throughput (tok/s):          422.76    \nConcurrency:                             0.99      \n----------------End-to-End Latency----------------\nMean E2E Latency (ms):                   923.85    \nMedian E2E Latency (ms):                 923.85    \nP90 E2E Latency (ms):                    923.85    \nP99 E2E Latency (ms):                    923.85    \n---------------Time to First Token----------------\nMean TTFT (ms):                          281.92    \nMedian TTFT (ms):                        281.92    \nP99 TTFT (ms):                           281.92    \n-----Time per Output Token (excl. 1st token)------\nMean TPOT (ms):                          20.71     \nMedian TPOT (ms):                        20.71     \nP99 TPOT (ms):                           20.71     \n---------------Inter-Token Latency----------------\nMean ITL (ms):                           20.71     \nMedian ITL (ms):                         20.69     \nP95 ITL (ms):                            21.23     \nP99 ITL (ms):                            21.87     \nMax ITL (ms):                            21.98     \n==================================================\n"
+}

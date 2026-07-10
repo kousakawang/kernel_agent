@@ -1,0 +1,88 @@
+{
+  "description": "One JSONL record schema for Qwen3.5 GDN linear attention core-kernel shape tracing.",
+  "required": [
+    "op_name",
+    "mode",
+    "layer_id",
+    "backend",
+    "tensors",
+    "metadata",
+    "framework_context"
+  ],
+  "example": {
+    "op_name": "qwen35_gdn_extend_core",
+    "mode": "extend",
+    "layer_id": 3,
+    "backend": "triton",
+    "timestamp_ns": 0,
+    "tensors": {
+      "q": {
+        "shape": [1, 2048, 32, 128],
+        "stride": [8388608, 4096, 128, 1],
+        "dtype": "torch.bfloat16",
+        "device": "cuda:0",
+        "is_contiguous": true
+      },
+      "k": {
+        "shape": [1, 2048, 32, 128],
+        "stride": [8388608, 4096, 128, 1],
+        "dtype": "torch.bfloat16",
+        "device": "cuda:0",
+        "is_contiguous": true
+      },
+      "v": {
+        "shape": [1, 2048, 32, 128],
+        "stride": [8388608, 4096, 128, 1],
+        "dtype": "torch.bfloat16",
+        "device": "cuda:0",
+        "is_contiguous": true
+      },
+      "g": {
+        "shape": [2048, 32],
+        "stride": [32, 1],
+        "dtype": "torch.float32",
+        "device": "cuda:0",
+        "is_contiguous": true
+      },
+      "beta": {
+        "shape": [2048, 32],
+        "stride": [32, 1],
+        "dtype": "torch.float32",
+        "device": "cuda:0",
+        "is_contiguous": true
+      },
+      "ssm_states": {
+        "shape": [128, 32, 128, 128],
+        "stride": [],
+        "dtype": "torch.float32",
+        "device": "cuda:0",
+        "is_contiguous": true
+      }
+    },
+    "metadata": {
+      "query_start_loc": {
+        "shape": [2],
+        "dtype": "torch.int32",
+        "values_preview": [0, 2048],
+        "diff_preview": [2048]
+      },
+      "cache_indices": {
+        "shape": [1],
+        "dtype": "torch.int32",
+        "min": 0,
+        "max": 0,
+        "has_negative_one": false
+      },
+      "batch_size": 1,
+      "num_prefills": 1,
+      "num_decodes": 0,
+      "extend_seq_lens": [2048],
+      "extend_prefix_lens": [0]
+    },
+    "framework_context": {
+      "cuda_graph_enabled": false,
+      "launch_command_hash": "",
+      "workload_command_hash": ""
+    }
+  }
+}

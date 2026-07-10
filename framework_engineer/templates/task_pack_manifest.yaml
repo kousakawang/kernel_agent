@@ -1,0 +1,46 @@
+task_id: "unknown_task"
+task_group_id: "unknown_group"
+task_type: "core_kernel_optimization"
+owner: "framework_engineer"
+target_model: "unknown"
+target_framework: "unknown"
+target_hardware: "unknown"
+
+objective: |
+  Optimize the captured framework target interface under the provided
+  snapshot replay ABI. Kernel Engineer must not change golden semantics,
+  snapshots, snapshot_runtime.py, or benchmark measurement logic.
+
+source_entrypoints:
+  target_file: ""
+  target_line: null
+  forward_boundary_file: ""
+  forward_boundary_line: null
+
+kernel_abi:
+  candidate_function: "candidate"
+  signature: |
+    candidate(*args, **kwargs)
+  required_semantics: |
+    Match captured snapshot-golden behavior on all required selected samples
+    in snapshots/manifest.json.
+  forbidden_changes:
+    - "Do not change snapshots/"
+    - "Do not change snapshot_runtime.py"
+    - "Do not change shape_list.json except via Framework Engineer snapshot selection"
+    - "Do not change original_source/"
+    - "Do not change original_impl.py"
+    - "Do not change reference_impl.py"
+    - "Do not relax tolerance in correctness_test.py"
+    - "Do not change benchmark timing/reset rules"
+
+inputs_are_framework_owned: true
+input_construction_policy: |
+  Framework Engineer owns input construction. Kernel Engineer may inspect
+  selected snapshots, but must not replace them with unrelated random inputs.
+  selected snapshots are the replay source; shape_list.json is only a summary.
+
+commands:
+  correctness: "bash scripts/run_correctness.sh"
+  benchmark: "bash scripts/run_benchmark.sh"
+  profile: "bash scripts/run_ncu.sh"

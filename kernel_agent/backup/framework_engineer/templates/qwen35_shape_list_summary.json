@@ -1,0 +1,7 @@
+{
+  "schema_version": "phase1.shape_summary.v1",
+  "source": "snapshots/manifest.json",
+  "note": "Selected snapshots are the replay source; this file is only an index/summary.",
+  "shape_cases": []
+}
+

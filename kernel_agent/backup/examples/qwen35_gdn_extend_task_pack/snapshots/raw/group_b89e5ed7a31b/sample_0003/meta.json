@@ -1,0 +1,437 @@
+{
+  "capture": {
+    "call_index_global": 50,
+    "call_index_in_forward": 2,
+    "forward_id": "499935:sglang.srt.models.qwen3_5.Qwen3_5ForCausalLM.forward:000011",
+    "mutation_warning_count": 0,
+    "reason": "same_forward_sample",
+    "time": 1782217668.809936
+  },
+  "files": {
+    "outputs": "outputs.pt",
+    "post_inputs": "post_inputs.pt",
+    "pre_inputs": "pre_inputs.pt",
+    "serializer": "torch"
+  },
+  "group_id": "group_b89e5ed7a31b",
+  "hashes": {
+    "group_key": "b89e5ed7a31b894c395c353e",
+    "sample_key": "ef53f27163e13cca",
+    "shape_hash": "834c9c1bc935043d11752b13",
+    "value_hash": "2f1dc45597dde4fb5f98535b"
+  },
+  "interface": {
+    "args_tree": {
+      "items": [],
+      "kind": "tuple"
+    },
+    "kwargs_tree": {
+      "items": {
+        "beta": {
+          "kind": "tensor",
+          "meta": {
+            "device_index": null,
+            "device_type": "cpu",
+            "dtype": "float32",
+            "is_contiguous": true,
+            "layout": "strided",
+            "numel": 11552,
+            "path": "kwargs.beta",
+            "requires_grad": false,
+            "shape": [
+              1,
+              361,
+              32
+            ],
+            "storage_offset": 0,
+            "stride": [
+              11552,
+              32,
+              1
+            ]
+          }
+        },
+        "chunk_indices": {
+          "kind": "tensor",
+          "meta": {
+            "device_index": null,
+            "device_type": "cpu",
+            "dtype": "int32",
+            "is_contiguous": true,
+            "layout": "strided",
+            "numel": 12,
+            "path": "kwargs.chunk_indices",
+            "requires_grad": false,
+            "shape": [
+              6,
+              2
+            ],
+            "storage_offset": 0,
+            "stride": [
+              2,
+              1
+            ]
+          }
+        },
+        "cu_seqlens": {
+          "kind": "tensor",
+          "meta": {
+            "device_index": null,
+            "device_type": "cpu",
+            "dtype": "int32",
+            "is_contiguous": true,
+            "layout": "strided",
+            "numel": 2,
+            "path": "kwargs.cu_seqlens",
+            "requires_grad": false,
+            "shape": [
+              2
+            ],
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "g": {
+          "kind": "tensor",
+          "meta": {
+            "device_index": null,
+            "device_type": "cpu",
+            "dtype": "float32",
+            "is_contiguous": true,
+            "layout": "strided",
+            "numel": 11552,
+            "path": "kwargs.g",
+            "requires_grad": false,
+            "shape": [
+              1,
+              361,
+              32
+            ],
+            "storage_offset": 0,
+            "stride": [
+              11552,
+              32,
+              1
+            ]
+          }
+        },
+        "k": {
+          "kind": "tensor",
+          "meta": {
+            "device_index": null,
+            "device_type": "cpu",
+            "dtype": "bfloat16",
+            "is_contiguous": true,
+            "layout": "strided",
+            "numel": 739328,
+            "path": "kwargs.k",
+            "requires_grad": false,
+            "shape": [
+              1,
+              361,
+              16,
+              128
+            ],
+            "storage_offset": 0,
+            "stride": [
+              739328,
+              2048,
+              128,
+              1
+            ]
+          }
+        },
+        "v": {
+          "kind": "tensor",
+          "meta": {
+            "device_index": null,
+            "device_type": "cpu",
+            "dtype": "bfloat16",
+            "is_contiguous": true,
+            "layout": "strided",
+            "numel": 1478656,
+            "path": "kwargs.v",
+            "requires_grad": false,
+            "shape": [
+              1,
+              361,
+              32,
+              128
+            ],
+            "storage_offset": 0,
+            "stride": [
+              1478656,
+              4096,
+              128,
+              1
+            ]
+          }
+        }
+      },
+      "kind": "dict"
+    },
+    "output_tree": {
+      "items": [
+        {
+          "kind": "tensor",
+          "meta": {
+            "device_index": null,
+            "device_type": "cpu",
+            "dtype": "bfloat16",
+            "is_contiguous": true,
+            "layout": "strided",
+            "numel": 1478656,
+            "path": "outputs.0",
+            "requires_grad": false,
+            "shape": [
+              1,
+              361,
+              32,
+              128
+            ],
+            "storage_offset": 0,
+            "stride": [
+              1478656,
+              4096,
+              128,
+              1
+            ]
+          }
+        },
+        {
+          "kind": "tensor",
+          "meta": {
+            "device_index": null,
+            "device_type": "cpu",
+            "dtype": "bfloat16",
+            "is_contiguous": true,
+            "layout": "strided",
+            "numel": 1478656,
+            "path": "outputs.1",
+            "requires_grad": false,
+            "shape": [
+              1,
+              361,
+              32,
+              128
+            ],
+            "storage_offset": 0,
+            "stride": [
+              1478656,
+              4096,
+              128,
+              1
+            ]
+          }
+        },
+        {
+          "kind": "tensor",
+          "meta": {
+            "device_index": null,
+            "device_type": "cpu",
+            "dtype": "bfloat16",
+            "is_contiguous": true,
+            "layout": "strided",
+            "numel": 739328,
+            "path": "outputs.2",
+            "requires_grad": false,
+            "shape": [
+              1,
+              361,
+              32,
+              64
+            ],
+            "storage_offset": 0,
+            "stride": [
+              739328,
+              2048,
+              64,
+              1
+            ]
+          }
+        }
+      ],
+      "kind": "tuple"
+    },
+    "post_input_tree": {
+      "items": {
+        "args": {
+          "items": [],
+          "kind": "tuple"
+        },
+        "kwargs": {
+          "items": {
+            "beta": {
+              "kind": "tensor",
+              "meta": {
+                "device_index": null,
+                "device_type": "cpu",
+                "dtype": "float32",
+                "is_contiguous": true,
+                "layout": "strided",
+                "numel": 11552,
+                "path": "kwargs.beta",
+                "requires_grad": false,
+                "shape": [
+                  1,
+                  361,
+                  32
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  11552,
+                  32,
+                  1
+                ]
+              }
+            },
+            "chunk_indices": {
+              "kind": "tensor",
+              "meta": {
+                "device_index": null,
+                "device_type": "cpu",
+                "dtype": "int32",
+                "is_contiguous": true,
+                "layout": "strided",
+                "numel": 12,
+                "path": "kwargs.chunk_indices",
+                "requires_grad": false,
+                "shape": [
+                  6,
+                  2
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  2,
+                  1
+                ]
+              }
+            },
+            "cu_seqlens": {
+              "kind": "tensor",
+              "meta": {
+                "device_index": null,
+                "device_type": "cpu",
+                "dtype": "int32",
+                "is_contiguous": true,
+                "layout": "strided",
+                "numel": 2,
+                "path": "kwargs.cu_seqlens",
+                "requires_grad": false,
+                "shape": [
+                  2
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  1
+                ]
+              }
+            },
+            "g": {
+              "kind": "tensor",
+              "meta": {
+                "device_index": null,
+                "device_type": "cpu",
+                "dtype": "float32",
+                "is_contiguous": true,
+                "layout": "strided",
+                "numel": 11552,
+                "path": "kwargs.g",
+                "requires_grad": false,
+                "shape": [
+                  1,
+                  361,
+                  32
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  11552,
+                  32,
+                  1
+                ]
+              }
+            },
+            "k": {
+              "kind": "tensor",
+              "meta": {
+                "device_index": null,
+                "device_type": "cpu",
+                "dtype": "bfloat16",
+                "is_contiguous": true,
+                "layout": "strided",
+                "numel": 739328,
+                "path": "kwargs.k",
+                "requires_grad": false,
+                "shape": [
+                  1,
+                  361,
+                  16,
+                  128
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  739328,
+                  2048,
+                  128,
+                  1
+                ]
+              }
+            },
+            "v": {
+              "kind": "tensor",
+              "meta": {
+                "device_index": null,
+                "device_type": "cpu",
+                "dtype": "bfloat16",
+                "is_contiguous": true,
+                "layout": "strided",
+                "numel": 1478656,
+                "path": "kwargs.v",
+                "requires_grad": false,
+                "shape": [
+                  1,
+                  361,
+                  32,
+                  128
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  1478656,
+                  4096,
+                  128,
+                  1
+                ]
+              }
+            }
+          },
+          "kind": "dict"
+        }
+      },
+      "kind": "dict"
+    },
+    "signature": "candidate(*args, **kwargs)"
+  },
+  "mutation": {
+    "compare_mutations": false,
+    "ignored_mutable_arg_paths": [],
+    "mutable_arg_paths": [],
+    "mutation_warnings": [],
+    "requested_mutable_arg_paths": []
+  },
+  "sample_id": "sample_0003",
+  "schema_version": "phase1.snapshot.v1",
+  "target": {
+    "backend": "triton",
+    "layer_id": null,
+    "logical_name": "chunk_gated_delta_rule_fwd_intra",
+    "mode": "extend",
+    "qualified_name": "sglang.srt.layers.attention.fla.chunk_fwd.chunk_gated_delta_rule_fwd_intra"
+  },
+  "task_id": "qwen35_gdn_extend_task_pack",
+  "tolerance": {
+    "atol": 0.02,
+    "rtol": 0.02
+  }
+}

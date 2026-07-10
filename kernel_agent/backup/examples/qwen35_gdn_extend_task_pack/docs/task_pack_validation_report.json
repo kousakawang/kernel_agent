@@ -1,0 +1,13 @@
+{
+  "env_check": null,
+  "errors": [],
+  "smoke": [
+    {
+      "command": "bash scripts/run_correctness.sh",
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "{\"group_id\": \"group_b89e5ed7a31b\", \"mode\": \"snapshot-golden\", \"sample_id\": \"sample_0001\", \"status\": \"PASS\"}\n{\"group_id\": \"group_b89e5ed7a31b\", \"mode\": \"snapshot-golden\", \"sample_id\": \"sample_0002\", \"status\": \"PASS\"}\n{\"group_id\": \"group_b89e5ed7a31b\", \"mode\": \"snapshot-golden\", \"sample_id\": \"sample_0003\", \"status\": \"PASS\"}\n{\"group_id\": \"group_b89e5ed7a31b\", \"mode\": \"snapshot-golden\", \"sample_id\": \"sample_0004\", \"status\": \"PASS\"}\n{\"group_id\": \"group_b89e5ed7a31b\", \"mode\": \"snapshot-golden\", \"sample_id\": \"sample_0005\", \"status\": \"PASS\"}\n{\"group_id\": \"group_b89e5ed7a31b\", \"mode\": \"snapshot-golden\", \"sample_id\": \"sample_0006\", \"status\": \"PASS\"}\n{\"group_id\": \"group_2390ed596348\", \"mode\": \"snapshot-golden\", \"sample_id\": \"sample_0001\", \"status\": \"PASS\"}\n{\"group_id\": \"group_2390ed596348\", \"mode\": \"snapshot-golden\", \"sample_id\": \"sample_0002\", \"status\": \"PASS\"}\n{\"group_id\": \"group_2390ed596348\", \"mode\": \"snapshot-golden\", \"sample_id\": \"sample_0003\", \"status\": \"PASS\"}\n"
+    }
+  ],
+  "valid": true
+}
