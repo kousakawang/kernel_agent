@@ -6,7 +6,7 @@ Step 0.5 的第一个 skill。目标：**确定 sglang 运行时依赖的所有 
 
 ## 职责边界
 
-- **做**：定版本（两桶）、判断环境里是否已有源码、缺的 clone 到 `(name, version)` 缓存、如实记录成功/失败。
+- **做**：定版本（两桶）、把每个库的**正确版本 git 源码 clone 到 `(name, version)` 缓存**、如实记录成功/失败。
 - **不做**：解决 clone 失败（网络/tag 缺失）；重编 sgl-kernel；改 sglang 源码；装新包；把 clone 链接进运行环境；精确定位 kernel 源码。
 
 ## 输入（config）
@@ -55,7 +55,7 @@ Step 0.5 的第一个 skill。目标：**确定 sglang 运行时依赖的所有 
 
 - `<output_root>/third_party_manifest.json`：每条 repo 记录 `name / archetype / version / version_source / clone_source / resolution / local_path / url / ref / triggered_by / on_default_path / version_mismatch / status / clone_command / evidence`。顶层含 sgl-kernel 版本对齐信息 + `failed` 汇总。
 - `<output_root>/missing_repos.md`：仅当有 `clone_failed` / `failed` 项时生成，逐条给原因 + 可复跑 clone 命令。
-- `<third_party_cache>/<name>/<version>/`：clone 下来的仓库（已有源码的库不落这里，只在 manifest 记录既有路径）。
+- `<third_party_cache>/<name>/<version>/`：clone 下来的仓库（统一 clone 完整 git 源码树，**不复用已装 wheel**——wheel 布局不同且常缺 tests；见下方「为什么统一 clone」）。
 
 ## 完成标准
 
@@ -63,3 +63,13 @@ Step 0.5 的第一个 skill。目标：**确定 sglang 运行时依赖的所有 
 - 所有 Bucket B 项的 `ref` == sgl-kernel CMake pin；`clone_source` 正确区分 `sgl_fork` / `official`。
 - 无源库（F8）落在 `failed`；clone 失败库落在 `clone_failed` 且带可复跑命令。
 - `version_mismatch` 已复核并向用户说明（若为 true）。
+
+## 为什么统一 clone（不复用已装 wheel）
+
+即使某库已 pip 装好，也**不**用它的 site-packages 目录，一律按正确版本 clone git 源码。原因：
+
+- **布局不同**：wheel 会把 JIT 用的 `csrc` 挪到包内 `data/csrc/`（git 里在顶层 `csrc/`），下游 JIT 溯源按 git 布局找会落空。
+- **缺 tests/benchmarks**：wheel 通常剥掉这些，而它们正是 `problem_translate` 做 L4 参考要抄的材料。
+- **同名不同物**：`cutlass` 命中的可能是 `nvidia_cutlass_dsl` 的 python 包、`flash_attn` 命中的是 FA4——版本和内容都不对。
+
+代价是多占磁盘，但相对模型可忽略；换来的是所有下游只需处理**一种统一的完整 git 布局**。仅 P1（用户 `explicit_paths`）和 P2（sgl-kernel 内嵌 git 树）会跳过 clone。

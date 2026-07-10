@@ -161,6 +161,19 @@ class VersionResolverTests(unittest.TestCase):
         self.assertFalse(res.has_source)
         self.assertIn("no source", res.resolve_error)
 
+    def test_ref_template_none_clones_default_branch(self):
+        # flash_attn_4 beta has no matching git tag -> ref_template=None -> ref None.
+        spec = get_spec("flash_attn_4")
+        res = version_resolver.resolve_repo(
+            spec,
+            sgl_kernel_pins={},
+            version_lookup=self._fake_lookup({"flash-attn-4": "4.0.0b17"}),
+            triggered_by=[],
+            sgl_kernel_version_mismatch=False,
+        )
+        self.assertEqual(res.version, "4.0.0b17")
+        self.assertIsNone(res.ref)
+
 
 class ClonerTests(unittest.TestCase):
     def _res(self, **kw):
@@ -225,6 +238,24 @@ class ClonerTests(unittest.TestCase):
         self.assertEqual(outcome.status, "ok")
         self.assertEqual(outcome.resolution, "explicit")
         self.assertEqual(outcome.local_path, str(src))
+
+    def test_never_resolves_to_installed(self):
+        # Option A: we always clone the pinned git source; a same-named installed
+        # package (e.g. cutlass -> nvidia_cutlass_dsl) must never be used. With no
+        # P1/P2 and dry-run, it falls through to a clone_command, not "installed".
+        with tempfile.TemporaryDirectory() as tmp:
+            res = self._res(name="cutlass", version_source="cmake_pin",
+                            url="https://github.com/NVIDIA/cutlass", ref="57e3cfb")
+            outcome = cloner.clone_repo(
+                res,
+                cache_root=Path(tmp) / "cache",
+                sgl_kernel_src=Path(tmp) / "nope",
+                explicit_paths={},
+                dry_run=True,
+            )
+        self.assertNotEqual(outcome.resolution, "installed")
+        self.assertEqual(outcome.status, "clone_failed")  # dry-run -> clone_command only
+        self.assertIn("git clone", outcome.clone_command)
 
 
 class ManifestTests(unittest.TestCase):

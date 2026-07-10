@@ -1,10 +1,16 @@
 """Clone missing third-party repos into a (name, version) cache.
 
-Resolution precedence per repo (first hit wins, no clone if source already present):
-    P1 explicit_paths[name]         -> resolution="explicit"
-    P2 embedded in sgl-kernel/3rdparty/<name>  -> resolution="embedded"
-    P3 installed package source on disk (dist has real source) -> resolution="installed"
-    P4 clone into third_party_cache/<name>/<version>          -> resolution="cloned"
+Resolution precedence per repo (first hit wins):
+    P1 explicit_paths[name]                     -> resolution="explicit"
+    P2 embedded git tree in sgl-kernel/3rdparty -> resolution="embedded"
+    P3 clone the pinned git source into third_party_cache/<name>/<version>
+                                                -> resolution="cloned"
+
+Option A: we do NOT resolve to installed site-packages. A wheel is not equivalent
+to the git source tree (different path layout for JIT csrc; tests/benchmarks usually
+stripped; same-named package may be unrelated). Since these repos back a lot of
+downstream work and disk is cheap vs models, we always clone the pinned git source
+for a uniform, complete tree.
 
 Clone-failure policy (see plan): we do NOT retry, switch mirrors, or otherwise try
 to fix a failed clone. We record ``status="clone_failed"``, leave ``local_path``
@@ -25,7 +31,7 @@ from .version_resolver import RepoResolution
 @dataclass
 class CloneOutcome:
     status: str  # ok | clone_failed | failed
-    resolution: str  # explicit | embedded | installed | cloned | none
+    resolution: str  # explicit | embedded | cloned | none
     local_path: str | None = None
     clone_command: str | None = None
     error: str | None = None
@@ -73,25 +79,25 @@ def _find_embedded(sgl_kernel_src: Path, name: str) -> Path | None:
     return None
 
 
-def _find_installed_source(name: str) -> Path | None:
-    """Return an installed package's on-disk source dir if it carries real source."""
+def _clone_steps(url: str, ref: str | None, dest: Path) -> list[list[str]]:
+    """The git argv steps to clone + checkout, run without a shell."""
 
-    import importlib.util
-
-    for mod_name in (name, name.replace("-", "_")):
-        try:
-            spec = importlib.util.find_spec(mod_name)
-        except (ModuleNotFoundError, ValueError):
-            spec = None
-        if spec and spec.submodule_search_locations:
-            path = Path(list(spec.submodule_search_locations)[0])
-            if _looks_like_source(path):
-                return path
-    return None
+    if ref:
+        return [
+            ["git", "clone", "--filter=blob:none", url, str(dest)],
+            ["git", "-C", str(dest), "fetch", "--depth=1", "origin", ref],
+            ["git", "-C", str(dest), "checkout", ref],
+        ]
+    return [["git", "clone", "--depth=1", url, str(dest)]]
 
 
 def _run_clone(
-    command: str, dest: Path, timeout: int, *, https_proxy: str | None = None
+    url: str,
+    ref: str | None,
+    dest: Path,
+    timeout: int,
+    *,
+    https_proxy: str | None = None,
 ) -> tuple[bool, str | None]:
     dest.parent.mkdir(parents=True, exist_ok=True)
     env = None
@@ -99,22 +105,24 @@ def _run_clone(
         import os
 
         env = {**os.environ, "https_proxy": https_proxy, "HTTPS_PROXY": https_proxy}
-    try:
-        proc = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=env,
-        )
-    except subprocess.TimeoutExpired:
-        return False, f"clone timed out after {timeout}s"
-    except Exception as exc:  # noqa: BLE001
-        return False, f"clone raised: {exc}"
-    if proc.returncode != 0:
-        tail = (proc.stderr or proc.stdout or "").strip().splitlines()
-        return False, tail[-1] if tail else f"git exited {proc.returncode}"
+    for argv in _clone_steps(url, ref, dest):
+        try:
+            # shell=False (argv list) — no shell interpolation, no injection surface.
+            proc = subprocess.run(
+                argv,
+                shell=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=env,
+            )
+        except subprocess.TimeoutExpired:
+            return False, f"clone timed out after {timeout}s"
+        except Exception as exc:  # noqa: BLE001
+            return False, f"clone raised: {exc}"
+        if proc.returncode != 0:
+            tail = (proc.stderr or proc.stdout or "").strip().splitlines()
+            return False, tail[-1] if tail else f"git exited {proc.returncode}"
     return True, None
 
 
@@ -134,24 +142,30 @@ def clone_repo(
     if res.resolve_error:
         return CloneOutcome(status="failed", resolution="none", error=res.resolve_error)
 
-    # P1 explicit user-provided path.
+    # P1 explicit user-provided path (trusted as-is; user opts in).
     explicit = explicit_paths.get(res.name)
     if explicit:
         p = Path(explicit).expanduser()
         if _looks_like_source(p):
             return CloneOutcome(status="ok", resolution="explicit", local_path=str(p))
 
-    # P2 embedded in sgl-kernel/3rdparty.
+    # P2 embedded git checkout under sgl-kernel/3rdparty (already a full source tree).
     embedded = _find_embedded(sgl_kernel_src, res.name)
     if embedded is not None:
         return CloneOutcome(status="ok", resolution="embedded", local_path=str(embedded))
 
-    # P3 installed package that ships real source.
-    installed = _find_installed_source(res.name)
-    if installed is not None:
-        return CloneOutcome(status="ok", resolution="installed", local_path=str(installed))
+    # NOTE (Option A): we intentionally do NOT resolve to installed site-packages.
+    # A wheel is not equivalent to the git source tree:
+    #   * wheel path layout differs (e.g. flashinfer csrc lives at flashinfer/data/csrc/
+    #     in a wheel vs top-level csrc/ in git) — JIT source tracing would look in the
+    #     wrong place;
+    #   * wheels usually omit tests/ benchmarks/ examples/ — the exact material
+    #     problem_translate needs for L4 references;
+    #   * a same-named package may be an unrelated lib (cutlass -> nvidia_cutlass_dsl).
+    # Since these repos back a lot of downstream work and disk is cheap vs models,
+    # we always clone the pinned git source for a uniform, complete tree.
 
-    # P4 clone into the (name, version) cache.
+    # P3 clone the pinned git source into the (name, version) cache.
     dest = _cache_dir(cache_root, res.name, res.version)
     command = build_clone_command(res.url or "", res.ref, dest, https_proxy=https_proxy)
 
@@ -176,7 +190,7 @@ def clone_repo(
     if dest.exists():
         shutil.rmtree(dest, ignore_errors=True)
 
-    ok, err = _run_clone(command, dest, clone_timeout, https_proxy=https_proxy)
+    ok, err = _run_clone(res.url, res.ref, dest, clone_timeout, https_proxy=https_proxy)
     if ok:
         return CloneOutcome(status="ok", resolution="cloned", local_path=str(dest))
     # Failure: record only, do not retry or fix.
