@@ -161,8 +161,8 @@ class VersionResolverTests(unittest.TestCase):
         self.assertFalse(res.has_source)
         self.assertIn("no source", res.resolve_error)
 
-    def test_ref_template_none_clones_default_branch(self):
-        # flash_attn_4 beta has no matching git tag -> ref_template=None -> ref None.
+    def test_fa4_ref_derives_beta_tag(self):
+        # flash_attn_4 pip 4.0.0b17 -> git tag fa4-v4.0.0.beta17 (derived, not None).
         spec = get_spec("flash_attn_4")
         res = version_resolver.resolve_repo(
             spec,
@@ -172,7 +172,19 @@ class VersionResolverTests(unittest.TestCase):
             sgl_kernel_version_mismatch=False,
         )
         self.assertEqual(res.version, "4.0.0b17")
-        self.assertIsNone(res.ref)
+        self.assertEqual(res.ref, "fa4-v4.0.0.beta17")
+
+    def test_deep_gemm_ref_uses_version_tag(self):
+        # deep_gemm uses the default template -> v0.1.2 (a real tag on the sgl fork).
+        res = version_resolver.resolve_repo(
+            get_spec("deep_gemm"),
+            sgl_kernel_pins={},
+            version_lookup=self._fake_lookup({"sgl-deep-gemm": "0.1.2"}),
+            triggered_by=[],
+            sgl_kernel_version_mismatch=False,
+        )
+        self.assertEqual(res.ref, "v0.1.2")
+        self.assertEqual(res.clone_source, "sgl_fork")
 
 
 class ClonerTests(unittest.TestCase):
