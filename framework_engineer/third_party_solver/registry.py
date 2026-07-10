@@ -100,13 +100,14 @@ UNIVERSE: tuple[RepoSpec, ...] = (
         archetype="F7",
         version_source="importlib",
         dist_name="sgl-deep-gemm",  # verified: import deep_gemm -> dist sgl-deep-gemm 0.1.2
-        ref_template="release",  # sgl fork ships from the `release` branch (dist METADATA)
+        # ref_template defaults to "v{version}" -> v0.1.2, a real tag on the sgl fork
+        # (verified via `git tag`: v0.1.0..v0.1.4.post1).
         url="https://github.com/sgl-project/DeepGEMM",  # verified: METADATA Project-URL Repository
         url_kind="sgl_fork",
         on_default_path=True,
         backend_flags=("deep_gemm", "deepgemm"),
         note="JIT/NVRTC GEMM; templates ship in package. Default MoE/GEMM path. "
-        "sgl fork tracked via the `release` branch (no version tag).",
+        "sgl fork; version tag v{version} exists upstream.",
     ),
     RepoSpec(
         name="flash_attn_4",
@@ -114,13 +115,13 @@ UNIVERSE: tuple[RepoSpec, ...] = (
         version_source="importlib",
         dist_name="flash-attn-4",  # verified: pip dist flash-attn-4 4.0.0b17
         import_name="flash_attn",  # installed under dist-packages/flash_attn
-        ref_template=None,  # beta wheel has no matching git tag -> clone default branch
+        ref_template="fa4-v{pep440_beta}",  # 4.0.0b17 -> tag fa4-v4.0.0.beta17 (verified via git ls-remote)
         url="https://github.com/Dao-AILab/flash-attention",
         url_kind="official",
         on_default_path=False,
         backend_flags=("fa4", "flashattention4"),
-        note="FA4 ships as a beta wheel with no matching git tag; clone default "
-        "branch for the full source tree (version recorded from importlib).",
+        note="FA4 tags as fa4-v<major>.<minor>.<patch>.betaN; pip 4.0.0b17 maps to "
+        "fa4-v4.0.0.beta17. ref_template derives it from the pip version.",
     ),
     # NOTE: `fla` and `causal_conv1d` are intentionally NOT in this universe.
     # They are NOT external pip packages in this stack:

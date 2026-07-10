@@ -59,6 +59,24 @@ def _short(commit: str) -> str:
     return commit
 
 
+def _format_ref(template: str | None, version: str) -> str | None:
+    """Render a git ref from ``ref_template`` and the resolved pip version.
+
+    Placeholders available to a template:
+      {version} - the raw pip version, e.g. "4.0.0b17" or "0.1.2"
+      {pep440_beta} - PEP440 "bN" normalized to ".betaN", e.g. "4.0.0.beta17"
+                      (some repos, e.g. flash-attention FA4, tag as fa4-v4.0.0.beta17)
+    Returns None when template is None (clone the default branch).
+    """
+
+    if template is None:
+        return None
+    import re
+
+    pep440_beta = re.sub(r"b(\d+)$", r".beta\1", version)
+    return template.format(version=version, pep440_beta=pep440_beta)
+
+
 def resolve_repo(
     spec: RepoSpec,
     *,
@@ -102,7 +120,7 @@ def resolve_repo(
         except Exception as exc:  # noqa: BLE001
             res.resolve_error = f"version lookup failed: {exc}"
             return res
-        res.ref = spec.ref_template.format(version=res.version) if spec.ref_template else None
+        res.ref = _format_ref(spec.ref_template, res.version)
         return res
 
     if spec.version_source == "cmake_pin":
