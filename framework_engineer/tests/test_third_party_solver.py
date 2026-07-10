@@ -75,7 +75,7 @@ class FlagsTests(unittest.TestCase):
         self.assertEqual(backends["fi"], {"flashinfer", "fa3"})
 
     def test_default_path_always_tagged_and_no_pruning(self):
-        cmds = [{"backend_name": "triton", "cmd": "x --linear-attn-backend triton"}]
+        cmds = [{"backend_name": "fi", "cmd": "x --attention-backend flashinfer"}]
         ann = annotate_universe(cmds)
         # Every source-bearing repo present (no pruning by flags).
         source_names = {s.name for s in iter_universe(source_bearing_only=True)}
@@ -83,8 +83,8 @@ class FlagsTests(unittest.TestCase):
         # Default-path libs carry the default_path tag even if not named.
         self.assertIn("default_path", ann["flashinfer"])
         self.assertIn("default_path", ann["cutlass"])
-        # triton flag attributes triton_kernels.
-        self.assertIn("triton", ann["triton_kernels"])
+        # flashinfer flag attributes the flashinfer repo to that backend command.
+        self.assertIn("fi", ann["flashinfer"])
 
     def test_f8_excluded_from_source_bearing(self):
         names = {s.name for s in iter_universe(source_bearing_only=True)}
