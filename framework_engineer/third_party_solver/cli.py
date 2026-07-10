@@ -44,8 +44,38 @@ def cmd_resolve(args: argparse.Namespace) -> int:
 
     https_proxy = args.https_proxy or config.https_proxy
 
+    # Pre-flight plan: show what we intend to fetch before any long clone starts.
+    # (Progress goes to stderr so stdout stays a clean JSON summary.)
+    cloneable = [r for r in resolutions if r.has_source and not r.resolve_error]
+    action = "Would clone" if args.dry_run else "Cloning"
+    print(
+        f"[resolve-third-party] {len(cloneable)} repos to fetch "
+        f"(proxy={'on' if https_proxy else 'off'}):",
+        file=sys.stderr,
+    )
+    for r in cloneable:
+        ref = r.ref or "<default branch>"
+        print(f"  - {r.name} ({r.version_source}) {r.url} @ {ref}", file=sys.stderr)
+    skipped = [r for r in resolutions if not (r.has_source and not r.resolve_error)]
+    for r in skipped:
+        print(
+            f"  - {r.name}: skip ({r.resolve_error or 'no source'})",
+            file=sys.stderr,
+        )
+    print("", file=sys.stderr)
+
     records: list[manifest_mod.RepoRecord] = []
+    total = len(cloneable)
+    done = 0
     for res in resolutions:
+        is_cloneable = res.has_source and not res.resolve_error
+        if is_cloneable:
+            done += 1
+            print(
+                f"[{done}/{total}] {action.lower()} {res.name} ...",
+                file=sys.stderr,
+                flush=True,
+            )
         outcome = cloner.clone_repo(
             res,
             cache_root=config.third_party_cache,
@@ -55,7 +85,15 @@ def cmd_resolve(args: argparse.Namespace) -> int:
             clone_timeout=args.clone_timeout,
             https_proxy=https_proxy,
         )
+        if is_cloneable:
+            detail = outcome.local_path or (outcome.error or "")
+            print(
+                f"[{done}/{total}] {res.name}: {outcome.status} ({outcome.resolution}) {detail}",
+                file=sys.stderr,
+                flush=True,
+            )
         records.append(manifest_mod.build_record(res, outcome))
+    print("", file=sys.stderr)
 
     manifest = manifest_mod.build_manifest(
         sglang_repo_root=config.sglang_repo_root,

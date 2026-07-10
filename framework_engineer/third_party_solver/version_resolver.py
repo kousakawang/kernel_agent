@@ -32,6 +32,7 @@ class RepoResolution:
     version_source: str
     on_default_path: bool
     url_kind: str
+    import_name: str | None = None
     version: str | None = None
     url: str | None = None
     ref: str | None = None
@@ -72,6 +73,7 @@ def resolve_repo(
         version_source=spec.version_source,
         on_default_path=spec.on_default_path,
         url_kind=spec.url_kind,
+        import_name=spec.import_name,
         url=spec.url,
         triggered_by=triggered_by,
         has_source=spec.has_source,
@@ -100,7 +102,7 @@ def resolve_repo(
         except Exception as exc:  # noqa: BLE001
             res.resolve_error = f"version lookup failed: {exc}"
             return res
-        res.ref = f"v{res.version}"
+        res.ref = spec.ref_template.format(version=res.version) if spec.ref_template else None
         return res
 
     if spec.version_source == "cmake_pin":

@@ -43,6 +43,17 @@ class RepoSpec:
     dist_name: str | None = None
     """PyPI distribution name for importlib.metadata (Bucket A only)."""
 
+    import_name: str | None = None
+    """Python import name if it differs from ``name`` (diagnostics only)."""
+
+    ref_template: str | None = "v{version}"
+    """How to form the git ref for a Bucket A clone from the resolved version.
+
+    Default ``v{version}`` suits standard release tags. Set to ``"{version}"`` for
+    repos whose tags omit the ``v`` prefix, or ``None`` to clone the default branch
+    when no matching tag exists (e.g. beta wheels like flash-attn-4 4.0.0b17).
+    """
+
     cmake_target: str | None = None
     """FetchContent target name inside sgl-kernel (Bucket B only)."""
 
@@ -100,11 +111,14 @@ UNIVERSE: tuple[RepoSpec, ...] = (
         archetype="F5",
         version_source="importlib",
         dist_name="flash-attn-4",  # verified: pip dist flash-attn-4 4.0.0b17
+        import_name="flash_attn",  # installed under dist-packages/flash_attn
+        ref_template=None,  # beta wheel has no matching git tag -> clone default branch
         url="https://github.com/Dao-AILab/flash-attention",
         url_kind="official",
         on_default_path=False,
         backend_flags=("fa4", "flashattention4"),
-        note="FA4 as an independent package (distinct from sgl-attn embedded in .so).",
+        note="FA4 ships as a beta wheel with no matching git tag; clone default "
+        "branch for the full source tree (version recorded from importlib).",
     ),
     # NOTE: `fla` and `causal_conv1d` are intentionally NOT in this universe.
     # They are NOT external pip packages in this stack:
