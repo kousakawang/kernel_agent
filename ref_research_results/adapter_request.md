@@ -1,0 +1,15 @@
+这是一个复杂的调研任务。
+我们来调研一个常见算子库的算子接口如何和框架准备好的资源适配的问题（kvcache，sliding-window，mamba-state等）
+其他算子（FFN，MOE等，我们几乎不要考虑算子实现和接入框架时ABI对齐的问题），主要还是attention。
+我觉得flashinfer/flash-attention 这类通用的算子库，是为了解决通用的attention问题而被开发的。他们在被接入到sglang/vLLM这种框架时是如何把输入形式和框架的资源对齐的呢。（比如pagedAttention之类）。是算子在开发阶段就考虑到框架会给算子的kvcache的形态，然后把算子的输入参数格式对齐，还是先有一个基础版的实现，具体接入到框架的时候再根据框架的kvcache等的管理形式做修改。
+
+关于这类框架和算子库的ABI对齐（双方各负责做到什么程度，最后框架怎么调用算子）我想知道的更详细一点，你可以以目录下面的sglang或者vLLM仓库当前的实现为例来做一下说明，具体的包括：
+
+常规的attention(GQA,MHA)常用的算子库是如何在ABI层面和框架对齐的。
+deepseek的MLA呢是怎么对齐？
+Qwen3.X系列的GDN的mamba （不过这个默认实现是不是triton写的）
+DeepseekV3.2的 DSA（多了indexer等一些资源？）
+DeepseekV4系列的C4A/C128A
+
+如果当前框架用的是定制算子（框架里自己实现的triton算子等），也可以忽略这个算子的匹配问题。
+调研报告输出到attention_framework_adapter.md里

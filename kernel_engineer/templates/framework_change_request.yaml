@@ -1,0 +1,48 @@
+# FrameworkChangeRequest template.
+# Kernel Agent uses this when optimization requires framework-side support.
+
+request_id: "fcr_<task_id>_YYYYMMDD"
+related_task_id: "<task_id>"
+status: "draft"  # draft | submitted | accepted | rejected | implemented
+
+requested_change:
+  title: ""
+  type: "layout"  # layout | workspace | metadata | weight_repack | fusion_boundary | api | other
+  description: |
+    Describe exactly what the framework should change.
+
+kernel_side_reason: |
+  Explain why the kernel cannot reach the target, or cannot be safely integrated,
+  without this framework change.
+
+evidence:
+  benchmark_summary: ""
+  profiler_summary: ""
+  affected_shape_cases: []
+
+expected_benefit:
+  micro_speedup: ""
+  e2e_impact_estimate: ""
+  memory_impact: ""
+
+compatibility_risk:
+  correctness: ""
+  performance: ""
+  maintainability: ""
+  model_coverage: ""
+
+fallback_plan: |
+  Explain what happens when the requested condition is not met.
+
+task_pack_impact:
+  task_yaml_changes: []
+  shape_list_changes: []
+  reference_impl_changes: []
+  task_pack_harness_changes: []
+  benchmark_changes: []
+  e2e_validation_changes: []
+
+acceptance_criteria:
+  - ""
+
+notes: ""
