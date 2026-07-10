@@ -35,19 +35,24 @@ def _cache_dir(cache_root: Path, name: str, version: str | None) -> Path:
     return cache_root / name / (version or "unknown")
 
 
-def build_clone_command(url: str, ref: str | None, dest: Path) -> str:
+def build_clone_command(
+    url: str, ref: str | None, dest: Path, *, https_proxy: str | None = None
+) -> str:
     """A single re-runnable command that clones + checks out the pinned ref.
 
     Shallow-fetches the exact ref so it works for both tags and commit hashes.
+    When ``https_proxy`` is set, it is embedded inline on every git invocation so
+    the emitted command stays copy-paste re-runnable.
     """
 
+    prefix = f"https_proxy={https_proxy} " if https_proxy else ""
     if ref:
         return (
-            f"git clone --filter=blob:none {url} {dest} && "
-            f"git -C {dest} fetch --depth=1 origin {ref} && "
+            f"{prefix}git clone --filter=blob:none {url} {dest} && "
+            f"{prefix}git -C {dest} fetch --depth=1 origin {ref} && "
             f"git -C {dest} checkout {ref}"
         )
-    return f"git clone --depth=1 {url} {dest}"
+    return f"{prefix}git clone --depth=1 {url} {dest}"
 
 
 def _looks_like_source(path: Path) -> bool:
@@ -85,8 +90,15 @@ def _find_installed_source(name: str) -> Path | None:
     return None
 
 
-def _run_clone(command: str, dest: Path, timeout: int) -> tuple[bool, str | None]:
+def _run_clone(
+    command: str, dest: Path, timeout: int, *, https_proxy: str | None = None
+) -> tuple[bool, str | None]:
     dest.parent.mkdir(parents=True, exist_ok=True)
+    env = None
+    if https_proxy:
+        import os
+
+        env = {**os.environ, "https_proxy": https_proxy, "HTTPS_PROXY": https_proxy}
     try:
         proc = subprocess.run(
             command,
@@ -94,6 +106,7 @@ def _run_clone(command: str, dest: Path, timeout: int) -> tuple[bool, str | None
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=env,
         )
     except subprocess.TimeoutExpired:
         return False, f"clone timed out after {timeout}s"
@@ -113,6 +126,7 @@ def clone_repo(
     explicit_paths: dict[str, str],
     dry_run: bool,
     clone_timeout: int = 600,
+    https_proxy: str | None = None,
 ) -> CloneOutcome:
     # No source to clone (F8) or version resolution already failed.
     if not res.has_source:
@@ -139,7 +153,7 @@ def clone_repo(
 
     # P4 clone into the (name, version) cache.
     dest = _cache_dir(cache_root, res.name, res.version)
-    command = build_clone_command(res.url or "", res.ref, dest)
+    command = build_clone_command(res.url or "", res.ref, dest, https_proxy=https_proxy)
 
     if _looks_like_source(dest):  # cache hit
         return CloneOutcome(status="ok", resolution="cloned", local_path=str(dest))
@@ -162,7 +176,7 @@ def clone_repo(
     if dest.exists():
         shutil.rmtree(dest, ignore_errors=True)
 
-    ok, err = _run_clone(command, dest, clone_timeout)
+    ok, err = _run_clone(command, dest, clone_timeout, https_proxy=https_proxy)
     if ok:
         return CloneOutcome(status="ok", resolution="cloned", local_path=str(dest))
     # Failure: record only, do not retry or fix.

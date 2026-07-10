@@ -143,10 +143,15 @@ def check_sgl_kernel_version_alignment(
     """
 
     src_version = cmake_pins.read_sgl_kernel_src_version(sgl_kernel_src)
-    try:
-        installed_version = version_lookup("sgl_kernel")
-    except Exception:  # noqa: BLE001
-        installed_version = None
+    # The installed wheel's distribution name is "sglang-kernel" (verified in env);
+    # try that first, then a couple of historical/alternate spellings.
+    installed_version = None
+    for dist in ("sglang-kernel", "sgl-kernel", "sgl_kernel"):
+        try:
+            installed_version = version_lookup(dist)
+            break
+        except Exception:  # noqa: BLE001
+            continue
     if src_version and installed_version and src_version != installed_version:
         return True, installed_version, src_version
     return False, installed_version, src_version

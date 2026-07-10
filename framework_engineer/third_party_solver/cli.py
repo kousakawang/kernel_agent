@@ -42,6 +42,8 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         triggered_by_map=triggered_by_map,
     )
 
+    https_proxy = args.https_proxy or config.https_proxy
+
     records: list[manifest_mod.RepoRecord] = []
     for res in resolutions:
         outcome = cloner.clone_repo(
@@ -51,6 +53,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
             explicit_paths=config.explicit_paths,
             dry_run=args.dry_run,
             clone_timeout=args.clone_timeout,
+            https_proxy=https_proxy,
         )
         records.append(manifest_mod.build_record(res, outcome))
 
@@ -99,6 +102,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Resolve + write manifest with clone commands, but do not clone.",
     )
     p.add_argument("--clone-timeout", type=int, default=600)
+    p.add_argument(
+        "--https-proxy",
+        default=None,
+        help="Proxy for all git clones (overrides config.https_proxy).",
+    )
     p.set_defaults(func=cmd_resolve)
 
     return parser

@@ -13,6 +13,7 @@ output_root : str                # where manifest + missing_repos.md land      (
 workload_cmds : list[str]        # optional, for agent-side runtime confirmation
 explicit_paths : dict[str, str]  # optional, name -> P1 user-provided path
 extra_env : dict[str, str]       # optional, e.g. {"PYTHONPATH": ...}
+https_proxy : str                # optional, proxy for all git clones (https_proxy=...)
 """
 
 from __future__ import annotations
@@ -38,6 +39,7 @@ class ResolveConfig:
     workload_cmds: list[str] = field(default_factory=list)
     explicit_paths: dict[str, str] = field(default_factory=dict)
     extra_env: dict[str, str] = field(default_factory=dict)
+    https_proxy: str | None = None
 
     @property
     def manifest_path(self) -> Path:
@@ -126,4 +128,5 @@ def load_config(path: str | Path) -> ResolveConfig:
         workload_cmds=list(raw.get("workload_cmds") or []),
         explicit_paths={str(k): str(v) for k, v in (raw.get("explicit_paths") or {}).items()},
         extra_env={str(k): str(v) for k, v in (raw.get("extra_env") or {}).items()},
+        https_proxy=(str(raw["https_proxy"]) if raw.get("https_proxy") else None),
     )
