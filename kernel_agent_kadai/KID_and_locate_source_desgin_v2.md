@@ -2,7 +2,7 @@
 
 > 本文聚焦 **Step 1（KID 分解）与 Step 0.5 第二个 skill（locate-kernel-source）之间的职责边界与对接契约**，是对
 > [framework_engineer_design_v2.md](file:///Users/bytedance/Desktop/infra_agent/kernel_agent/kernel_agent_kadai/framework_engineer_design_v2.md) §8.1.2 / §8.2 的**收敛与细化**。
-> 这两步跑完直接对接已开发好的 phase1 主链路（Step 2 `import-decomposition` → task_pack），所以边界必须先钉死。
+> 这两步跑完直接对接已开发好的 phase1 主链路（locate 的 Layer 3 抽取产出 `kernel_sources/` → task_pack），所以边界必须先钉死。
 >
 > 关联现状：`resolve-third-party`（Step 0.5 第一个 skill）已完全落地并在真实 H 卡容器验证；KID 已有单路径能力；本文要解决的是「KID 里已经写了一半的溯源逻辑」和「计划中的 locate-kernel-source」之间的重叠。
 >
@@ -282,7 +282,7 @@ for each service_cmds[i] = {backend_name, cmd}:
 
 ### 5.1 类型与位置
 
-**两层**：Layer 1 deterministic helper（CLI 跑一轮）+ Layer 2 agent（读代码兜底）。二者共用 helper 包。
+**三层**：Layer 1 deterministic 定位（CLI 跑一轮）+ Layer 2 agent 兜底（读代码补歧义层）+ **Layer 3 物料抽取**（按定位结果把四层源码抽成文件，即原 `import-decomposition`）。前两层产「位置」，Layer 3 按位置落盘物料。三层共用一个包。
 
 **新包 `framework_engineer/source_location/`**（与 `third_party_solver/` 平级；只读后者产出的 manifest JSON，无状态耦合）：
 
@@ -293,14 +293,17 @@ framework_engineer/source_location/
   registry_probe.py# 机制①：sgl-kernel m.impl 符号注册表（从 KID 移入）
   symbol_grep.py   # 符号/def 在源码树/clone 里 grep（从 KID 移入）
   jit_sources.py   # 机制②：runtime_event.source_files 按后缀分层 + 静态 gen_jit_spec 兜底
-  locator.py       # 单入口 locate_kernel_source(...)，内部按 archetype 分派
-  cli.py           # Layer 1 批量驱动
+  locator.py       # 单入口 locate_kernel_source(...)，内部按 archetype 分派（Layer 1）
+  extractor.py     # Layer 3：按 source_locations 抽四层文件 + read_hints.txt（原 import-decomposition）
+  cli.py           # 子命令 locate（Layer1）/ extract（Layer3）批量驱动
   __main__.py
 ```
 
 skill 文档：`framework_engineer/skills/locate_kernel_source.md`（驱动 Layer 2 agent）。
 
 > 与 §8.1.2 的差异：原文把 helper 放 `third_party_solver/source_locator.py`。本文改为**独立包 `source_location/`**——它逻辑上属于「定位」而非「拉三方库」，独立更清晰；它只消费 `third_party_solver` 输出的 manifest JSON，不 import 其代码。
+>
+> **`import-decomposition` 归属变更（2026-07-13）**：框架文档 §8.2 原把 `import-decomposition` 挂在 Step 1(KID) 名下，但它的输入（四层 `source_locations`）**完全来自 locate、不是 KID 产的**——消费者被编在生产者之前，不自洽。故 V2 把它收进 locate 作 **Layer 3 抽取阶段**（`extractor.py`）。KID 因此彻底纯化为 profiler，不碰任何源码抽取落盘。注意：这里指的是 §8.2 的 `import-decomposition`（抽到 `workspace/kernel_sources/`）；§8.3.3 的 `import-kernel-sources-to-taskpack`（把 kernel_sources 拷进 task_pack + 生成 `level_decision.yaml`）**仍属 Step 2**，不动。
 
 ### 5.2 输入
 
@@ -312,17 +315,18 @@ skill 文档：`framework_engineer/skills/locate_kernel_source.md`（驱动 Laye
 
 **不需要** `external_references`（那是 Step 3 `problem_translate` 的输入，跟定位无关）。
 
-### 5.3 四层信息 + 两层架构
+### 5.3 四层信息 + 三层架构
 
-四层（KID 需要的定位目标，供 `import-decomposition` 抽取）：
+四层（KID 需要的定位目标，供 Layer 3 抽取）：
 - **a. `interface_definition`**：接口定义（python），含 kernel launch 语句
 - **b. `kernel_impl`**：kernel 实现（`.cu`/`.cpp`/`.py`）
 - **c. `py_cpp_binding`**：py↔cpp 绑定（主要 sgl-kernel）
 - **d. `kernel_header`**：头文件 `.h/.cuh`
 
-**两层溯源**：
-- **Layer 1 — deterministic helper（CLI）**：对每个 kernel 按 `archetype` 分派，**能定就定，定不了也先跑一遍**，把每层标 `resolved / not_applicable / ambiguous / not_found`。歧义给多候选，失败给 `repo_hint`（manifest 里该库仓库根），**不写失败原因**（helper 是固定逻辑，做不好灵活搜索）。
+**三层架构**：
+- **Layer 1 — deterministic 定位（CLI）**：对每个 kernel 按 `archetype` 分派，**能定就定，定不了也先跑一遍**，把每层标 `resolved / not_applicable / ambiguous / not_found`。歧义给多候选，失败给 `repo_hint`（manifest 里该库仓库根），**不写失败原因**（helper 是固定逻辑，做不好灵活搜索）。
 - **Layer 2 — agent 兜底**：读 Layer 1 结果，**只对 `ambiguous`/`not_found` 的层**，拿 `repo_hint` 的仓库根主动去找；补齐或标 `missed`。
+- **Layer 3 — 物料抽取（CLI，原 `import-decomposition`）**：定位齐了之后，按 `source_locations` 把四层源码抽成 `kernel_sources/<id>/` 文件 + `read_hints.txt`（详见 §5.6 末）。
 
 **信息源优先级**（Layer 1 内部）：**先消费 `runtime_event`，缺了才静态解析**（机制①/②）。这段就是从 KID `_implementation_from_events` 搬来的逻辑：
 - `runtime_event.implementation.source_files` 非空（F4/F7 JIT、F1/F6 triton）→ 层 b/c/d 几乎白送，按后缀分（`.cu/.cpp`→b、`*_jit_binding.cu`→c、`.cuh/.h`→d）。
@@ -406,7 +410,7 @@ python -m framework_engineer.source_location.cli locate \
 ```
 
 对 schema 里每个 kernel 调 `locate_kernel_source(...)`，产出：
-- **就地把 `source_locations` + finalize 后的 `archetype` + `needs_agent` 写回该 kernel 的 schema entry**（下游 `import-decomposition` 只读一份文件）。
+- **就地把 `source_locations` + finalize 后的 `archetype` + `needs_agent` 写回该 kernel 的 schema entry**（Layer 3 抽取只读这一份文件）。
 - 另写 `locate_report.json`：汇总 `{total, resolved, needs_agent:[{interface, archetype, layer, repo_hint}]}`，供 Layer 2 agent 定位要处理的项。
 - 进度到 stderr、JSON 小结到 stdout（沿用 resolve-third-party 的 stdout 纯净约定）。
 
@@ -415,6 +419,21 @@ python -m framework_engineer.source_location.cli locate \
 2. 对每个 `ambiguous`/`not_found` 层，用 `repo_hint` 的仓库根**主动 grep/读代码**找源。
 3. 找到 → 更新 schema entry 该层为 `resolved`+hits；仍找不到 → 标 `missed`。
 4. 追加 `locate_agent_notes.md` 记录每个兜底项的结论 + 理由。
+
+**Layer 3 CLI — 物料抽取（原 `import-decomposition`）**：定位（Layer 1/2）跑完、schema 里 `source_locations` 齐了之后执行。
+
+```bash
+python -m framework_engineer.source_location.cli extract \
+    --schema <decomposition_*.schema.json>            # 已被 locate 富化过（含 source_locations）
+    --workspace-out <dir>                              # workspace 目标目录
+```
+
+`extractor.py` 遍历 schema 每个 kernel，按 `source_locations.layers.<layer>.hits[0]` 的 file + 行号范围，把四层源码抽成文件写 `<workspace>/kernel_sources/<id>/{interface_definition,py_cpp_binding,kernel_header,kernel_impl}.{py,cc,h,cu,cpp}` + `read_hints.txt`，并回填 `kernel_sources_dir` 到 schema。规则：
+- `not_applicable` 层 → 建空文件 + 注释「该层形态不适用（如 triton 无 py↔cpp binding）」。
+- `missed`/`not_found` 层 → 写占位 + 注释「该层未定位，见 locate_agent_notes.md」，**不阻断**，交人工在 workspace 补。
+- 源文件超大时按行号范围前后加 padding 抽取，避免体积膨胀（沿用 §8.2 约束）。
+
+> 为什么归 locate：抽取要懂「四层语义 + null 规则 + missed 处理」，这套规则本就在 locate 手里；且输入 `source_locations` 是 locate 刚写回的，同包零跳步。KID 不懂四层，不该承担。
 
 ### 5.7 输出 + 工作目录状态
 
@@ -428,6 +447,17 @@ Layer 2（agent）之后：
 ```
   decomposition_<backend>.schema.json    # ambiguous/not_found 层被补齐或标 missed
   locate_agent_notes.md                  # agent 兜底过程 + 每个 missed 的接口/形态/repo_hint
+```
+Layer 3（extract）之后：
+```
+  <workspace>/
+    decomposition_<backend>.schema.json  # 回填 kernel_sources_dir
+    kernel_sources/<id>/                 # 四层源码文件（not_applicable/missed 为占位+注释）
+      interface_definition.py
+      py_cpp_binding.cc                  # 或空文件 + 注释
+      kernel_header.h                    # 或空文件 + 注释
+      kernel_impl.{py,cu,cpp}
+      read_hints.txt                     # 每层 read 行数范围
 ```
 
 `source_locations` 写进 schema 的形状（每 kernel entry 新增）：
@@ -476,26 +506,22 @@ Layer 2（agent）之后：
                 │ schema（interface + archetype + runtime_event）
                 ▼
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ locate-kernel-source (Step 0.5-b)                                            │
-│   Layer 1 CLI: 读 schema + manifest + sglang_repo_root                       │
+│ locate-kernel-source (Step 0.5-b, 三层)                                      │
+│   Layer 1 CLI(locate): 读 schema + manifest + sglang_repo_root               │
 │                → 每 kernel 补 source_locations + finalize archetype + needs_agent
 │                → locate_report.json                                          │
-│   Layer 2 agent: 对 needs_agent 的层用 repo_hint 兜底 → 补齐 / 标 missed     │
+│   Layer 2 agent:  对 needs_agent 的层用 repo_hint 兜底 → 补齐 / 标 missed     │
+│   Layer 3 CLI(extract, 原 import-decomposition):                             │
+│                按 source_locations 抽 4 层文件 → workspace/kernel_sources/<id>/│
+│                + read_hints.txt；回填 kernel_sources_dir 到 schema            │
 └───────────────┬──────────────────────────────────────────────────────────────┘
-                │ 富化后的 decomposition_<backend>.schema.json（含 4 层 source_locations）
-                ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│ import-decomposition (Step 2 前半, CLI, 已在 §8.2 设计)                      │
-│   按 source_locations 的行号范围抽 4 层文件 → workspace/kernel_sources/<id>/ │
-│   + read_hints.txt；回填 kernel_sources_dir 到 schema                        │
-└──────────────────────────────────────────────────────────────────────────────┘
                           ▼  之后接已开发好的 phase1 主链路（scaffold → ... → validate）
 ```
 
 **契约要点**：
-1. KID schema 的 `source_locations` 字段**由 locate 填**，KID 留空/不产。
-2. `import-decomposition` 只在 locate 跑完后消费；它读的 `source_locations.layers.<layer>.hits[0]` 给出 file + 行号范围。
-3. `missed` 层：`import-decomposition` 生成对应文件时写占位 + 注释（"该层未定位，见 locate_agent_notes.md"），不阻断，交人工在 workspace 里补（对应 §2.3「补充 KID 抽不干净的 helper 文件」）。
+1. KID schema 的 `source_locations` 字段**由 locate（Layer 1/2）填**，KID 留空/不产。
+2. Layer 3 抽取（原 `import-decomposition`）只在定位跑完后消费；它读 `source_locations.layers.<layer>.hits[0]` 给出 file + 行号范围。它已收进 locate 包（`extractor.py`），不再是 KID/Step 1 的一部分。
+3. `missed` 层：Layer 3 生成对应文件时写占位 + 注释（"该层未定位，见 locate_agent_notes.md"），不阻断，交人工在 workspace 里补（对应框架文档 §2.3「补充 KID 抽不干净的 helper 文件」）。
 4. `archetype` 在 KID 是 provisional（可 `F2|F3`），进 workspace/task_pack 的是 locate finalize 后的值。
 
 ---
@@ -516,18 +542,20 @@ Layer 2（agent）之后：
 
 ### 7.2 locate-kernel-source（新包 `framework_engineer/source_location/`）
 
-- [ ] `contracts.py`：`LayerHit / LayerResult / LayerResolution`（§5.5）。
-- [ ] `registry_probe.py` + `symbol_grep.py`：从 KID 移入的机制①（`_sgl_kernel_registry` / `_find_symbol_sources` / `_find_triton_definition`）。
-- [ ] `jit_sources.py`：机制②（runtime_event.source_files 分层 + 静态 `gen_jit_spec` 兜底 + `~/.cache` 忽略）。
-- [ ] `archetype.py`：`F2|F3` finalize + 形态→分派表（§5.4）。
 - [ ] `locator.py`：单入口 `locate_kernel_source(...)`，内部按 archetype 分派 + runtime_event 优先。
-- [ ] `cli.py` + `__main__.py`：Layer 1 批量驱动（§5.6），写回 schema + `locate_report.json`。
+- [x] `extractor.py`：**Layer 3 物料抽取（原 `import-decomposition`）已实现**——按 `source_locations` 抽四层文件到 `workspace/kernel_sources/<id>/` + `read_hints.txt` + 回填 `kernel_sources_dir`；`not_applicable`/`missed` 写占位注释，`missed` 必填层硬停（`--allow-empty` 放行）。见 [source_location/extractor.py](file:///Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/source_location/extractor.py)、单测 [test_source_location_extract.py](file:///Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/tests/test_source_location_extract.py)。
+- [x] `cli.py`(extract 子命令) + `__main__.py`：`python -m framework_engineer.source_location.cli extract`（`locate` 子命令为未实现 stub）。
+- [ ] `contracts.py`：`LayerHit/LayerResult` 读取侧已随 extractor 落地；`LayerResolution`（生产侧）待 locator 补。
+- [ ] `registry_probe.py` / `symbol_grep.py` / `jit_sources.py` / `archetype.py` / 完整 `locator.py`：locate 定位层，后续开发。
 - [ ] `skills/locate_kernel_source.md`：Layer 2 agent 兜底（读 report、按 repo_hint 找、补齐/标 missed、写 notes）。
+
+> **Dry-run 验证机制（已实现）**：`framework_engineer/dry_run/`（`kid`/`locate`/`extract` 三子命令）在无 GPU/无 profiling 下验证「人工介入后交付链跑通」——KID/locate 出骨架（只留 agent 定位不到的 file/line 占位），extract passthrough 调真实 L3。见 [dry_run/](file:///Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/dry_run)、[dry_run_and_layer3_cli_plan.md](file:///Users/bytedance/Desktop/infra_agent/.trae/documents/dry_run_and_layer3_cli_plan.md)。archetype 产物用明文类别名（`sglang_triton` 等）+ `archetype_code`（F*）。
 
 ### 7.3 对接
 
-- [ ] `import-decomposition`（§8.2）：确认消费 locate 富化后的 `source_locations.layers.<x>.hits`；`missed`/`not_found` 层写占位 + 注释，不阻断。
-- [ ] 更新 [framework_engineer_design_v2.md](file:///Users/bytedance/Desktop/infra_agent/kernel_agent/kernel_agent_kadai/framework_engineer_design_v2.md) §8.1.2/§8.2 指向本文（helper 路径改 `source_location/`、KID 不再产 source_locations、KID 不吃 manifest）。
+- [ ] **`import-decomposition` 归属迁移**：从框架文档 §8.2（Step 1/KID 名下）移除，落为 locate 的 Layer 3（`extractor.py`）。消费 locate 富化后的 `source_locations.layers.<x>.hits`；`missed`/`not_found` 层写占位 + 注释，不阻断。
+- [ ] 保持不动：§8.3.3 `import-kernel-sources-to-taskpack`（Step 2 的 task_pack 组装，与本迁移无关）。
+- [ ] 更新 [framework_engineer_design_v2.md](file:///Users/bytedance/Desktop/infra_agent/kernel_agent/kernel_agent_kadai/framework_engineer_design_v2.md) §8.1.2/§8.2 指向本文（helper 路径改 `source_location/`、KID 不再产 source_locations、KID 不吃 manifest、`import-decomposition` 归 locate Layer 3）。
 
 ---
 
@@ -559,10 +587,12 @@ Layer 2（agent）之后：
 4. F8：下载 cubin 的 op → 层 b `not_found` 无 repo_hint → `missed`。
 5. Layer 2：人为把某 F3 层 b 制造成 `ambiguous`（多实例化命中），验证 agent 用 repo_hint 收敛到唯一 hit。
 
-**端到端**：resolve-third-party → KID → locate → import-decomposition 跑通 GDN，workspace/kernel_sources/<id>/ 四层文件 + read_hints.txt 正确。
+6. Layer 3 抽取：给一份富化过的 schema，`extract` 后 `kernel_sources/<id>/` 四层文件 + `read_hints.txt` 生成正确；`not_applicable` 层为空文件+注释、`missed` 层为占位+注释。
+
+**端到端**：resolve-third-party → KID → locate(locate→extract) 跑通 GDN，workspace/kernel_sources/<id>/ 四层文件 + read_hints.txt 正确。
 
 ---
 
 ## 9. 一句话总结
 
-**KID 是「运行时观测 + 形态分类」的纯 CLI，产 `(interface, archetype, runtime_event)`；locate 是「静态四层定位」的 CLI+agent 两层，消费 KID schema + manifest 产 `source_locations`。二者分离两遍、共享 helper，重叠的静态溯源逻辑从 KID 全部搬进 locate。沿「运行时只 KID 能看见、静态只需磁盘」这条缝切，换来重跑不必重 profile、agent 兜底后置独立、KID 不碰三方布局三个干净收益。**
+**KID 是「运行时观测 + 形态分类」的纯 CLI，产 `(interface, archetype, runtime_event)`；locate 是「静态四层定位 + 物料抽取」的三层（Layer1 定位 / Layer2 agent 兜底 / Layer3 抽取，原 `import-decomposition` 收于此），消费 KID schema + manifest 产 `source_locations` 并落盘 `kernel_sources/`。二者分离两遍、共享 helper，重叠的静态溯源逻辑从 KID 全部搬进 locate。沿「运行时只 KID 能看见、静态只需磁盘」这条缝切，换来重跑不必重 profile、agent 兜底后置独立、KID 不碰三方布局三个干净收益。**
