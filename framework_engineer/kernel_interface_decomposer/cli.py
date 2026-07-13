@@ -11,7 +11,7 @@ from .runner import analyze_existing_trace, run_workflow
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m tools.kernel_interface_decomposer",
+        prog="python -m framework_engineer.kernel_interface_decomposer",
         description="Profile a high-level Python API and resolve GPU kernels to wrappers/source.",
     )
     sub = parser.add_subparsers(dest="command", required=True)

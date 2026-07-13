@@ -56,13 +56,13 @@ resolution:
 Run:
 
 ```bash
-python3 -m tools.kernel_interface_decomposer run config.yaml
+python3 -m framework_engineer.kernel_interface_decomposer run config.yaml
 ```
 
 Analyze an existing trace:
 
 ```bash
-python3 -m tools.kernel_interface_decomposer analyze config.yaml --nsys-rep out/profile.nsys-rep
+python3 -m framework_engineer.kernel_interface_decomposer analyze config.yaml --nsys-rep out/profile.nsys-rep
 ```
 
 Main output:

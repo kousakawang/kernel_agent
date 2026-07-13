@@ -111,7 +111,7 @@ def load_config(path: str | Path) -> ResolveConfig:
         raw = _load_json_config(config_path)
     else:
         # YAML subset: reuse KID's parser to avoid a PyYAML dependency.
-        from tools.kernel_interface_decomposer.config import load_mapping
+        from framework_engineer.kernel_interface_decomposer.config import load_mapping
 
         raw = load_mapping(config_path)
 
