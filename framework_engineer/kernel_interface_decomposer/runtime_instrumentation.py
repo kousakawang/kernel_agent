@@ -556,7 +556,7 @@ class _InstrumentingLoader(importlib.abc.Loader):
 
 class _InstrumentingFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname: str, path: Any = None, target: Any = None) -> Any:
-        if fullname.startswith("tools.kernel_interface_decomposer"):
+        if fullname.startswith("framework_engineer.kernel_interface_decomposer"):
             return None
         spec = importlib.machinery.PathFinder.find_spec(fullname, path)
         if spec is None or spec.loader is None:

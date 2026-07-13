@@ -28,7 +28,7 @@ def _write_runtime_files(config: DecomposerConfig) -> Path:
     inject_dir = config.output_dir / "_inject"
     inject_dir.mkdir(exist_ok=True)
     (inject_dir / "sitecustomize.py").write_text(
-        "from tools.kernel_interface_decomposer.runtime_instrumentation import install_from_env\n"
+        "from framework_engineer.kernel_interface_decomposer.runtime_instrumentation import install_from_env\n"
         "install_from_env()\n"
     )
     return inject_dir
