@@ -90,6 +90,8 @@ Step 0.5 含两个 skill（详见 8.1）：
 - **`resolve-third-party`**：定版本 + clone，产出 `third_party_manifest.json`
 - **`locate-kernel-source`**：给定 `(接口名, 形态)` 返回四层源码位置；其 deterministic helper 供 KID 直接复用，KID 因此**不必自己实现溯源**
 
+> **收敛说明（以 [KID_and_locate_source_desgin_v2.md](file:///Users/bytedance/Desktop/infra_agent/kernel_agent/kernel_agent_kadai/KID_and_locate_source_desgin_v2.md) 为准）**：`locate-kernel-source` 定稿为**三层**（Layer1 deterministic 定位 CLI / Layer2 agent 兜底 / **Layer3 物料抽取 = 原 `import-decomposition`**）。因此本文档正文里凡把 `import-decomposition` 归在 Step 1(KID) 名下的描述（§2.3 / §2.8 流程图 / §2.9 表 / §8.2）均已过时——该 CLI 现属 locate。
+
 **执行者**：**skill 主路径**（agent 独立运行，隔离上下文）；不做成 CLI，因为定位过程需要综合多种线索、可能需要实际运行服务打点。
 
 **为什么单独拆一步**：
@@ -1173,7 +1175,11 @@ class LayerResolution:
 3. F2：`causal_conv1d` 层 b/d 在 `sgl-kernel/csrc/mamba/`，无需跨仓
 4. F8：下载 cubin 的 op 正确报 FAILED
 
-### 8.2 Step 1 — KID 增强 + `import-decomposition`
+### 8.2 Step 1 — KID 增强（`import-decomposition` 已迁出）
+
+> **⚠️ 本节已被 [KID_and_locate_source_desgin_v2.md](file:///Users/bytedance/Desktop/infra_agent/kernel_agent/kernel_agent_kadai/KID_and_locate_source_desgin_v2.md) 收敛，以后者为准。** 两处关键修订：
+> 1. **`import-decomposition` 已从本节（Step 1/KID）迁出**，落为 `locate-kernel-source` 的 **Layer 3 抽取阶段**（`framework_engineer/source_location/extractor.py`）。原因：它的输入四层 `source_locations` 完全由 locate 产出、非 KID 产，消费者不应编在生产者之前。§8.3.3 的 `import-kernel-sources-to-taskpack`（Step 2 task_pack 组装）不受影响。
+> 2. **KID 入口统一为 high_level_target**（取消 `target_kind` 双模式），且 KID 只产 `(interface, archetype, runtime_event)`、**不再自己做四层源码定位**（委托 locate）。下方保留的旧描述（`--target-kind`、KID 内做跨仓/JIT 溯源）已过时，仅存档参考。
 
 **类型**：现有 `framework_engineer/kernel_interface_decomposer/` 增强 + 新增 CLI
 
