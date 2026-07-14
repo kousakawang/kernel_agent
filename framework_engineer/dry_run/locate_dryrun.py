@@ -2,9 +2,10 @@
 
 Does NOT locate anything. For each kernel it applies the (filled) archetype's
 null-rules: form-decided layers become ``not_applicable`` automatically; every
-other layer becomes ``missed`` with file/line ``<FILL>`` placeholders — the real
-"agent could not locate, hand to human" shape. Then writes locate_report.json
-and a locate_agent_notes.md stub.
+other layer becomes ``missed`` with ``{file, def_line}`` ``<FILL>`` placeholders —
+the real "agent could not locate, hand to human" shape. Then writes a ``ref/``
+directory holding non-contract reference material: ``locate_report.json`` (a
+CLI-derived summary) and a ``locate_agent_notes.md`` stub.
 """
 
 from __future__ import annotations
@@ -93,11 +94,15 @@ def run(schema_paths: list[Path]) -> LocateDryRunResult:
         enriched.append(Path(sp).resolve())
         fragments.append(frag)
 
-    # locate_report.json + notes are written next to the first schema's workspace.
+    # ref/ holds non-contract reference material (no fixed downstream consumer):
+    # locate_report.json is a CLI-derived summary; locate_agent_notes.md is the
+    # Layer 2 agent's evidence/result report (content is prompt-driven in the
+    # real pipeline; a stub here). The authoritative product is the schema itself.
     report_path = None
     notes_path = None
     if enriched:
-        ws_dir = enriched[0].parent
+        ref_dir = enriched[0].parent / "ref"
+        ref_dir.mkdir(parents=True, exist_ok=True)
         report = {
             "dry_run": True,
             "schemas": [str(p) for p in enriched],
@@ -107,21 +112,23 @@ def run(schema_paths: list[Path]) -> LocateDryRunResult:
                 for item in frag.get("needs_agent", [])
             ],
         }
-        report_path = ws_dir / "locate_report.json"
+        report_path = ref_dir / "locate_report.json"
         report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
 
         notes_lines = [
             "# locate_agent_notes (dry-run stub)",
             "",
-            "Layer 2 agent 兜底记录。dry-run 下所有适用层都标 missed，交人工补 file/line。",
+            "参考资料（无固定消费者）。真实链路里由 Layer 2 agent 产出：对 locate 结果的",
+            "证据阐述 + 结果报告（写什么由 prompt 约束）。dry-run 下所有适用层都标 missed，",
+            "交人工补 file/def_line。",
             "",
         ]
         for item in report["needs_agent"]:
             notes_lines.append(
                 f"- [{item['archetype']}] {item['interface']} / {item['layer']}"
-                f"  repo_hint={item.get('repo_hint')}  -> TODO: 填 file/line 或明确放空"
+                f"  repo_hint={item.get('repo_hint')}  -> TODO: 填 file/def_line 或明确放空"
             )
-        notes_path = ws_dir / "locate_agent_notes.md"
+        notes_path = ref_dir / "locate_agent_notes.md"
         notes_path.write_text("\n".join(notes_lines) + "\n")
 
     return LocateDryRunResult(

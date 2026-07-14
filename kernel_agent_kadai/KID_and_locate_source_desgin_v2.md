@@ -415,14 +415,14 @@ python -m framework_engineer.source_location.cli locate \
 
 对 schema 里每个 kernel 调 `locate_kernel_source(...)`，产出：
 - **就地把 `source_locations` + finalize 后的 `archetype` + `needs_agent` 写回该 kernel 的 schema entry**（Layer 3 抽取只读这一份文件）。
-- 另写 `locate_report.json`：汇总 `{total, resolved, needs_agent:[{interface, archetype, layer, repo_hint}]}`，供 Layer 2 agent 定位要处理的项。
+- 另写 `ref/locate_report.json`（**参考资料，无固定消费者**）：汇总 `{total, resolved, needs_agent:[{interface, archetype, layer, repo_hint}]}`，是 schema 的派生视图，方便 Layer 2 agent / 人快速看待兜底项。
 - 进度到 stderr、JSON 小结到 stdout（沿用 resolve-third-party 的 stdout 纯净约定）。
 
 **Layer 2 agent**（skill `locate_kernel_source.md` 驱动，独立上下文）：
-1. 读 `locate_report.json` 的 `needs_agent` 列表 + 对应 schema entry。
+1. 读 `ref/locate_report.json` 的 `needs_agent` 列表（或直接扫 schema 各层 status）+ 对应 schema entry。
 2. 对每个 `ambiguous`/`not_found` 层，用 `repo_hint` 的仓库根**主动 grep/读代码**找源。
 3. 找到 → 更新 schema entry 该层为 `resolved`+hits；仍找不到 → 标 `missed`。
-4. 追加 `locate_agent_notes.md` 记录每个兜底项的结论 + 理由。
+4. 写 `ref/locate_agent_notes.md`（**参考资料，无固定消费者**）：对 locate 结果的证据阐述 + 结果报告，内容由 prompt 约束。
 
 **Layer 3 CLI — 物料抽取（原 `import-decomposition`）**：定位（Layer 1/2）跑完、schema 里 `source_locations` 齐了之后执行。
 
@@ -432,10 +432,10 @@ python -m framework_engineer.source_location.cli extract \
     --workspace-out <dir>                              # workspace 目标目录
 ```
 
-`extractor.py` 遍历 schema 每个 kernel，按 `source_locations.layers.<layer>.hits[0]` 的 file + 行号范围，把四层源码抽成文件写 `<workspace>/kernel_sources/<id>/{interface_definition,py_cpp_binding,kernel_header,kernel_impl}.{py,cc,h,cu,cpp}` + `read_hints.txt`，并回填 `kernel_sources_dir` 到 schema。规则：
+`extractor.py` 遍历 schema 每个 kernel，按 `source_locations.layers.<layer>.hits[].{file, def_line}` **拷贝整个源文件**到 `<workspace>/kernel_sources/<id>/`（单文件层 `interface_definition`/`py_cpp_binding` → 直接落文件；目录层 `kernel_impl`/`kernel_header` → `<layer>/` 子目录下每 hit 一个文件，`kernel_impl` 按调用序编号）+ `read_hints.txt`，并回填 `kernel_sources_dir` 到 schema。规则：
+- `resolved` 层 → **拷贝整个源文件**（不截断）；`def_line`~end（CLI 按文件类型算：py 用 AST/缩进、cpp/cu 用花括号配对）只作为 `read_hints.txt` 里的聚焦范围。内容筛选留给后续 translate_problem filter。
 - `not_applicable` 层 → 建空文件 + 注释「该层形态不适用（如 triton 无 py↔cpp binding）」。
-- `missed`/`not_found` 层 → 写占位 + 注释「该层未定位，见 locate_agent_notes.md」，**不阻断**，交人工在 workspace 补。
-- 源文件超大时按行号范围前后加 padding 抽取，避免体积膨胀（沿用 §8.2 约束）。
+- `missed`/`not_found` 层 → 写占位 + 注释「该层未定位，见 ref/locate_agent_notes.md」，**不阻断**，交人工在 workspace 补。
 
 > 为什么归 locate：抽取要懂「四层语义 + null 规则 + missed 处理」，这套规则本就在 locate 手里；且输入 `source_locations` 是 locate 刚写回的，同包零跳步。KID 不懂四层，不该承担。
 
@@ -445,23 +445,26 @@ Layer 1 之后：
 ```
 <schema 同目录>/
   decomposition_<backend>.schema.json    # 每 kernel entry 新增 source_locations + finalize archetype + needs_agent
-  locate_report.json                     # needs_agent 列表 + 统计
+  ref/locate_report.json                 # 参考资料（无固定消费者）：needs_agent 列表 + 统计（schema 派生视图）
 ```
 Layer 2（agent）之后：
 ```
   decomposition_<backend>.schema.json    # ambiguous/not_found 层被补齐或标 missed
-  locate_agent_notes.md                  # agent 兜底过程 + 每个 missed 的接口/形态/repo_hint
+  ref/locate_agent_notes.md              # 参考资料（无固定消费者）：agent 对 locate 结果的证据阐述 + 结果报告（prompt 约束）
 ```
 Layer 3（extract）之后：
 ```
   <workspace>/
     decomposition_<backend>.schema.json  # 回填 kernel_sources_dir
     kernel_sources/<id>/                 # 四层源码文件（not_applicable/missed 为占位+注释）
-      interface_definition.py
-      py_cpp_binding.cc                  # 或空文件 + 注释
-      kernel_header.h                    # 或空文件 + 注释
-      kernel_impl.{py,cu,cpp}
-      read_hints.txt                     # 每层 read 行数范围
+      interface_definition.py            # 单文件层
+      py_cpp_binding.cc                  # 单文件层（或空文件 + 注释）
+      kernel_impl/                       # 目录层：调用链多文件（按调用序编号）
+        1_<launcher>.cu
+        2_<kernel>.cuh                   # 真正的 __global__（可能跨仓库）
+      kernel_header/                     # 目录层：与源文件对应（或空文件 + 注释）
+        <header>.h
+      read_hints.txt                     # 每个抽出文件的 read 行号范围
 ```
 
 `source_locations` 写进 schema 的形状（每 kernel entry 新增）：
@@ -515,8 +518,9 @@ Layer 3（extract）之后：
 │ locate-kernel-source (Step 0.5-b, 三层)                                      │
 │   Layer 1 CLI(locate): 读 schema + manifest + sglang_repo_root               │
 │                → 每 kernel 补 source_locations + finalize archetype + needs_agent
-│                → locate_report.json                                          │
+│                → ref/locate_report.json (参考)                               │
 │   Layer 2 agent:  对 needs_agent 的层用 repo_hint 兜底 → 补齐 / 标 missed     │
+│                → ref/locate_agent_notes.md (参考)                            │
 │   Layer 3 CLI(extract, 原 import-decomposition):                             │
 │                按 source_locations 抽 4 层文件 → workspace/kernel_sources/<id>/│
 │                + read_hints.txt；回填 kernel_sources_dir 到 schema            │
@@ -526,8 +530,8 @@ Layer 3（extract）之后：
 
 **契约要点**：
 1. KID schema 的 `source_locations` 字段**由 locate（Layer 1/2）填**，KID 留空/不产。
-2. Layer 3 抽取（原 `import-decomposition`）只在定位跑完后消费；它读 `source_locations.layers.<layer>.hits[0]` 给出 file + 行号范围。它已收进 locate 包（`extractor.py`），不再是 KID/Step 1 的一部分。
-3. `missed` 层：Layer 3 生成对应文件时写占位 + 注释（"该层未定位，见 locate_agent_notes.md"），不阻断，交人工在 workspace 里补（对应框架文档 §2.3「补充 KID 抽不干净的 helper 文件」）。
+2. Layer 3 抽取（原 `import-decomposition`）只在定位跑完后消费；它读 `source_locations.layers.<layer>.hits[].{file, def_line}` 拷贝源文件。它已收进 locate 包（`extractor.py`），不再是 KID/Step 1 的一部分。
+3. `missed` 层：Layer 3 生成对应文件时写占位 + 注释（"该层未定位，见 ref/locate_agent_notes.md"），不阻断，交人工在 workspace 里补（对应框架文档 §2.3「补充 KID 抽不干净的 helper 文件」）。
 4. `archetype` 在 KID 是 provisional（可 `F2|F3`），进 workspace/task_pack 的是 locate finalize 后的值。
 
 ---
