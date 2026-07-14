@@ -1,0 +1,16 @@
+example_kernels/all_backends_sglang.py
+  h_4e38b39f2c2891 429
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "11551dbdafd0a33a7a0b65f09987a2f37a06975a",
+  "prompts": {},
+  "humans": {
+    "h_4e38b39f2c2891": {
+      "author": "wanghanpei <wanghanpei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
