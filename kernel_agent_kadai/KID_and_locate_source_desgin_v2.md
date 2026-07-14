@@ -382,20 +382,24 @@ class LayerHit:
 
 @dataclass
 class LayerResult:
-    status: Literal["resolved", "not_applicable", "ambiguous", "not_found"]
+    status: Literal["resolved", "not_applicable", "ambiguous", "not_found", "missed"]
     hits: list[LayerHit]            # resolved=1；ambiguous=多候选；not_found=[]
     repo_hint: str | None           # 失败时给 manifest 里该库仓库根，交 agent
+    source: Literal["locate_layer1", "locate_layer2_agent", "manual", "dry_run"]
+                                    # 最后更新“这一层”的角色（逐层溯源）
 
 @dataclass
 class LayerResolution:
     interface: str
     archetype: str                  # 已 finalize（F2/F3 已判定）
-    source: Literal["runtime_event", "static", "mixed"]
+    source: str                     # 派生聚合：任一层被 agent/人工动过则取之，否则 layer1
     layers: dict[str, LayerResult]  # a/b/c/d 四层各一
     needs_agent: bool               # 任一必填层 != resolved/not_applicable → True
 ```
 
 单入口，内部按 `archetype` 分派；`F2|F3` 在此 finalize。每层四状态独立，`not_applicable` 是形态决定的合法 null，不算失败。
+
+> **`source` 的语义（逐层溯源）**：`source` = **最后更新该层的角色**，落在**每个 layer** 上。Layer 1 CLI 定到的层记 `locate_layer1`；Layer 2 agent **改过**的层更新为 `locate_layer2_agent`，**没动**的层保持 `locate_layer1`；人工手填记 `manual`；dry-run 骨架记 `dry_run`。顶层 `source_locations.source` 是**派生聚合**（优先级 `locate_layer2_agent` > `manual` > `locate_layer1` > `dry_run`），一眼看出这个 kernel 有没有被 agent/人工动过；权威信息在每层。
 
 ### 5.6 workflow + CLI 接口
 
@@ -465,16 +469,18 @@ Layer 3（extract）之后：
 ```json
 "source_locations": {
   "archetype": "F3",
-  "source": "mixed",
+  "source": "locate_layer2_agent",
   "needs_agent": false,
   "layers": {
-    "interface_definition": { "status": "resolved", "hits": [{"file":"...flash_attn.py","line_start":40,"line_end":95}], "repo_hint": null },
-    "kernel_impl":          { "status": "resolved", "hits": [{"file":".../sgl-attn/hopper/flash_api.cpp","line_start":300,"line_end":520}], "repo_hint": null },
-    "py_cpp_binding":       { "status": "resolved", "hits": [{"file":".../csrc/flash_extension.cc","line_start":50,"line_end":80}], "repo_hint": null },
-    "kernel_header":        { "status": "resolved", "hits": [{"file":".../include/sgl_flash_kernel_ops.h","line_start":1,"line_end":60}], "repo_hint": null }
+    "interface_definition": { "status": "resolved", "hits": [{"file":"...flash_attn.py","line_start":40,"line_end":95}], "repo_hint": null, "source": "locate_layer1" },
+    "kernel_impl":          { "status": "resolved", "hits": [{"file":".../sgl-attn/hopper/flash_api.cpp","line_start":300,"line_end":520}], "repo_hint": null, "source": "locate_layer2_agent" },
+    "py_cpp_binding":       { "status": "resolved", "hits": [{"file":".../csrc/flash_extension.cc","line_start":50,"line_end":80}], "repo_hint": null, "source": "locate_layer1" },
+    "kernel_header":        { "status": "resolved", "hits": [{"file":".../include/sgl_flash_kernel_ops.h","line_start":1,"line_end":60}], "repo_hint": null, "source": "locate_layer1" }
   }
 }
 ```
+
+> 上例：层 a/c/d 由 Layer 1 CLI 定到（`locate_layer1`），层 b 是 Layer 2 agent 补的（`locate_layer2_agent`）→ 顶层派生聚合取 `locate_layer2_agent`。
 
 ### 5.8 约束
 
