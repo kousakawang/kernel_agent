@@ -14,11 +14,45 @@ from __future__ import annotations
 
 from typing import Any
 
+from framework_engineer.source_location.contracts import (
+    DIRECTORY_LAYERS,
+    LAYERS,
+    REQUIRED_LAYERS,
+)
+
 FILL = "<FILL"  # sentinel prefix; must match source_location.contracts.FILL_SENTINEL
 
 
 def fill(hint: str) -> str:
     return f"<FILL: {hint}>"
+
+
+# --- source roles -----------------------------------------------------------
+# `source` = the role that LAST updated a given layer's location. Lives per-layer
+# (each layer may be filled by a different role); the top-level source_locations
+# carries a *derived aggregate* (agent > manual > layer1 > dry_run).
+SOURCE_DRY_RUN = "dry_run"            # dry-run skeleton (placeholder, unfilled)
+SOURCE_LAYER1 = "locate_layer1"       # deterministic CLI located it
+SOURCE_LAYER2_AGENT = "locate_layer2_agent"  # Layer 2 agent updated it
+SOURCE_MANUAL = "manual"              # a human filled it by hand
+
+# Precedence for deriving the top-level aggregate: if any layer was touched by an
+# agent/human, that dominates the "still just CLI/dry-run" default.
+_SOURCE_PRECEDENCE = [
+    SOURCE_LAYER2_AGENT,
+    SOURCE_MANUAL,
+    SOURCE_LAYER1,
+    SOURCE_DRY_RUN,
+]
+
+
+def aggregate_source(layer_sources: list[str]) -> str:
+    """Derive the top-level source from the per-layer sources (highest precedence)."""
+    present = [s for s in layer_sources if s]
+    for role in _SOURCE_PRECEDENCE:
+        if role in present:
+            return role
+    return SOURCE_DRY_RUN
 
 
 # --- archetype table --------------------------------------------------------
@@ -37,9 +71,6 @@ ARCHETYPES: dict[str, dict[str, Any]] = {
 }
 
 ARCHETYPE_NAMES = tuple(ARCHETYPES.keys())
-
-LAYERS = ("interface_definition", "kernel_impl", "py_cpp_binding", "kernel_header")
-REQUIRED_LAYERS = ("interface_definition", "kernel_impl")
 
 
 def kid_kernel_template(index: int) -> dict[str, Any]:
@@ -90,13 +121,42 @@ def kid_schema_skeleton(backend_name: str, target: dict[str, Any], num_kernels: 
     }
 
 
+def _missed_hit(is_directory: bool, layer: str) -> dict[str, Any]:
+    """One placeholder hit. Only ``file`` + ``def_line`` (locate standard §1:
+    end line is computed by the Layer 3 CLI, never filled here)."""
+    if is_directory and layer == "kernel_impl":
+        file_hint = (
+            "调用链上一个文件的绝对路径; kernel_impl 是目录层, 可加多个 hit, "
+            "按调用顺序: launcher -> ... -> 真正的 __global__ kernel"
+        )
+    elif is_directory:
+        file_hint = "对应源文件的头文件绝对路径; kernel_header 是目录层, 可加多个 hit(与源文件一一对应)"
+    else:
+        file_hint = "源文件绝对路径, 如 /sgl-workspace/sglang/.../foo.py 或 third_party_cache 内 clone 文件"
+    return {
+        "file": fill(file_hint),
+        "def_line": fill("定义起始行号(整数); 结束行由 Layer 3 CLI 自动补, 不要填"),
+    }
+
+
 def source_locations_skeleton(archetype: str) -> dict[str, Any]:
     """Build the source_locations block for a kernel given its (filled) archetype.
 
     Applies the null-rules: form-decided not_applicable layers get status
     ``not_applicable`` with no placeholder; every other layer starts as
-    ``missed`` with file/line placeholders (simulating "agent could not locate,
-    hand to human") — this is exactly the real "missing" shape.
+    ``missed`` with a ``{file, def_line}`` placeholder (simulating "agent could
+    not locate, hand to human") — this is exactly the real "missing" shape.
+
+    Layer shapes (locate standard §2): ``kernel_impl``/``kernel_header`` are
+    *directory* layers whose ``hits`` may hold multiple entries (kernel_impl is
+    an ordered call chain); ``interface_definition``/``py_cpp_binding`` are
+    single-file (exactly one hit). The skeleton seeds one placeholder hit either
+    way — a human adds more hits to a directory layer as needed.
+
+    ``source`` lives *per layer* (= role that last updated that layer). In the
+    dry-run skeleton every layer starts as ``dry_run``; after a human fills a
+    layer they should set it to ``manual``. The top-level ``source`` is a derived
+    aggregate over the per-layer values.
     """
     meta = ARCHETYPES.get(archetype)
     code = meta["code"] if meta else fill("未知 archetype, 请回上一步修正")
@@ -106,26 +166,26 @@ def source_locations_skeleton(archetype: str) -> dict[str, Any]:
     needs_agent = False
     for name in LAYERS:
         if name in na_layers:
-            layers[name] = {"status": "not_applicable", "hits": [], "repo_hint": None}
+            layers[name] = {
+                "status": "not_applicable",
+                "hits": [],
+                "repo_hint": None,
+                "source": SOURCE_DRY_RUN,
+            }
             continue
         # F8: kernel_impl is genuinely source-less -> mark missed (no source).
         layers[name] = {
             "status": "missed",
-            "hits": [
-                {
-                    "file": fill("源文件绝对路径, 如 /sgl-workspace/sglang/.../foo.py 或 third_party_cache 内 clone 文件"),
-                    "line_start": fill("起始行号(整数)"),
-                    "line_end": fill("结束行号(整数)"),
-                }
-            ],
+            "hits": [_missed_hit(name in DIRECTORY_LAYERS, name)],
             "repo_hint": fill("可选: 该库仓库根; 无则留空/删"),
+            "source": SOURCE_DRY_RUN,
         }
         needs_agent = True
 
     return {
         "archetype": archetype if meta else fill("明文类别名"),
         "archetype_code": code,
-        "source": "dry_run",
+        "source": aggregate_source([lyr.get("source") for lyr in layers.values()]),
         "needs_agent": needs_agent,
         "layers": layers,
     }

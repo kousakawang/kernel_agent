@@ -83,12 +83,22 @@ class TestLocateDryRun(unittest.TestCase):
         ok, frag = locate_dryrun.run_one(sp)
         self.assertTrue(ok)
         s = json.loads(sp.read_text())
-        layers = s["kernels"][0]["source_locations"]["layers"]
+        sl = s["kernels"][0]["source_locations"]
+        layers = sl["layers"]
         # a/b missed (need fill), c/d not_applicable (auto)
         self.assertEqual(layers["interface_definition"]["status"], "missed")
         self.assertEqual(layers["kernel_impl"]["status"], "missed")
         self.assertEqual(layers["py_cpp_binding"]["status"], "not_applicable")
         self.assertEqual(layers["kernel_header"]["status"], "not_applicable")
+        # per-layer source present + top-level derived aggregate
+        for name in ("interface_definition", "kernel_impl", "py_cpp_binding", "kernel_header"):
+            self.assertEqual(layers[name]["source"], "dry_run")
+        self.assertEqual(sl["source"], "dry_run")
+        # new hit shape: {file, def_line}, never line_start/line_end
+        hit = layers["interface_definition"]["hits"][0]
+        self.assertIn("def_line", hit)
+        self.assertNotIn("line_start", hit)
+        self.assertNotIn("line_end", hit)
 
     def test_all_four_applicable_for_sgl_kernel(self) -> None:
         sp = self._kid_schema("sgl_kernel_builtin")
@@ -104,6 +114,20 @@ class TestLocateDryRun(unittest.TestCase):
         ok, frag = locate_dryrun.run_one(sp)
         self.assertFalse(ok)
         self.assertIn("blocked_on", frag)
+
+    def test_aggregate_source_precedence(self) -> None:
+        # agent > manual > layer1 > dry_run
+        self.assertEqual(
+            templates.aggregate_source(["locate_layer1", "locate_layer2_agent", "dry_run"]),
+            "locate_layer2_agent",
+        )
+        self.assertEqual(
+            templates.aggregate_source(["locate_layer1", "manual", "dry_run"]), "manual"
+        )
+        self.assertEqual(
+            templates.aggregate_source(["locate_layer1", "locate_layer1"]), "locate_layer1"
+        )
+        self.assertEqual(templates.aggregate_source(["dry_run", "dry_run"]), "dry_run")
 
 
 class TestDryRunCliGates(unittest.TestCase):

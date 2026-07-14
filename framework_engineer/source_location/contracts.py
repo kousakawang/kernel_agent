@@ -22,12 +22,25 @@ LAYERS: tuple[str, ...] = (
 # Layers that must resolve to a real location (never legitimately null).
 REQUIRED_LAYERS: tuple[str, ...] = ("interface_definition", "kernel_impl")
 
-# Per-layer output file stem + default extension (b's extension is refined from
-# the resolved source file's suffix at extraction time).
+# Directory layers may hold *multiple* hits (locate standard §2): kernel_impl is
+# the ordered call chain (launcher -> ... -> __global__), kernel_header is the
+# per-impl-file headers. The other two are single-file (exactly 1 hit; >1 hit is
+# ambiguous). Layer 3 extracts a directory layer into a <layer>/ subdirectory.
+DIRECTORY_LAYERS: tuple[str, ...] = ("kernel_impl", "kernel_header")
+SINGLE_FILE_LAYERS: tuple[str, ...] = ("interface_definition", "py_cpp_binding")
+
+# Single-file layers' output filename (+ default extension). Directory layers do
+# NOT use this — their files are named per-hit from each source basename under a
+# <layer>/ subdirectory (see extractor._directory_layer_filename).
 LAYER_FILENAME: dict[str, str] = {
     "interface_definition": "interface_definition.py",
-    "kernel_impl": "kernel_impl.py",
     "py_cpp_binding": "py_cpp_binding.cc",
+}
+
+# Placeholder filenames used only for empty/placeholder directory layers (the
+# real files are named per-hit). Keeps not_applicable/missed dirs discoverable.
+LAYER_PLACEHOLDER_FILENAME: dict[str, str] = {
+    "kernel_impl": "kernel_impl.py",
     "kernel_header": "kernel_header.h",
 }
 
@@ -47,30 +60,21 @@ FILL_SENTINEL = "<FILL"
 @dataclass
 class LayerHit:
     file: str
-    line_start: int | None = None
-    line_end: int | None = None
-    _raw_start: Any = None
-    _raw_end: Any = None
+    def_line: int | None = None
+    _raw_def: Any = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "LayerHit":
-        raw_start = d.get("line_start")
-        raw_end = d.get("line_end")
+        raw_def = d.get("def_line")
         return cls(
             file=str(d.get("file", "")),
-            line_start=_opt_int(raw_start),
-            line_end=_opt_int(raw_end),
-            _raw_start=raw_start,
-            _raw_end=raw_end,
+            def_line=_opt_int(raw_def),
+            _raw_def=raw_def,
         )
 
     def is_fillable(self) -> bool:
         """True if this hit still carries an unfilled placeholder."""
-        return (
-            FILL_SENTINEL in str(self.file)
-            or _has_fill(self._raw_start)
-            or _has_fill(self._raw_end)
-        )
+        return FILL_SENTINEL in str(self.file) or _has_fill(self._raw_def)
 
 
 
@@ -95,15 +99,23 @@ class LayerResult:
     def is_required(self) -> bool:
         return self.name in REQUIRED_LAYERS
 
+    def is_directory_layer(self) -> bool:
+        return self.name in DIRECTORY_LAYERS
+
     def is_effectively_missing(self) -> bool:
-        """A layer that yields no usable location for extraction."""
+        """A layer that yields no usable location for extraction.
+
+        Directory layers (kernel_impl/kernel_header) may carry multiple hits and
+        are missing only if *any* hit is unusable; single-file layers need
+        exactly one usable hit.
+        """
         if self.status == STATUS_NOT_APPLICABLE:
             return False
         if self.status != STATUS_RESOLVED:
             return True
         if not self.hits:
             return True
-        return self.hits[0].is_fillable()
+        return any(h.is_fillable() for h in self.hits)
 
 
 def _opt_int(value: Any) -> int | None:
