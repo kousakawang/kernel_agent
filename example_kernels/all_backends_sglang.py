@@ -426,6 +426,7 @@ def all_backends_test():
             print(f"[OK]   {name:26s} -> {shape}")
         except Exception as e:  # noqa: BLE001  (演示用途，容忍缺环境)
             print(f"[SKIP] {name:26s} -> {type(e).__name__}: {e}")
+            
 
 if __name__ == "__main__":
     # 仅演示"import + 调用"结构; 绝大多数需要 CUDA GPU + 对应包。
