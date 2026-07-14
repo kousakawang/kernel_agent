@@ -1,19 +1,21 @@
 """Layer 3 extraction (formerly `import-decomposition`).
 
 Reads a locate-enriched ``decomposition_<backend>.schema.json`` and, for each
-kernel, slices the four source layers into ``kernel_sources/<id>/`` files plus a
+kernel, copies the four source layers into ``kernel_sources/<id>/`` files plus a
 ``read_hints.txt``, then backfills ``kernel_sources_dir`` into the schema.
 
 Purely mechanical + idempotent (locate standard §1/§6):
-  * resolved       -> slice [def_line, end] into a file; ``end`` is computed here
-                      by a range-completion helper (py: AST/indent; c-family:
-                      brace/`;` matching), NEVER read from the schema.
+  * resolved       -> copy the WHOLE source file; a range-completion helper (py:
+                      AST/indent; c-family: brace/`;` matching) computes the
+                      definition's end line only to record a ``read lines X-Y``
+                      focus hint in read_hints.txt. Content is NEVER truncated —
+                      filtering is left to a later translate_problem filter.
   * not_applicable -> empty file + comment (form-decided null, e.g. triton c/d)
   * missed/blank   -> placeholder empty file + comment (only with allow_empty)
 
 Layer shapes (locate standard §2): ``interface_definition``/``py_cpp_binding``
 are single-file (exactly 1 hit; >1 = ambiguous). ``kernel_impl``/``kernel_header``
-are *directory* layers whose ``hits`` may hold multiple entries — each is sliced
+are *directory* layers whose ``hits`` may hold multiple entries — each is copied
 into a ``<layer>/`` subdirectory (kernel_impl preserves call order via index).
 
 A ``missed``/unfilled REQUIRED layer is a hard stop unless ``allow_empty`` is set.
@@ -287,15 +289,20 @@ def _hit_problem(hit: LayerHit) -> str | None:
     return None
 
 
-def _slice_from_def(src: Path, def_line: int | None) -> tuple[str, str]:
-    """Slice ``src`` from ``def_line`` to the computed end. Returns (content, range_str)."""
+def _copy_and_range(src: Path, def_line: int | None) -> tuple[str, str]:
+    """Copy ``src`` verbatim; compute a *focus hint* range for read_hints.txt.
+
+    Layer 3 is pure "copy the file + record where to look" — it does NOT truncate
+    content (content filtering is left to a later translate_problem filter). So we
+    return the WHOLE file; ``def_line`` + the computed end line only produce the
+    ``read lines X-Y`` hint that tells the reader which span is the definition.
+    """
     text = src.read_text(errors="ignore")
     if def_line is None:
         return text, "whole file"
     lines = text.splitlines(keepends=True)
     end = _end_line_for(src, lines, def_line)
-    start = max(1, def_line) - 1
-    return "".join(lines[start:end]), f"read lines {def_line}-{end}"
+    return text, f"read lines {def_line}-{end}"
 
 
 def extract_workspace(
@@ -420,7 +427,7 @@ def _emit_layer(
 def _emit_single_resolved(dest: Path, layer: str, result: LayerResult) -> tuple[str, list[str]]:
     hit = result.hits[0]
     filename = _single_file_name(layer, hit.file)
-    content, rng = _slice_from_def(Path(hit.file), hit.def_line)
+    content, rng = _copy_and_range(Path(hit.file), hit.def_line)
     (dest / filename).write_text(content)
     return "written", [f"{filename}: {rng}  (from {hit.file})"]
 
@@ -431,7 +438,7 @@ def _emit_directory_resolved(dest: Path, layer: str, result: LayerResult) -> tup
     hints: list[str] = []
     for i, hit in enumerate(result.hits):
         filename = _directory_layer_filename(layer, i, hit.file)
-        content, rng = _slice_from_def(Path(hit.file), hit.def_line)
+        content, rng = _copy_and_range(Path(hit.file), hit.def_line)
         (subdir / filename).write_text(content)
         hints.append(f"{layer}/{filename}: {rng}  (from {hit.file})")
     return "written", hints

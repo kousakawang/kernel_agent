@@ -114,20 +114,21 @@ class TestExtract(unittest.TestCase):
         self.assertFalse(report.stopped)
 
         kdir = self.tmp / "kernel_sources" / "k0"
-        # interface_definition single-file: def alpha -> body of alpha
+        # interface_definition single-file: WHOLE file copied verbatim (no
+        # truncation — Layer 3 copies, the focus range lives in read_hints).
         iface = (kdir / "interface_definition.py").read_text()
+        self.assertEqual(iface, self.py.read_text())
         self.assertIn("def alpha", iface)
-        self.assertIn("return y", iface)
-        self.assertNotIn("def beta", iface)  # AST stops at end of alpha
+        self.assertIn("def beta", iface)  # whole file, not just the alpha span
         # kernel_impl is a DIRECTORY layer -> kernel_impl/<n>_<basename>
         impl = (kdir / "kernel_impl" / "1_src_kernel.py").read_text()
-        self.assertIn("def beta", impl)
+        self.assertEqual(impl, self.py.read_text())  # whole file
         # c/d not_applicable -> placeholder in their subdir
         cc = (kdir / "py_cpp_binding.cc").read_text()
         self.assertIn("不适用", cc)
         self.assertTrue(cc.lstrip().startswith("//"))
         self.assertIn("不适用", (kdir / "kernel_header" / "kernel_header.h").read_text())
-        # read_hints: interface single line, kernel_impl under subdir, N/A lines
+        # read_hints: focus range still points at the definition span (3-5 / 7-8)
         hints = (kdir / "read_hints.txt").read_text()
         self.assertIn("interface_definition.py: read lines 3-5", hints)
         self.assertIn("kernel_impl/1_src_kernel.py: read lines 7-8", hints)
@@ -169,6 +170,32 @@ class TestExtract(unittest.TestCase):
         hints = (kdir / "read_hints.txt").read_text()
         self.assertIn("kernel_impl/1_impl.cu: read lines 2-5", hints)
         self.assertIn("kernel_impl/2_src_kernel.py: read lines 7-8", hints)
+
+    def test_copies_whole_file_not_truncated_span(self) -> None:
+        # def is a small span mid-file; the extracted file must be the WHOLE file
+        # (no truncation), while read_hints records only the definition span.
+        big = self.tmp / "big.py"
+        head = "".join(f"pre_{i} = {i}\n" for i in range(1, 11))   # lines 1-10
+        fn = "def target(x):\n    return x + 1\n"                   # lines 11-12
+        tail = "".join(f"post_{i} = {i}\n" for i in range(1, 11))  # lines 13-22
+        big.write_text(head + fn + tail)
+        schema = _schema_with([
+            _kernel("k13", "sglang_triton", {
+                "interface_definition": _resolved(str(big), 11),
+                "kernel_impl": _resolved(str(big), 11),
+                "py_cpp_binding": {"status": "not_applicable", "hits": []},
+                "kernel_header": {"status": "not_applicable", "hits": []},
+            })
+        ])
+        schema_path = self._write_schema(schema)
+        extract_workspace(schema_path, self.tmp)
+        kdir = self.tmp / "kernel_sources" / "k13"
+        iface = (kdir / "interface_definition.py").read_text()
+        self.assertEqual(iface, big.read_text())     # whole file, byte-for-byte
+        self.assertIn("pre_1 = 1", iface)            # content before the def kept
+        self.assertIn("post_10 = 10", iface)         # content after the def kept
+        # but the focus hint narrows to the def span (11-12)
+        self.assertIn("interface_definition.py: read lines 11-12", (kdir / "read_hints.txt").read_text())
 
     def test_single_file_layer_multi_hit_is_ambiguous(self) -> None:
         # interface_definition is single-file: >1 hit must be treated as missing.
