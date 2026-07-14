@@ -14,7 +14,7 @@
 | --------- | --------------------- | --------------------------------------------------------- | ------------------------------------------------------- |
 | ① kid     | `dry_run.cli kid`     | 每 backend 生成 `decomposition_<backend>.schema.json` 骨架     | 每个 kernel 的 `interface` + `archetype`（+ `low_level_id`） |
 | ② locate  | `dry_run.cli locate`  | 给每个 kernel 补 `source_locations` 骨架（按 archetype 套 null 规则） | 定位不到的层的 `file` / `def_line`（只填定义起始行；结束行 extract 自动补） |
-| ③ extract | `dry_run.cli extract` | passthrough 调**真实 L3 CLI**，切片抽出四层源码                       | 无（全自动）                                                  |
+| ③ extract | `dry_run.cli extract` | passthrough 调**真实 L3 CLI**，拷贝四层源码文件                       | 无（全自动）                                                  |
 
 每步都会打印**新生成文件的绝对路径**和**需要人工填写的行号**。
 
@@ -88,8 +88,8 @@ python3 -m framework_engineer.dry_run.cli extract --workspace <output_root>/work
 - **硬停闸门**：若**必填层**（`interface_definition` / `kernel_impl`）仍是 `missed`、含 `<FILL>`、路径不存在、`def_line` 越界，直接停（rc=2）并列出待补清单——回步骤 ② 填 `file`/`def_line`。
 - 通过闸门后**先清空** `kernel_sources/` 整棵树再重建：重跑（改了 config/路径/`low_level_id`）不会留下上一轮残留（如旧文件、被删 kernel 的孤儿子目录）。清空只发生在闸门之后，所以**硬停的重跑不会毁掉上一次的成功产物**。
 - 对每个 kernel 生成 `<workspace>/<backend>/kernel_sources/<id>/`：
-  - **单文件层** `resolved` → 从 `def_line` 切到自动算出的结束行，抽成 `interface_definition.py` / `py_cpp_binding.{cc,cu,…}`（后缀跟随源文件）。
-  - **目录层** `resolved` → 抽进 `<layer>/` 子目录，每个 hit 一个文件：`kernel_impl/<n>_<源文件名>`（`<n>` 保调用序）、`kernel_header/<源文件名>`。
+  - **单文件层** `resolved` → **拷贝整个源文件**成 `interface_definition.py` / `py_cpp_binding.{cc,cu,…}`（后缀跟随源文件）；不截断内容，定义范围只记进 `read_hints.txt`。
+  - **目录层** `resolved` → 每个 hit **拷贝整个源文件**进 `<layer>/` 子目录：`kernel_impl/<n>_<源文件名>`（`<n>` 保调用序）、`kernel_header/<源文件名>`。
   - `not_applicable` 层 → 空文件 + 注释（目录层落在 `<layer>/` 子目录里）。
   - `missed` 层（仅 `--allow-empty`）→ 占位空文件 + 注释；单文件层的占位**扩展名跟随用户填的源后缀**（填 `.cu` 就是 `.cu`），未填的 `<FILL>` 才回退默认。
   - `read_hints.txt`：每个抽出的文件一行（`read lines X-Y` / `N/A` / `MISSING`），目录层按 hit 顺序多行。
