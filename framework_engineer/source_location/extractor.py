@@ -459,7 +459,7 @@ def _emit_single_placeholder(
     filename = _single_file_name(layer, hit_file)
     reason = problem or "not located"
     (dest / filename).write_text(
-        _comment(Path(filename).suffix, f"该层未定位（{reason}），见 locate_agent_notes.md，用户已知风险。")
+        _comment(Path(filename).suffix, f"该层未定位（{reason}），见 ref/locate_agent_notes.md，用户已知风险。")
     )
     return "placeholder", [f"{filename}: MISSING ({reason})"]
 
@@ -478,6 +478,6 @@ def _emit_directory_placeholder(
 
     reason = problem or "not located"
     (subdir / placeholder).write_text(
-        _comment(Path(placeholder).suffix, f"该层未定位（{reason}），见 locate_agent_notes.md，用户已知风险。")
+        _comment(Path(placeholder).suffix, f"该层未定位（{reason}），见 ref/locate_agent_notes.md，用户已知风险。")
     )
     return "placeholder", [f"{layer}/: MISSING ({reason})"]

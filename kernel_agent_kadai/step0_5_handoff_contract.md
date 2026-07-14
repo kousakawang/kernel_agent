@@ -15,8 +15,8 @@
 | --- | --- | --- | --- |
 | 0.5-a | `resolve-third-party` | **CLI**（+ 兜底 skill） | `third_party_manifest.json`、`missing_repos.md`、`third_party_cache/<name>/<version>/` clone 源码树 |
 | 1 | KID | **CLI**（无 agent） | `decomposition_<backend>.schema.json`（每 kernel：`interface`+`archetype`+`runtime_event`，**无** source_locations） |
-| 0.5-b L1 | locate `locate` | **CLI** | 就地给 schema 每 kernel 补 `source_locations`+finalize archetype+`needs_agent`；`locate_report.json` |
-| 0.5-b L2 | locate agent | **skill** | 只补 L1 标 `ambiguous`/`not_found` 的层；`locate_agent_notes.md` |
+| 0.5-b L1 | locate `locate` | **CLI** | 就地给 schema 每 kernel 补 `source_locations`+finalize archetype+`needs_agent`；`ref/locate_report.json`（参考） |
+| 0.5-b L2 | locate agent | **skill** | 只补 L1 标 `ambiguous`/`not_found` 的层；`ref/locate_agent_notes.md`（参考） |
 | 0.5-b L3 | locate `extract` | **CLI** | 按 `source_locations` 抽四层文件 → `kernel_sources/<id>/` + `read_hints.txt` + 回填 `kernel_sources_dir` |
 
 > 关键：**Step 2 的入口是 `workspace-to-config`（§2.4）**，它读 `decomposition_<backend>.schema.json` 生成 phase1 config 草稿，再走已跑通的主链路。所以「交付产物」= **一个或多个 backend workspace**，每个 workspace 必须自包含到能喂给 `workspace-to-config` + phase1。
@@ -54,16 +54,20 @@
     │   │        # [0.5-b L2] + ambiguous/not_found 层被补齐或标 missed
     │   │        # [0.5-b L3] + kernel_sources_dir 回填
     │   │
-    │   ├── locate_report.json               # [0.5-b L1] needs_agent 列表 + 统计（供 L2 agent 消费）
-    │   ├── locate_agent_notes.md            # [0.5-b L2] agent 兜底结论 + 每个 missed 的接口/形态/repo_hint
+    │   ├── ref/                              # 参考资料目录（无固定消费者，仅供 agent/人参考）
+    │   │   ├── locate_report.json           # [0.5-b L1] needs_agent 列表 + 统计（schema 的派生视图）
+    │   │   └── locate_agent_notes.md        # [0.5-b L2] agent 产出：对 locate 结果的证据阐述 + 结果报告（内容由 prompt 约束）
     │   │
     │   └── kernel_sources/                   # [0.5-b L3 CLI] 抽取的四层源码（Step 2 拷进 task_pack 的物料）
     │       ├── <low_level_id_1>/
-    │       │   ├── interface_definition.py   #   层 a（含 launch 语句）
-    │       │   ├── kernel_impl.{py,cu,cpp}   #   层 b
-    │       │   ├── py_cpp_binding.cc         #   层 c（triton/DSL → 空文件+注释）
-    │       │   ├── kernel_header.h           #   层 d（triton/DSL → 空文件+注释）
-    │       │   └── read_hints.txt            #   每层 read 行号范围（missed 层写占位说明）
+    │       │   ├── interface_definition.py   #   层 a（单文件；low_level_target 自身定义）
+    │       │   ├── py_cpp_binding.cc         #   层 c（单文件；triton/DSL → 空文件+注释）
+    │       │   ├── kernel_impl/              #   层 b（目录；调用链多文件，按调用序编号）
+    │       │   │   ├── 1_<launcher>.cu       #     launcher
+    │       │   │   └── 2_<kernel>.cuh        #     真正的 __global__（可能跨仓库）
+    │       │   ├── kernel_header/            #   层 d（目录；与源文件对应；triton/DSL → 空文件+注释）
+    │       │   │   └── <header>.h
+    │       │   └── read_hints.txt            #   每个抽出文件的 read 行号范围（missed 层写占位说明）
     │       └── <low_level_id_2>/ ...
     │
     ├── <backend_2>/ ...
@@ -94,8 +98,8 @@
 | `decomposition_*.schema.json` · `coverage_report` | 1 CLI | ✅ | KID 自动算 + 告警；只读，供人判断是否有遗漏 |
 | `decomposition_*.schema.json` · source_locations L1 | 0.5-b L1 CLI | ✅ | — |
 | `decomposition_*.schema.json` · L2 兜底 | 0.5-b L2 skill | ⚠️ | agent 仍 `missed` 的必填层 → **硬停**，人工填 file+行号 或 明确放空（见 §3.3，**最主要人工点**） |
-| `locate_report.json` | 0.5-b L1 CLI | ✅ | — |
-| `locate_agent_notes.md` | 0.5-b L2 skill | ✅ | — |
+| `ref/locate_report.json` | 0.5-b L1 CLI | ✅ | 参考资料，无固定消费者 |
+| `ref/locate_agent_notes.md` | 0.5-b L2 skill | ✅ | 参考资料，无固定消费者；内容由 prompt 约束（证据 + 结果报告） |
 | `kernel_sources/<id>/*` 四层文件 | 0.5-b L3 CLI | 🚫 | **绝不需要人工搬/建**——含空文件与占位，全由 CLI 按 source_locations 生成。人工补的是「行号」（回 schema），CLI 重跑即生成 |
 | `read_hints.txt` | 0.5-b L3 CLI | 🚫 | 同上，CLI 自动（含 N/A / MISSING 说明） |
 
@@ -143,11 +147,11 @@
 你指出 L3 extract 是"承上启下的一层 CLI：接 L2 输出、生成最终 kernel_sources、对接已完成的 Step 2 流程"。据此明确其契约：
 
 - **上游依赖（承上）+ 硬停闸门**：读 L1+L2 富化后的 `decomposition_*.schema.json`。**若仍有 `missed` 必填层（`interface_definition`/`kernel_impl`）→ 硬停**（不自动放行），列出待补项提示用户（§3.3）。用户补成 `resolved` 或**明确放空**后，才继续。
-  - **填错=没填**：闸门不仅查 status/占位，还校验 `hits[0].file` **真实存在**且行号有效（`end≥start`）。用户填了不存在的路径/文件或非法行号时，该层**视同未定位**——必填层触发硬停（原因如 `file not found: ...`），非必填层记占位（`read_hints` 标 `MISSING (file not found: ...)`）。杜绝"填错被静默放行"。
+  - **填错=没填**：闸门不仅查 status/占位，还校验 `hits[].file` **真实存在**且 `def_line` 有效（在文件行数范围内）。用户填了不存在的路径/文件或越界行号时，该层**视同未定位**——必填层触发硬停（原因如 `file not found: ...`、`def_line N out of range`），非必填层记占位（`read_hints` 标 `MISSING (file not found: ...)`）。杜绝"填错被静默放行"。
 - **本层动作（纯机械，全部固化进 CLI）**：
-  1. `resolved` 层：按 `hits[0].{file,line_start,line_end}` 切片抽取到 `kernel_sources/<id>/<layer>.{ext}`（超大文件按行号范围前后加 padding）。
+  1. `resolved` 层：**拷贝整个源文件**到产物（单文件层 → `kernel_sources/<id>/<layer>.{ext}`；目录层 `kernel_impl`/`kernel_header` → `kernel_sources/<id>/<layer>/` 下每 hit 一个文件）。不截断内容，定义范围由 CLI 按文件类型（py 用 AST/缩进、cpp/cu 用花括号配对）算出 `def_line`~end 记进 `read_hints.txt`。
   2. `not_applicable` 层（形态决定的合法 null，如 triton 无 binding/header）：**CLI 生成空文件 + 注释「该层形态不适用」**。
-  3. 用户放空 / 仍 `missed` 的层：**CLI 生成占位空文件 + 注释「该层未定位，见 locate_agent_notes.md，用户已知风险」**。
+  3. 用户放空 / 仍 `missed` 的层：**CLI 生成占位空文件 + 注释「该层未定位，见 ref/locate_agent_notes.md，用户已知风险」**。
   4. `read_hints.txt`：**CLI 为每层写 read 行号范围**；对空/占位层写「N/A（不适用）」或「MISSING（待补）」说明。
   5. 回填 `kernel_sources_dir` 到 schema。
   - **要点**：2/3/4 里的「空文件 + line_hint 生成」是 **L3 CLI 的固化职责**，人工**绝不手动创建这些文件**。

@@ -66,7 +66,7 @@ python3 -m framework_engineer.dry_run.cli locate --workspace <output_root>/works
 - 通过后，按每个 kernel 已填的 `archetype` **自动套 null 规则**生成四层：
   - 形态决定不适用的层（如 `sglang_triton` 的 py\_cpp\_binding / kernel\_header）→ **自动** **`not_applicable`，无需填**。
   - 其余适用层 → **`missed`** **+ `{file, def_line}` 占位**（模拟"agent 定位不到，交人工"）。
-- 额外产出 `locate_report.json` + `locate_agent_notes.md`。
+- 额外在 `ref/` 目录产出 `locate_report.json` + `locate_agent_notes.md`（**参考资料，无固定消费者**，仅供 agent/人参考；见下方"关于 ref/"）。
 
 **你要做的**：对每个 `missed` 层，填 `hits[].file` / `def_line`（指向真实 sglang 源码，或 `third_party_cache/` 里 clone 的文件），把该层 `status` 改成 `resolved`，并把该层的 `source` 改成 `manual`。**只填定义起始行 `def_line`，不要填结束行**——结束行由步骤 ③ 的 CLI 按文件类型（py 用 AST/缩进、cpp/cu 用花括号配对）自动补进 `read_hints.txt`。定位不到又想放弃的层，保留 `missed`（见步骤 ③ 的 `--allow-empty`）。
 
@@ -101,9 +101,10 @@ python3 -m framework_engineer.dry_run.cli extract --workspace <output_root>/work
 
 ```
 <output_root>/workspaces/<backend>/
-├── decomposition_<backend>.schema.json    # ①生成 → ②补 source_locations → ③回填 kernel_sources_dir
-├── locate_report.json                     # ②
-├── locate_agent_notes.md                  # ②
+├── decomposition_<backend>.schema.json    # ①生成 → ②补 source_locations → ③回填 kernel_sources_dir（唯一权威产物）
+├── ref/                                    # 参考资料（无固定消费者，仅供 agent/人参考）
+│   ├── locate_report.json                 # ②：needs_agent 列表 + 统计（schema 派生视图）
+│   └── locate_agent_notes.md              # ②：agent 对 locate 结果的证据 + 结果报告（内容由 prompt 约束）
 └── kernel_sources/<low_level_id>/         # ③
     ├── interface_definition.py            # 单文件层
     ├── py_cpp_binding.cc                   # 单文件层（后缀跟随源；或空文件+注释）
@@ -116,6 +117,8 @@ python3 -m framework_engineer.dry_run.cli extract --workspace <output_root>/work
 ```
 
 `kernel_sources/<id>/` 的结构即对接 Step 2 `import-kernel-sources-to-taskpack` 所需。
+
+> **关于 `ref/`**：这个目录里的 `locate_report.json`（CLI 顺带产出的 schema 派生视图）和 `locate_agent_notes.md`（真实链路里 Layer 2 agent 产出的证据/结果报告）**没有固定的程序消费者**，只是给 agent / 人参考——下游（extract、Step 2）只认 `decomposition_<backend>.schema.json` 这一份权威产物。`ref/` 删掉不影响交付链跑通。
 
 ***
 
