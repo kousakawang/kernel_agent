@@ -1,0 +1,6 @@
+interface_definition.py: read lines 68-68  (from /Users/bytedance/Desktop/infra_agent/DeepGEMM/deep_gemm/__init__.py)
+kernel_impl/1_attention.hpp: read lines 401-413  (from /Users/bytedance/Desktop/infra_agent/DeepGEMM/csrc/apis/attention.hpp)
+kernel_impl/2_smxx_fp8_fp4_paged_mqa_logits.hpp: read lines 281-281  (from /Users/bytedance/Desktop/infra_agent/DeepGEMM/csrc/jit_kernels/impls/smxx_fp8_fp4_paged_mqa_logits.hpp)
+kernel_impl/3_sm90_fp8_paged_mqa_logits.cuh: read lines 30-332  (from /Users/bytedance/Desktop/infra_agent/DeepGEMM/deep_gemm/include/deep_gemm/impls/sm90_fp8_paged_mqa_logits.cuh)
+py_cpp_binding/1_attention.hpp: read lines 445-449  (from /Users/bytedance/Desktop/infra_agent/DeepGEMM/csrc/apis/attention.hpp)
+kernel_header/: N/A (not applicable for thirdparty_cpp_jit)

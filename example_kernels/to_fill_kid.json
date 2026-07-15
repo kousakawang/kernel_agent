@@ -1,313 +1,273 @@
 {
   "schema_version": "kernel-interface-decomposition/dry-run-v1",
-  "backend_name": "triton",
+  "backend_name": "all_backends",
   "dry_run": true,
   "target": {
     "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
-    "line": 421,
-    "note": "分解起点(用户指定的 high_level 模块); 不是分解出来的 low_level target"
+    "line": 669,
+    "note": "分解起点(用户指定的 high_level 入口 all_backends_test); 它逐个调用 10 个 demo_Fx(), 下面 kernels[] 是每个 backend 形态的代表算子 (F0-F9)。"
   },
   "coverage_report": {
-    "note": "<FILL: 真实 KID 在此报漏检覆盖率; dry-run 不统计>"
+    "note": "本样例为人工编排的多后端算子目录(每个 demo 一个代表算子, 覆盖 9 类 backend 形态), 非单次 forward 的真实 profiling; 不统计 coverage。"
   },
   "kernels": [
     {
       "rank": 1,
       "kernel": {
-        "raw_name": "<FILL: GPU kernel 名, 如 _layer_norm_fwd_1pass_kernel; 或直接删该槽=放弃该 kernel>",
-        "normalized_name": "<FILL: 规范化 kernel 名, 可与 raw_name 相同>"
+        "raw_name": "aten::_scaled_dot_product_flash_attention",
+        "normalized_name": "sdpa_flash"
       },
-      "low_level_id": "<FILL: 该 low_level 的稳定 id, 如 layernorm_fwd; 用作 kernel_sources 子目录名>",
-      "interface": "<FILL: 运行时接口名, 如 torch.ops.sgl_kernel.fwd / triton fn 名 / get_xxx_module().op>",
-      "archetype": "<FILL: 明文类别名, 9 选 1: pytorch_native / sglang_triton / sgl_kernel_builtin / sgl_kernel_thirdparty / sglang_jit / thirdparty_aot / thirdparty_triton_dsl / thirdparty_cpp_jit / downloaded_cubin>",
-      "archetype_code": "<FILL: 对应 F0-F8, 见 dry_run.example.py 顶部对照表>",
-      "metrics": {
-        "duration_us": "<FILL: 可选: 该 kernel 耗时 us; 不关心可删本行>",
-        "share_in_invocation": "<FILL: 可选: 占本次 forward 比例; 不关心可删本行>"
-      },
+      "low_level_id": "torch_sdpa",
+      "interface": "torch.nn.functional.scaled_dot_product_attention",
+      "archetype": "pytorch_native",
+      "archetype_code": "F0",
       "runtime_event": {
-        "wrapper": {
-          "api": "<FILL: 可选: wrapper API 名; 真实 KID 由 profiling 填, dry-run 可留空/删>",
-          "file": "<FILL: 可选: wrapper 源文件; dry-run 可留空/删>",
-          "line": "<FILL: 可选: wrapper 行号; dry-run 可留空/删>"
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 85
         },
         "implementation": {
           "source_files": [],
-          "note": "真实 KID 由运行时插桩填充; dry-run 留空, 源码位置在下一步 locate 填"
+          "note": "pytorch 原生算子: 走 torch/aten/cuDNN-flash, sglang 无自有源码; 四层全 not_applicable (无处可定位)。"
         },
         "attribution": {
-          "method": "dry_run",
-          "confidence": "n/a"
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
         }
       }
     },
     {
       "rank": 2,
       "kernel": {
-        "raw_name": "<FILL: GPU kernel 名, 如 _layer_norm_fwd_1pass_kernel; 或直接删该槽=放弃该 kernel>",
-        "normalized_name": "<FILL: 规范化 kernel 名, 可与 raw_name 相同>"
+        "raw_name": "recompute_w_u_fwd_kernel",
+        "normalized_name": "recompute_w_u_fwd_kernel"
       },
-      "low_level_id": "<FILL: 该 low_level 的稳定 id, 如 layernorm_fwd; 用作 kernel_sources 子目录名>",
-      "interface": "<FILL: 运行时接口名, 如 torch.ops.sgl_kernel.fwd / triton fn 名 / get_xxx_module().op>",
-      "archetype": "<FILL: 明文类别名, 9 选 1: pytorch_native / sglang_triton / sgl_kernel_builtin / sgl_kernel_thirdparty / sglang_jit / thirdparty_aot / thirdparty_triton_dsl / thirdparty_cpp_jit / downloaded_cubin>",
-      "archetype_code": "<FILL: 对应 F0-F8, 见 dry_run.example.py 顶部对照表>",
-      "metrics": {
-        "duration_us": "<FILL: 可选: 该 kernel 耗时 us; 不关心可删本行>",
-        "share_in_invocation": "<FILL: 可选: 占本次 forward 比例; 不关心可删本行>"
-      },
+      "low_level_id": "fla_recompute_w_u_fwd",
+      "interface": "recompute_w_u_fwd_kernel",
+      "archetype": "sglang_triton",
+      "archetype_code": "F1",
       "runtime_event": {
-        "wrapper": {
-          "api": "<FILL: 可选: wrapper API 名; 真实 KID 由 profiling 填, dry-run 可留空/删>",
-          "file": "<FILL: 可选: wrapper 源文件; dry-run 可留空/删>",
-          "line": "<FILL: 可选: wrapper 行号; dry-run 可留空/删>"
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 152
         },
         "implementation": {
-          "source_files": [],
-          "note": "真实 KID 由运行时插桩填充; dry-run 留空, 源码位置在下一步 locate 填"
+          "source_files": [
+            "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/srt/layers/attention/fla/wy_fast.py"
+          ],
+          "symbols": [
+            "recompute_w_u_fwd_kernel"
+          ],
+          "definition_line": 23
         },
         "attribution": {
-          "method": "dry_run",
-          "confidence": "n/a"
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
         }
       }
     },
     {
       "rank": 3,
       "kernel": {
-        "raw_name": "<FILL: GPU kernel 名, 如 _layer_norm_fwd_1pass_kernel; 或直接删该槽=放弃该 kernel>",
-        "normalized_name": "<FILL: 规范化 kernel 名, 可与 raw_name 相同>"
+        "raw_name": "sgl_kernel::silu_and_mul",
+        "normalized_name": "silu_and_mul"
       },
-      "low_level_id": "<FILL: 该 low_level 的稳定 id, 如 layernorm_fwd; 用作 kernel_sources 子目录名>",
-      "interface": "<FILL: 运行时接口名, 如 torch.ops.sgl_kernel.fwd / triton fn 名 / get_xxx_module().op>",
-      "archetype": "<FILL: 明文类别名, 9 选 1: pytorch_native / sglang_triton / sgl_kernel_builtin / sgl_kernel_thirdparty / sglang_jit / thirdparty_aot / thirdparty_triton_dsl / thirdparty_cpp_jit / downloaded_cubin>",
-      "archetype_code": "<FILL: 对应 F0-F8, 见 dry_run.example.py 顶部对照表>",
-      "metrics": {
-        "duration_us": "<FILL: 可选: 该 kernel 耗时 us; 不关心可删本行>",
-        "share_in_invocation": "<FILL: 可选: 占本次 forward 比例; 不关心可删本行>"
-      },
+      "low_level_id": "sgl_kernel_silu_and_mul",
+      "interface": "torch.ops.sgl_kernel.silu_and_mul",
+      "archetype": "sgl_kernel_builtin",
+      "archetype_code": "F2",
       "runtime_event": {
-        "wrapper": {
-          "api": "<FILL: 可选: wrapper API 名; 真实 KID 由 profiling 填, dry-run 可留空/删>",
-          "file": "<FILL: 可选: wrapper 源文件; dry-run 可留空/删>",
-          "line": "<FILL: 可选: wrapper 行号; dry-run 可留空/删>"
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 189
         },
         "implementation": {
           "source_files": [],
-          "note": "真实 KID 由运行时插桩填充; dry-run 留空, 源码位置在下一步 locate 填"
+          "note": "sgl-kernel 算子 AOT 编入 .so, 运行时看不到源码路径; 四层交给 locate 静态定位。"
         },
         "attribution": {
-          "method": "dry_run",
-          "confidence": "n/a"
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
         }
       }
     },
     {
       "rank": 4,
       "kernel": {
-        "raw_name": "<FILL: GPU kernel 名, 如 _layer_norm_fwd_1pass_kernel; 或直接删该槽=放弃该 kernel>",
-        "normalized_name": "<FILL: 规范化 kernel 名, 可与 raw_name 相同>"
+        "raw_name": "flash_fwd_kernel_sm90",
+        "normalized_name": "fa3_fwd"
       },
-      "low_level_id": "<FILL: 该 low_level 的稳定 id, 如 layernorm_fwd; 用作 kernel_sources 子目录名>",
-      "interface": "<FILL: 运行时接口名, 如 torch.ops.sgl_kernel.fwd / triton fn 名 / get_xxx_module().op>",
-      "archetype": "<FILL: 明文类别名, 9 选 1: pytorch_native / sglang_triton / sgl_kernel_builtin / sgl_kernel_thirdparty / sglang_jit / thirdparty_aot / thirdparty_triton_dsl / thirdparty_cpp_jit / downloaded_cubin>",
-      "archetype_code": "<FILL: 对应 F0-F8, 见 dry_run.example.py 顶部对照表>",
-      "metrics": {
-        "duration_us": "<FILL: 可选: 该 kernel 耗时 us; 不关心可删本行>",
-        "share_in_invocation": "<FILL: 可选: 占本次 forward 比例; 不关心可删本行>"
-      },
+      "low_level_id": "sgl_kernel_fa3_fwd",
+      "interface": "torch.ops.sgl_kernel.fwd",
+      "archetype": "sgl_kernel_thirdparty",
+      "archetype_code": "F3",
       "runtime_event": {
-        "wrapper": {
-          "api": "<FILL: 可选: wrapper API 名; 真实 KID 由 profiling 填, dry-run 可留空/删>",
-          "file": "<FILL: 可选: wrapper 源文件; dry-run 可留空/删>",
-          "line": "<FILL: 可选: wrapper 行号; dry-run 可留空/删>"
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 258
         },
         "implementation": {
           "source_files": [],
-          "note": "真实 KID 由运行时插桩填充; dry-run 留空, 源码位置在下一步 locate 填"
+          "note": "FA3 通过 CMake FetchContent 从 sgl-attn 编入独立 flash_ops .so; 运行时无源码路径, 交 locate 静态定位 (impl 落在 sgl-attn 仓)。"
         },
         "attribution": {
-          "method": "dry_run",
-          "confidence": "n/a"
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
         }
       }
     },
     {
       "rank": 5,
       "kernel": {
-        "raw_name": "<FILL: GPU kernel 名, 如 _layer_norm_fwd_1pass_kernel; 或直接删该槽=放弃该 kernel>",
-        "normalized_name": "<FILL: 规范化 kernel 名, 可与 raw_name 相同>"
+        "raw_name": "add_constant_kernel",
+        "normalized_name": "add_constant"
       },
-      "low_level_id": "<FILL: 该 low_level 的稳定 id, 如 layernorm_fwd; 用作 kernel_sources 子目录名>",
-      "interface": "<FILL: 运行时接口名, 如 torch.ops.sgl_kernel.fwd / triton fn 名 / get_xxx_module().op>",
-      "archetype": "<FILL: 明文类别名, 9 选 1: pytorch_native / sglang_triton / sgl_kernel_builtin / sgl_kernel_thirdparty / sglang_jit / thirdparty_aot / thirdparty_triton_dsl / thirdparty_cpp_jit / downloaded_cubin>",
-      "archetype_code": "<FILL: 对应 F0-F8, 见 dry_run.example.py 顶部对照表>",
-      "metrics": {
-        "duration_us": "<FILL: 可选: 该 kernel 耗时 us; 不关心可删本行>",
-        "share_in_invocation": "<FILL: 可选: 占本次 forward 比例; 不关心可删本行>"
-      },
+      "low_level_id": "sglang_jit_add_constant",
+      "interface": "sglang.jit_kernel.add_constant",
+      "archetype": "sglang_jit",
+      "archetype_code": "F4",
       "runtime_event": {
-        "wrapper": {
-          "api": "<FILL: 可选: wrapper API 名; 真实 KID 由 profiling 填, dry-run 可留空/删>",
-          "file": "<FILL: 可选: wrapper 源文件; dry-run 可留空/删>",
-          "line": "<FILL: 可选: wrapper 行号; dry-run 可留空/删>"
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 318
         },
         "implementation": {
           "source_files": [],
-          "note": "真实 KID 由运行时插桩填充; dry-run 留空, 源码位置在下一步 locate 填"
+          "note": "sglang 自有 JIT: 首次调用 load_jit 现场把 csrc/add_constant.cuh 编成 .so; 运行时源在构建目录, 交 locate 定位仓库内 .cuh。"
         },
         "attribution": {
-          "method": "dry_run",
-          "confidence": "n/a"
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
         }
       }
     },
     {
       "rank": 6,
       "kernel": {
-        "raw_name": "<FILL: GPU kernel 名, 如 _layer_norm_fwd_1pass_kernel; 或直接删该槽=放弃该 kernel>",
-        "normalized_name": "<FILL: 规范化 kernel 名, 可与 raw_name 相同>"
+        "raw_name": "TopKTopPSamplingFromProbKernel",
+        "normalized_name": "top_k_top_p_sampling"
       },
-      "low_level_id": "<FILL: 该 low_level 的稳定 id, 如 layernorm_fwd; 用作 kernel_sources 子目录名>",
-      "interface": "<FILL: 运行时接口名, 如 torch.ops.sgl_kernel.fwd / triton fn 名 / get_xxx_module().op>",
-      "archetype": "<FILL: 明文类别名, 9 选 1: pytorch_native / sglang_triton / sgl_kernel_builtin / sgl_kernel_thirdparty / sglang_jit / thirdparty_aot / thirdparty_triton_dsl / thirdparty_cpp_jit / downloaded_cubin>",
-      "archetype_code": "<FILL: 对应 F0-F8, 见 dry_run.example.py 顶部对照表>",
-      "metrics": {
-        "duration_us": "<FILL: 可选: 该 kernel 耗时 us; 不关心可删本行>",
-        "share_in_invocation": "<FILL: 可选: 占本次 forward 比例; 不关心可删本行>"
-      },
+      "low_level_id": "flashinfer_top_k_top_p_sampling",
+      "interface": "torch.ops.flashinfer.top_k_top_p_sampling_from_probs",
+      "archetype": "thirdparty_aot",
+      "archetype_code": "F5",
       "runtime_event": {
-        "wrapper": {
-          "api": "<FILL: 可选: wrapper API 名; 真实 KID 由 profiling 填, dry-run 可留空/删>",
-          "file": "<FILL: 可选: wrapper 源文件; dry-run 可留空/删>",
-          "line": "<FILL: 可选: wrapper 行号; dry-run 可留空/删>"
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 370
         },
         "implementation": {
           "source_files": [],
-          "note": "真实 KID 由运行时插桩填充; dry-run 留空, 源码位置在下一步 locate 填"
+          "note": "flashinfer AOT: 预编译 .so 直接 load; 无源码路径, 交 locate 定位 csrc/*.cu + include/*.cuh。"
         },
         "attribution": {
-          "method": "dry_run",
-          "confidence": "n/a"
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
         }
       }
     },
     {
       "rank": 7,
       "kernel": {
-        "raw_name": "<FILL: GPU kernel 名, 如 _layer_norm_fwd_1pass_kernel; 或直接删该槽=放弃该 kernel>",
-        "normalized_name": "<FILL: 规范化 kernel 名, 可与 raw_name 相同>"
+        "raw_name": "rms_norm_kernel",
+        "normalized_name": "rms_norm"
       },
-      "low_level_id": "<FILL: 该 low_level 的稳定 id, 如 layernorm_fwd; 用作 kernel_sources 子目录名>",
-      "interface": "<FILL: 运行时接口名, 如 torch.ops.sgl_kernel.fwd / triton fn 名 / get_xxx_module().op>",
-      "archetype": "<FILL: 明文类别名, 9 选 1: pytorch_native / sglang_triton / sgl_kernel_builtin / sgl_kernel_thirdparty / sglang_jit / thirdparty_aot / thirdparty_triton_dsl / thirdparty_cpp_jit / downloaded_cubin>",
-      "archetype_code": "<FILL: 对应 F0-F8, 见 dry_run.example.py 顶部对照表>",
-      "metrics": {
-        "duration_us": "<FILL: 可选: 该 kernel 耗时 us; 不关心可删本行>",
-        "share_in_invocation": "<FILL: 可选: 占本次 forward 比例; 不关心可删本行>"
-      },
+      "low_level_id": "flashinfer_triton_rms_norm",
+      "interface": "rms_norm_kernel",
+      "archetype": "thirdparty_triton_dsl",
+      "archetype_code": "F6",
       "runtime_event": {
-        "wrapper": {
-          "api": "<FILL: 可选: wrapper API 名; 真实 KID 由 profiling 填, dry-run 可留空/删>",
-          "file": "<FILL: 可选: wrapper 源文件; dry-run 可留空/删>",
-          "line": "<FILL: 可选: wrapper 行号; dry-run 可留空/删>"
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 411
         },
         "implementation": {
-          "source_files": [],
-          "note": "真实 KID 由运行时插桩填充; dry-run 留空, 源码位置在下一步 locate 填"
+          "source_files": [
+            "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/triton/kernels/norm.py"
+          ],
+          "symbols": [
+            "rms_norm_kernel"
+          ],
+          "definition_line": 8
         },
         "attribution": {
-          "method": "dry_run",
-          "confidence": "n/a"
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
         }
       }
     },
     {
       "rank": 8,
       "kernel": {
-        "raw_name": "<FILL: GPU kernel 名, 如 _layer_norm_fwd_1pass_kernel; 或直接删该槽=放弃该 kernel>",
-        "normalized_name": "<FILL: 规范化 kernel 名, 可与 raw_name 相同>"
+        "raw_name": "BatchPrefillWithPagedKVCacheKernel",
+        "normalized_name": "batch_prefill_paged"
       },
-      "low_level_id": "<FILL: 该 low_level 的稳定 id, 如 layernorm_fwd; 用作 kernel_sources 子目录名>",
-      "interface": "<FILL: 运行时接口名, 如 torch.ops.sgl_kernel.fwd / triton fn 名 / get_xxx_module().op>",
-      "archetype": "<FILL: 明文类别名, 9 选 1: pytorch_native / sglang_triton / sgl_kernel_builtin / sgl_kernel_thirdparty / sglang_jit / thirdparty_aot / thirdparty_triton_dsl / thirdparty_cpp_jit / downloaded_cubin>",
-      "archetype_code": "<FILL: 对应 F0-F8, 见 dry_run.example.py 顶部对照表>",
-      "metrics": {
-        "duration_us": "<FILL: 可选: 该 kernel 耗时 us; 不关心可删本行>",
-        "share_in_invocation": "<FILL: 可选: 占本次 forward 比例; 不关心可删本行>"
-      },
+      "low_level_id": "flashinfer_batch_prefill_paged",
+      "interface": "BatchPrefillWithPagedKVCacheWrapper.run",
+      "archetype": "thirdparty_cpp_jit",
+      "archetype_code": "F7",
       "runtime_event": {
-        "wrapper": {
-          "api": "<FILL: 可选: wrapper API 名; 真实 KID 由 profiling 填, dry-run 可留空/删>",
-          "file": "<FILL: 可选: wrapper 源文件; dry-run 可留空/删>",
-          "line": "<FILL: 可选: wrapper 行号; dry-run 可留空/删>"
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 500
         },
         "implementation": {
           "source_files": [],
-          "note": "真实 KID 由运行时插桩填充; dry-run 留空, 源码位置在下一步 locate 填"
+          "note": "flashinfer C++ JIT: plan() 时现场渲染 .cu 并 gen_jit_spec, build_and_load 跑 ninja+nvcc; 源模板在 include/.../prefill.cuh, 交 locate 定位。"
         },
         "attribution": {
-          "method": "dry_run",
-          "confidence": "n/a"
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
         }
       }
     },
     {
       "rank": 9,
       "kernel": {
-        "raw_name": "<FILL: GPU kernel 名, 如 _layer_norm_fwd_1pass_kernel; 或直接删该槽=放弃该 kernel>",
-        "normalized_name": "<FILL: 规范化 kernel 名, 可与 raw_name 相同>"
+        "raw_name": "scale_residual_norm_scale_shift_kernel",
+        "normalized_name": "fused_norm_scale_shift"
       },
-      "low_level_id": "<FILL: 该 low_level 的稳定 id, 如 layernorm_fwd; 用作 kernel_sources 子目录名>",
-      "interface": "<FILL: 运行时接口名, 如 torch.ops.sgl_kernel.fwd / triton fn 名 / get_xxx_module().op>",
-      "archetype": "<FILL: 明文类别名, 9 选 1: pytorch_native / sglang_triton / sgl_kernel_builtin / sgl_kernel_thirdparty / sglang_jit / thirdparty_aot / thirdparty_triton_dsl / thirdparty_cpp_jit / downloaded_cubin>",
-      "archetype_code": "<FILL: 对应 F0-F8, 见 dry_run.example.py 顶部对照表>",
-      "metrics": {
-        "duration_us": "<FILL: 可选: 该 kernel 耗时 us; 不关心可删本行>",
-        "share_in_invocation": "<FILL: 可选: 占本次 forward 比例; 不关心可删本行>"
-      },
+      "low_level_id": "sglang_cutedsl_fused_norm_scale_shift",
+      "interface": "torch.ops.sglang.fused_norm_scale_shift",
+      "archetype": "sglang_jit",
+      "archetype_code": "F4",
       "runtime_event": {
-        "wrapper": {
-          "api": "<FILL: 可选: wrapper API 名; 真实 KID 由 profiling 填, dry-run 可留空/删>",
-          "file": "<FILL: 可选: wrapper 源文件; dry-run 可留空/删>",
-          "line": "<FILL: 可选: wrapper 行号; dry-run 可留空/删>"
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 567
         },
         "implementation": {
           "source_files": [],
-          "note": "真实 KID 由运行时插桩填充; dry-run 留空, 源码位置在下一步 locate 填"
+          "note": "sglang 自有 CuTe DSL: 首次调用 cute.compile 现场编译 @cute.kernel; kernel 用 python DSL 写在仓库内, 交 locate 定位 (归类 F4 sglang_jit)。"
         },
         "attribution": {
-          "method": "dry_run",
-          "confidence": "n/a"
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
         }
       }
     },
     {
       "rank": 10,
       "kernel": {
-        "raw_name": "<FILL: GPU kernel 名, 如 _layer_norm_fwd_1pass_kernel; 或直接删该槽=放弃该 kernel>",
-        "normalized_name": "<FILL: 规范化 kernel 名, 可与 raw_name 相同>"
+        "raw_name": "sm90_fp8_paged_mqa_logits",
+        "normalized_name": "fp8_paged_mqa_logits"
       },
-      "low_level_id": "<FILL: 该 low_level 的稳定 id, 如 layernorm_fwd; 用作 kernel_sources 子目录名>",
-      "interface": "<FILL: 运行时接口名, 如 torch.ops.sgl_kernel.fwd / triton fn 名 / get_xxx_module().op>",
-      "archetype": "<FILL: 明文类别名, 9 选 1: pytorch_native / sglang_triton / sgl_kernel_builtin / sgl_kernel_thirdparty / sglang_jit / thirdparty_aot / thirdparty_triton_dsl / thirdparty_cpp_jit / downloaded_cubin>",
-      "archetype_code": "<FILL: 对应 F0-F8, 见 dry_run.example.py 顶部对照表>",
-      "metrics": {
-        "duration_us": "<FILL: 可选: 该 kernel 耗时 us; 不关心可删本行>",
-        "share_in_invocation": "<FILL: 可选: 占本次 forward 比例; 不关心可删本行>"
-      },
+      "low_level_id": "deepgemm_fp8_paged_mqa_logits",
+      "interface": "deep_gemm.fp8_paged_mqa_logits",
+      "archetype": "thirdparty_cpp_jit",
+      "archetype_code": "F7",
       "runtime_event": {
-        "wrapper": {
-          "api": "<FILL: 可选: wrapper API 名; 真实 KID 由 profiling 填, dry-run 可留空/删>",
-          "file": "<FILL: 可选: wrapper 源文件; dry-run 可留空/删>",
-          "line": "<FILL: 可选: wrapper 行号; dry-run 可留空/删>"
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 646
         },
         "implementation": {
           "source_files": [],
-          "note": "真实 KID 由运行时插桩填充; dry-run 留空, 源码位置在下一步 locate 填"
+          "note": "三方 DeepGEMM: AOT 编 _C 扩展, 真正 kernel 由 C++ 内嵌 NVRTC 运行时生成并编译; python 只 import _C 符号, 交 locate 定位 C++ 调用链 (归类 F7)。"
         },
         "attribution": {
-          "method": "dry_run",
-          "confidence": "n/a"
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
         }
       }
     }
