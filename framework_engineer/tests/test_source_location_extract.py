@@ -2,8 +2,9 @@
 
 New schema shape (locate standard §1/§2): each hit is ``{file, def_line}`` (no
 line_start/line_end — the end is computed here by range-completion).
-``interface_definition``/``py_cpp_binding`` are single-file; ``kernel_impl``/
-``kernel_header`` are directory layers whose hits go into a ``<layer>/`` subdir.
+``interface_definition`` is single-file; ``kernel_impl``/``kernel_header``/
+``py_cpp_binding`` are directory layers whose hits go into a ``<layer>/`` subdir
+(kernel_impl + py_cpp_binding numbered by order).
 """
 
 from __future__ import annotations
@@ -93,6 +94,29 @@ class TestExtract(unittest.TestCase):
         self.assertEqual(_end_line_c_family(lines, 2), 5)  # void launch { .. }
         self.assertEqual(_end_line_c_family(lines, 6), 6)  # bare prototype ends at ;
 
+    def test_range_completion_c_family_ignores_commented_and_quoted_braces(self) -> None:
+        # Regression: braces inside //-comments, /* */ blocks, string/char
+        # literals, and raw strings must NOT unbalance the count. This is the
+        # real mha_fwd bug — a commented-out `{` in the body ran the range far
+        # past the true closing brace.
+        src = (
+            "void f(int d) {\n"                       # 1  <- def, depth 1
+            "  // if (d) {\n"                          # 2  line comment: brace ignored
+            "  const char* s = \"}{ \";\n"             # 3  string: braces ignored
+            "  char c = '}';\n"                        # 4  char literal: ignored
+            "  /* } } nested\n"                        # 5  block comment start
+            "     still } comment */\n"                # 6  block comment end
+            "  const char* r = R\"raw()}{)raw\";\n"     # 7  raw string: ignored
+            "  int x = 1'000;\n"                        # 8  C++14 digit sep, not char
+            "}\n"                                       # 9  <- true end
+            "void after();\n"                           # 10
+        )
+        p = self.tmp / "tricky.cu"
+        p.write_text(src)
+        lines = p.read_text().splitlines(keepends=True)
+        self.assertEqual(_end_line_c_family(lines, 1), 9)  # closes at line 9, not runaway
+        self.assertEqual(_end_line_c_family(lines, 10), 10)  # bare proto after still ok
+
     # --- single-file layers --------------------------------------------------
 
     def test_triton_like_resolved_ab_and_na_cd(self) -> None:
@@ -123,8 +147,8 @@ class TestExtract(unittest.TestCase):
         # kernel_impl is a DIRECTORY layer -> kernel_impl/<n>_<basename>
         impl = (kdir / "kernel_impl" / "1_src_kernel.py").read_text()
         self.assertEqual(impl, self.py.read_text())  # whole file
-        # c/d not_applicable -> placeholder in their subdir
-        cc = (kdir / "py_cpp_binding.cc").read_text()
+        # c/d not_applicable -> placeholder in their subdir (both are directory layers)
+        cc = (kdir / "py_cpp_binding" / "py_cpp_binding.cc").read_text()
         self.assertIn("不适用", cc)
         self.assertTrue(cc.lstrip().startswith("//"))
         self.assertIn("不适用", (kdir / "kernel_header" / "kernel_header.h").read_text())
@@ -165,11 +189,41 @@ class TestExtract(unittest.TestCase):
         self.assertIn("void launch", (kdir / "kernel_impl" / "1_impl.cu").read_text())
         # kernel_header subdir, not numbered
         self.assertTrue((kdir / "kernel_header" / "impl.cu").exists())
-        # binding single-file at top; keeps its source (.cu) suffix
-        self.assertTrue((kdir / "py_cpp_binding.cu").exists())
+        # binding is a DIRECTORY layer now; single hit still numbered 1_, keeps .cu suffix
+        self.assertTrue((kdir / "py_cpp_binding" / "1_impl.cu").exists())
         hints = (kdir / "read_hints.txt").read_text()
         self.assertIn("kernel_impl/1_impl.cu: read lines 2-5", hints)
         self.assertIn("kernel_impl/2_src_kernel.py: read lines 7-8", hints)
+
+    def test_binding_directory_multi_file_multi_format(self) -> None:
+        # py_cpp_binding is a directory layer: a JIT op needs BOTH a .py bridge
+        # (build_and_load/load_jit) AND a C++ *_binding.cu FFI export. Both are
+        # copied into py_cpp_binding/, numbered by order, keeping their suffixes.
+        schema = _schema_with([
+            _kernel(
+                "k_jit",
+                "thirdparty_cpp_jit",
+                {
+                    "interface_definition": _resolved(str(self.py), 3),
+                    "kernel_impl": _resolved(str(self.cu), 2),
+                    # binding call order: py bridge (.py) -> cpp FFI export (.cu)
+                    "py_cpp_binding": _resolved_multi([(str(self.py), 7), (str(self.cu), 2)]),
+                    "kernel_header": {"status": "not_applicable", "hits": []},
+                },
+            )
+        ])
+        schema_path = self._write_schema(schema)
+        report = extract_workspace(schema_path, self.tmp)
+        self.assertFalse(report.stopped)
+        kdir = self.tmp / "kernel_sources" / "k_jit"
+        # two files in the binding subdir, numbered, different suffixes
+        self.assertTrue((kdir / "py_cpp_binding" / "1_src_kernel.py").exists())
+        self.assertTrue((kdir / "py_cpp_binding" / "2_impl.cu").exists())
+        # whole-file copies (no truncation)
+        self.assertEqual((kdir / "py_cpp_binding" / "2_impl.cu").read_text(), self.cu.read_text())
+        hints = (kdir / "read_hints.txt").read_text()
+        self.assertIn("py_cpp_binding/1_src_kernel.py: read lines 7-8", hints)
+        self.assertIn("py_cpp_binding/2_impl.cu: read lines 2-5", hints)
 
     def test_copies_whole_file_not_truncated_span(self) -> None:
         # def is a small span mid-file; the extracted file must be the WHOLE file
@@ -340,7 +394,8 @@ class TestExtract(unittest.TestCase):
         report = extract_workspace(schema_path, self.tmp)
         self.assertFalse(report.stopped)
         kdir = self.tmp / "kernel_sources" / "k8"
-        binding = (kdir / "py_cpp_binding.cc").read_text()
+        # binding is a directory layer; a bad path -> directory placeholder file
+        binding = (kdir / "py_cpp_binding" / "py_cpp_binding.cc").read_text()
         self.assertIn("未定位", binding)
         hints = (kdir / "read_hints.txt").read_text()
         self.assertIn("MISSING", hints)

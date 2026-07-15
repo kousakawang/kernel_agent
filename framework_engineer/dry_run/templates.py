@@ -90,10 +90,9 @@ def kid_kernel_template(index: int) -> dict[str, Any]:
             "share_in_invocation": fill("可选: 占本次 forward 比例; 不关心可删本行"),
         },
         "runtime_event": {
-            "wrapper": {
-                "api": fill("可选: wrapper API 名; 真实 KID 由 profiling 填, dry-run 可留空/删"),
-                "file": fill("可选: wrapper 源文件; dry-run 可留空/删"),
-                "line": fill("可选: wrapper 行号; dry-run 可留空/删"),
+            "call_site": {
+                "file": fill("该接口被调用处的源文件绝对路径 (KID 运行时抓调用栈)"),
+                "line": fill("该接口被调用处的行号 (整数)"),
             },
             "implementation": {
                 "source_files": [],
@@ -129,8 +128,13 @@ def _missed_hit(is_directory: bool, layer: str) -> dict[str, Any]:
             "调用链上一个文件的绝对路径; kernel_impl 是目录层, 可加多个 hit, "
             "按调用顺序: launcher -> ... -> 真正的 __global__ kernel"
         )
+    elif is_directory and layer == "py_cpp_binding":
+        file_hint = (
+            "py<->cpp 绑定处的绝对路径; py_cpp_binding 是目录层, 可加多个 hit(多格式), "
+            "如 .py 的 load_jit/build_and_load 行 + C++ 的 *_binding.cc/*_binding.cu 导出"
+        )
     elif is_directory:
-        file_hint = "对应源文件的头文件绝对路径; kernel_header 是目录层, 可加多个 hit(与源文件一一对应)"
+        file_hint = "对应源文件的头文件绝对路径; kernel_header 是目录层, 可加多个 hit(与 kernel_impl 源文件一一对应)"
     else:
         file_hint = "源文件绝对路径, 如 /sgl-workspace/sglang/.../foo.py 或 third_party_cache 内 clone 文件"
     return {
@@ -147,9 +151,10 @@ def source_locations_skeleton(archetype: str) -> dict[str, Any]:
     ``missed`` with a ``{file, def_line}`` placeholder (simulating "agent could
     not locate, hand to human") — this is exactly the real "missing" shape.
 
-    Layer shapes (locate standard §2): ``kernel_impl``/``kernel_header`` are
-    *directory* layers whose ``hits`` may hold multiple entries (kernel_impl is
-    an ordered call chain); ``interface_definition``/``py_cpp_binding`` are
+    Layer shapes (locate standard §2): ``kernel_impl``/``kernel_header``/
+    ``py_cpp_binding`` are *directory* layers whose ``hits`` may hold multiple
+    entries (kernel_impl is an ordered call chain; py_cpp_binding may need both a
+    .py bridge line and a C++ *_binding.cu export); ``interface_definition`` is
     single-file (exactly one hit). The skeleton seeds one placeholder hit either
     way — a human adds more hits to a directory layer as needed.
 

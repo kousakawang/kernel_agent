@@ -1,0 +1,7 @@
+interface_definition.py: read lines 2198-2215  (from /Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/prefill.py)
+kernel_impl/1_batch_prefill.cu: read lines 203-334  (from /Users/bytedance/Desktop/infra_agent/flashinfer/csrc/batch_prefill.cu)
+kernel_impl/2_prefill.cuh: read lines 3605-3784  (from /Users/bytedance/Desktop/infra_agent/flashinfer/include/flashinfer/attention/prefill.cuh)
+kernel_impl/3_prefill.cuh: read lines 3409-3414  (from /Users/bytedance/Desktop/infra_agent/flashinfer/include/flashinfer/attention/prefill.cuh)
+py_cpp_binding/1_prefill.py: read lines 447-447  (from /Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/prefill.py)
+py_cpp_binding/2_batch_prefill_jit_binding.cu: read lines 38-46  (from /Users/bytedance/Desktop/infra_agent/flashinfer/csrc/batch_prefill_jit_binding.cu)
+kernel_header/: N/A (not applicable for thirdparty_cpp_jit)

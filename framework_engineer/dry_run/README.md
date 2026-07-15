@@ -51,7 +51,7 @@ python3 -m framework_engineer.dry_run.cli kid --config framework_engineer/config
 - `interface`：运行时接口名（如 `torch.ops.sgl_kernel.gelu_and_mul` / triton fn 名）
 - `archetype` + `archetype_code`：明文类别名 + 对应 F 代号（见下表）
 
-> `metrics` / `runtime_event.wrapper` 等标了「可选」的 `<FILL>` **可以直接删整行**，不影响后续。
+> `metrics` 等标了「可选」的 `<FILL>` **可以直接删整行**，不影响后续。`runtime_event.call_site` = 该接口被调用处的 `{file, line}`（KID 运行时抓调用栈；dry-run 手填）。
 
 ***
 
@@ -71,8 +71,8 @@ python3 -m framework_engineer.dry_run.cli locate --workspace <output_root>/works
 **你要做的**：对每个 `missed` 层，填 `hits[].file` / `def_line`（指向真实 sglang 源码，或 `third_party_cache/` 里 clone 的文件），把该层 `status` 改成 `resolved`，并把该层的 `source` 改成 `manual`。**只填定义起始行 `def_line`，不要填结束行**——结束行由步骤 ③ 的 CLI 按文件类型（py 用 AST/缩进、cpp/cu 用花括号配对）自动补进 `read_hints.txt`。定位不到又想放弃的层，保留 `missed`（见步骤 ③ 的 `--allow-empty`）。
 
 > **层形态（单文件 vs 目录，见 [locate 标准](../../kernel_agent_kadai/locate_source_locations_standard.md) §2）**：
-> - `interface_definition` / `py_cpp_binding` 是**单文件层**：`hits` 恰好 1 个（填 2 个以上 → 判 `ambiguous`，当没填处理）。
-> - `kernel_impl` / `kernel_header` 是**目录层**：`hits` 可多个。`kernel_impl` 按**调用顺序**列（launcher → … → 真正的 `__global__`，可能跨仓库）；`kernel_header` 与实现源文件一一对应。往 `hits` 数组里追加 `{file, def_line}` 即可。
+> - `interface_definition` 是**单文件层**：`hits` 恰好 1 个（填 2 个以上 → 判 `ambiguous`，当没填处理）。
+> - `kernel_impl` / `kernel_header` / `py_cpp_binding` 是**目录层**：`hits` 可多个。`kernel_impl` 按**调用顺序**列（launcher → … → 真正的 `__global__`，可能跨仓库）；`py_cpp_binding` 按 **py→cpp 序**列（如 flashinfer JIT 的 py `build_and_load` + c++ `*_binding.cu`）；`kernel_header` 与 `kernel_impl` 源文件一一对应。往 `hits` 数组里追加 `{file, def_line}` 即可。
 
 > **关于 `source` / `needs_agent`**：`source` 记录**最后更新该层的角色**，落在每个 layer 上——dry-run 骨架里是 `dry_run`，人工填后改 `manual`（真实链路里 CLI 定的是 `locate_layer1`、agent 补的是 `locate_layer2_agent`）。顶层 `source_locations.source` 是这些的**派生聚合**（有 agent/人工介入就显示出来）。`needs_agent` = 还有没有层需要兜底；四层都 `resolved`/`not_applicable` 后可改 `false`。这两个字段 extract **不读**，纯溯源用，填不填不影响抽取。
 
@@ -88,10 +88,10 @@ python3 -m framework_engineer.dry_run.cli extract --workspace <output_root>/work
 - **硬停闸门**：若**必填层**（`interface_definition` / `kernel_impl`）仍是 `missed`、含 `<FILL>`、路径不存在、`def_line` 越界，直接停（rc=2）并列出待补清单——回步骤 ② 填 `file`/`def_line`。
 - 通过闸门后**先清空** `kernel_sources/` 整棵树再重建：重跑（改了 config/路径/`low_level_id`）不会留下上一轮残留（如旧文件、被删 kernel 的孤儿子目录）。清空只发生在闸门之后，所以**硬停的重跑不会毁掉上一次的成功产物**。
 - 对每个 kernel 生成 `<workspace>/<backend>/kernel_sources/<id>/`：
-  - **单文件层** `resolved` → **拷贝整个源文件**成 `interface_definition.py` / `py_cpp_binding.{cc,cu,…}`（后缀跟随源文件）；不截断内容，定义范围只记进 `read_hints.txt`。
-  - **目录层** `resolved` → 每个 hit **拷贝整个源文件**进 `<layer>/` 子目录：`kernel_impl/<n>_<源文件名>`（`<n>` 保调用序）、`kernel_header/<源文件名>`。
+  - **单文件层** `interface_definition` `resolved` → **拷贝整个源文件**成 `interface_definition.py`（后缀跟随源文件）；不截断内容，定义范围只记进 `read_hints.txt`。
+  - **目录层** `resolved` → 每个 hit **拷贝整个源文件**进 `<layer>/` 子目录：有序目录层 `kernel_impl/<n>_<源文件名>`（`<n>` 保调用序）、`py_cpp_binding/<n>_<源文件名>`（保 py→cpp 序）；无序目录层 `kernel_header/<源文件名>`（不编号）。
   - `not_applicable` 层 → 空文件 + 注释（目录层落在 `<layer>/` 子目录里）。
-  - `missed` 层（仅 `--allow-empty`）→ 占位空文件 + 注释；单文件层的占位**扩展名跟随用户填的源后缀**（填 `.cu` 就是 `.cu`），未填的 `<FILL>` 才回退默认。
+  - `missed` 层（仅 `--allow-empty`）→ 占位空文件 + 注释；文件名**扩展名跟随用户填的源后缀**（填 `.cu` 就是 `.cu`），未填的 `<FILL>` 才回退默认。
   - `read_hints.txt`：每个抽出的文件一行（`read lines X-Y` / `N/A` / `MISSING`），目录层按 hit 顺序多行。
 - 回填 `kernel_sources_dir` 到 schema。
 
@@ -107,11 +107,13 @@ python3 -m framework_engineer.dry_run.cli extract --workspace <output_root>/work
 │   └── locate_agent_notes.md              # ②：agent 对 locate 结果的证据 + 结果报告（内容由 prompt 约束）
 └── kernel_sources/<low_level_id>/         # ③
     ├── interface_definition.py            # 单文件层
-    ├── py_cpp_binding.cc                   # 单文件层（后缀跟随源；或空文件+注释）
+    ├── py_cpp_binding/                     # 目录层：多文件多格式（按 py→cpp 编号；或空占位）
+    │   ├── 1_sampling.py                   #   py 侧 build_and_load/load_jit
+    │   └── 2_flashinfer_sampling_binding.cu  #   c++ 侧 FFI 导出（flashinfer JIT）
     ├── kernel_impl/                        # 目录层：调用链多文件（按序编号）
     │   ├── 1_activation.cu                 #   launcher
     │   └── 2_activation.cuh                #   真正的 __global__（可能跨仓库）
-    ├── kernel_header/                      # 目录层：与源文件对应的头（或空文件+注释）
+    ├── kernel_header/                      # 目录层：与 impl 源文件一一对应（不编号；或空占位）
     │   └── sgl_kernel_ops.h
     └── read_hints.txt
 ```

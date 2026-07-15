@@ -23,18 +23,26 @@ LAYERS: tuple[str, ...] = (
 REQUIRED_LAYERS: tuple[str, ...] = ("interface_definition", "kernel_impl")
 
 # Directory layers may hold *multiple* hits (locate standard §2): kernel_impl is
-# the ordered call chain (launcher -> ... -> __global__), kernel_header is the
-# per-impl-file headers. The other two are single-file (exactly 1 hit; >1 hit is
-# ambiguous). Layer 3 extracts a directory layer into a <layer>/ subdirectory.
-DIRECTORY_LAYERS: tuple[str, ...] = ("kernel_impl", "kernel_header")
-SINGLE_FILE_LAYERS: tuple[str, ...] = ("interface_definition", "py_cpp_binding")
+# the ordered call chain (launcher -> ... -> __global__); py_cpp_binding is the
+# py<->cpp bridge whose form varies by AOT/JIT (a .py load_jit line + a C++
+# *_binding.cu FFI export may BOTH be needed, so multi-file/multi-format);
+# kernel_header is the per-impl-file headers. Only interface_definition is
+# single-file (exactly 1 hit; >1 hit is ambiguous). Layer 3 extracts a directory
+# layer into a <layer>/ subdirectory.
+DIRECTORY_LAYERS: tuple[str, ...] = ("kernel_impl", "kernel_header", "py_cpp_binding")
+SINGLE_FILE_LAYERS: tuple[str, ...] = ("interface_definition",)
+
+# Directory layers whose hits carry a meaningful ORDER, so Layer 3 numbers their
+# files (`<n>_<basename>`): kernel_impl = call chain (launcher -> __global__);
+# py_cpp_binding = py-side bridge -> cpp-side registration. kernel_header is a
+# one-to-one correspondence with impl files, so it is NOT numbered.
+ORDERED_DIRECTORY_LAYERS: tuple[str, ...] = ("kernel_impl", "py_cpp_binding")
 
 # Single-file layers' output filename (+ default extension). Directory layers do
 # NOT use this — their files are named per-hit from each source basename under a
 # <layer>/ subdirectory (see extractor._directory_layer_filename).
 LAYER_FILENAME: dict[str, str] = {
     "interface_definition": "interface_definition.py",
-    "py_cpp_binding": "py_cpp_binding.cc",
 }
 
 # Placeholder filenames used only for empty/placeholder directory layers (the
@@ -42,6 +50,7 @@ LAYER_FILENAME: dict[str, str] = {
 LAYER_PLACEHOLDER_FILENAME: dict[str, str] = {
     "kernel_impl": "kernel_impl.py",
     "kernel_header": "kernel_header.h",
+    "py_cpp_binding": "py_cpp_binding.cc",
 }
 
 # Statuses a layer may carry (KID_and_locate §5.5). ``missed`` is added by the

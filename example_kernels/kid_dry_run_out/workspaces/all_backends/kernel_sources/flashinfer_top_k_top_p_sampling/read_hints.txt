@@ -1,0 +1,7 @@
+interface_definition.py: read lines 1579-1738  (from /Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/sampling.py)
+kernel_impl/1_sampling.cu: read lines 277-325  (from /Users/bytedance/Desktop/infra_agent/flashinfer/csrc/sampling.cu)
+kernel_impl/2_sampling.cuh: read lines 1606-1633  (from /Users/bytedance/Desktop/infra_agent/flashinfer/include/flashinfer/sampling.cuh)
+kernel_impl/3_sampling.cuh: read lines 1192-1321  (from /Users/bytedance/Desktop/infra_agent/flashinfer/include/flashinfer/sampling.cuh)
+py_cpp_binding/1_sampling.py: read lines 68-68  (from /Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/sampling.py)
+py_cpp_binding/2_flashinfer_sampling_binding.cu: read lines 54-60  (from /Users/bytedance/Desktop/infra_agent/flashinfer/csrc/flashinfer_sampling_binding.cu)
+kernel_header/: N/A (not applicable for thirdparty_aot)

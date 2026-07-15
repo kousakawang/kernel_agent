@@ -37,6 +37,7 @@ from .contracts import (
     LAYERS,
     LayerHit,
     LayerResult,
+    ORDERED_DIRECTORY_LAYERS,
     REQUIRED_LAYERS,
     SINGLE_FILE_LAYERS,
     STATUS_NOT_APPLICABLE,
@@ -127,21 +128,23 @@ def _comment(ext: str, text: str) -> str:
 def _directory_layer_filename(layer: str, index: int, hit_file: str | None) -> str:
     """Name for one hit inside a directory layer's ``<layer>/`` subdir.
 
-    kernel_impl preserves call order via a numeric prefix; both use the source
-    basename so the origin is obvious (e.g. ``1_activation.cu``).
+    Ordered layers (kernel_impl call chain; py_cpp_binding py->cpp bridge order)
+    get a numeric prefix; all use the source basename so the origin is obvious
+    (e.g. ``1_activation.cu``). kernel_header is a 1:1 correspondence with impl
+    files, so it is NOT numbered.
     """
     if hit_file:
         base = Path(hit_file).name
     else:
         base = LAYER_PLACEHOLDER_FILENAME[layer]
-    if layer == "kernel_impl":
+    if layer in ORDERED_DIRECTORY_LAYERS:
         return f"{index + 1}_{base}"
     return base
 
 
 def _single_file_name(layer: str, hit_file: str | None) -> str:
-    """Filename for a single-file layer; interface keeps .py, binding keeps its
-    source suffix if it's a known code extension."""
+    """Filename for the single-file interface_definition layer; keeps .py
+    (or its source suffix if it's a known code extension)."""
     default = LAYER_FILENAME[layer]
     if hit_file:
         suffix = Path(hit_file).suffix
@@ -208,13 +211,100 @@ def _end_line_c_family(lines: list[str], def_line: int) -> int:
     Scans forward to the matching closing brace of the first ``{``; if no brace
     appears before a terminating ``;`` (a bare declaration, e.g. a header
     prototype), the statement ends at that ``;``.
+
+    The scanner is comment/string/char aware: ``{``/``}``/``;`` inside line
+    comments (``//``), block comments (``/* */``), string literals, char
+    literals (``'{'``), and raw strings (``R"(...)"``) are ignored. Without this,
+    a commented-out or quoted brace — very common in real kernels — unbalances
+    the count and runs the range far past the true end (e.g. sgl-attn's
+    ``mha_fwd`` overshooting by ~570 lines off a ``// ... {`` in the body).
     """
     n = len(lines)
     depth = 0
     seen_brace = False
-    for idx in range(def_line - 1, min(n, def_line - 1 + _MAX_SPAN)):
+    # State that must persist ACROSS lines. Block comments and raw strings can
+    # span multiple lines; plain string/char literals cannot (C forbids a raw
+    # newline in them), so those reset per line — which also defends against a
+    # stray apostrophe (e.g. a C++14 digit separator) swallowing a whole line.
+    in_block_comment = False
+    in_raw_string = False
+    raw_delim = ""
+
+    last = min(n, def_line - 1 + _MAX_SPAN)
+    for idx in range(def_line - 1, last):
         line = lines[idx]
-        for ch in line:
+        in_string = False
+        in_char = False
+        i = 0
+        width = len(line)
+        while i < width:
+            ch = line[i]
+            nxt = line[i + 1] if i + 1 < width else ""
+
+            if in_block_comment:
+                if ch == "*" and nxt == "/":
+                    in_block_comment = False
+                    i += 2
+                    continue
+                i += 1
+                continue
+            if in_raw_string:
+                closing = ")" + raw_delim + '"'
+                if line.startswith(closing, i):
+                    in_raw_string = False
+                    i += len(closing)
+                    continue
+                i += 1
+                continue
+            if in_string:
+                if ch == "\\":
+                    i += 2  # escaped char (e.g. \" ) — skip both
+                    continue
+                if ch == '"':
+                    in_string = False
+                i += 1
+                continue
+            if in_char:
+                if ch == "\\":
+                    i += 2
+                    continue
+                if ch == "'":
+                    in_char = False
+                i += 1
+                continue
+
+            # --- NORMAL state ---------------------------------------------
+            if ch == "/" and nxt == "/":
+                break  # line comment: ignore the rest of this line
+            if ch == "/" and nxt == "*":
+                in_block_comment = True
+                i += 2
+                continue
+            if ch == "R" and nxt == '"':  # raw string R"delim( ... )delim"
+                j = i + 2
+                delim = ""
+                while j < width and line[j] != "(" and len(delim) < 16:
+                    delim += line[j]
+                    j += 1
+                if j < width and line[j] == "(":
+                    in_raw_string = True
+                    raw_delim = delim
+                    i = j + 1
+                    continue
+                # not a real raw-string opener; fall through
+            if ch == '"':
+                in_string = True
+                i += 1
+                continue
+            if ch == "'":
+                # Char literal — unless it's a C++14 digit separator (1'000),
+                # which is always wedged between two alphanumerics.
+                prev = line[i - 1] if i > 0 else ""
+                if not prev.isalnum():
+                    in_char = True
+                i += 1
+                continue
+
             if ch == "{":
                 depth += 1
                 seen_brace = True
@@ -224,7 +314,8 @@ def _end_line_c_family(lines: list[str], def_line: int) -> int:
                     return idx + 1
             elif ch == ";" and not seen_brace:
                 return idx + 1  # bare declaration/prototype
-    return min(n, def_line - 1 + _MAX_SPAN) if n else def_line
+            i += 1
+    return last if n else def_line
 
 
 def _end_line_for(src: Path, lines: list[str], def_line: int) -> int:
@@ -406,9 +497,10 @@ def _emit_layer(
 ) -> tuple[str, list[str]]:
     """Write one layer's file(s); return (status, read_hint_lines).
 
-    Single-file layers write ``dest/<layer_filename>``; directory layers
-    (kernel_impl/kernel_header) write into ``dest/<layer>/`` — one file per hit
-    (kernel_impl numbered by call order). Returns one hint line per file.
+    The single-file interface_definition layer writes ``dest/<layer_filename>``;
+    directory layers (kernel_impl / kernel_header / py_cpp_binding) write into
+    ``dest/<layer>/`` — one file per hit (kernel_impl + py_cpp_binding numbered by
+    order). Returns one hint line per file.
     """
     is_dir = layer in DIRECTORY_LAYERS
     problem = _layer_problem(result)

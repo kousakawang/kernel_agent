@@ -1,0 +1,796 @@
+{
+  "schema_version": "kernel-interface-decomposition/dry-run-v1",
+  "backend_name": "all_backends",
+  "dry_run": true,
+  "target": {
+    "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+    "line": 669,
+    "note": "分解起点(用户指定的 high_level 入口 all_backends_test); 它逐个调用 10 个 demo_Fx(), 下面 kernels[] 是每个 backend 形态的代表算子 (F0-F9)。"
+  },
+  "coverage_report": {
+    "note": "本样例为人工编排的多后端算子目录(每个 demo 一个代表算子, 覆盖 9 类 backend 形态), 非单次 forward 的真实 profiling; 不统计 coverage。"
+  },
+  "kernels": [
+    {
+      "rank": 1,
+      "kernel": {
+        "raw_name": "aten::_scaled_dot_product_flash_attention",
+        "normalized_name": "sdpa_flash"
+      },
+      "low_level_id": "torch_sdpa",
+      "interface": "torch.nn.functional.scaled_dot_product_attention",
+      "archetype": "pytorch_native",
+      "archetype_code": "F0",
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 85
+        },
+        "implementation": {
+          "source_files": [],
+          "note": "pytorch 原生算子: 走 torch/aten/cuDNN-flash, sglang 无自有源码; 四层全 not_applicable (无处可定位)。"
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "source_locations": {
+        "archetype": "pytorch_native",
+        "archetype_code": "F0",
+        "source": "manual",
+        "needs_agent": false,
+        "layers": {
+          "interface_definition": {
+            "status": "not_applicable",
+            "hits": [],
+            "repo_hint": null,
+            "source": "dry_run"
+          },
+          "kernel_impl": {
+            "status": "not_applicable",
+            "hits": [],
+            "repo_hint": null,
+            "source": "dry_run"
+          },
+          "py_cpp_binding": {
+            "status": "not_applicable",
+            "hits": [],
+            "repo_hint": null,
+            "source": "dry_run"
+          },
+          "kernel_header": {
+            "status": "not_applicable",
+            "hits": [],
+            "repo_hint": null,
+            "source": "dry_run"
+          }
+        }
+      },
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/torch_sdpa"
+    },
+    {
+      "rank": 2,
+      "kernel": {
+        "raw_name": "recompute_w_u_fwd_kernel",
+        "normalized_name": "recompute_w_u_fwd_kernel"
+      },
+      "low_level_id": "fla_recompute_w_u_fwd",
+      "interface": "recompute_w_u_fwd_kernel",
+      "archetype": "sglang_triton",
+      "archetype_code": "F1",
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 152
+        },
+        "implementation": {
+          "source_files": [
+            "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/srt/layers/attention/fla/wy_fast.py"
+          ],
+          "symbols": [
+            "recompute_w_u_fwd_kernel"
+          ],
+          "definition_line": 23
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "source_locations": {
+        "archetype": "sglang_triton",
+        "archetype_code": "F1",
+        "source": "manual",
+        "needs_agent": false,
+        "layers": {
+          "interface_definition": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/srt/layers/attention/fla/wy_fast.py",
+                "def_line": 22
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang",
+            "source": "manual"
+          },
+          "kernel_impl": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/srt/layers/attention/fla/wy_fast.py",
+                "def_line": 23
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang",
+            "source": "manual"
+          },
+          "py_cpp_binding": {
+            "status": "not_applicable",
+            "hits": [],
+            "repo_hint": null,
+            "source": "dry_run"
+          },
+          "kernel_header": {
+            "status": "not_applicable",
+            "hits": [],
+            "repo_hint": null,
+            "source": "dry_run"
+          }
+        }
+      },
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/fla_recompute_w_u_fwd"
+    },
+    {
+      "rank": 3,
+      "kernel": {
+        "raw_name": "sgl_kernel::silu_and_mul",
+        "normalized_name": "silu_and_mul"
+      },
+      "low_level_id": "sgl_kernel_silu_and_mul",
+      "interface": "torch.ops.sgl_kernel.silu_and_mul",
+      "archetype": "sgl_kernel_builtin",
+      "archetype_code": "F2",
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 189
+        },
+        "implementation": {
+          "source_files": [],
+          "note": "sgl-kernel 算子 AOT 编入 .so, 运行时看不到源码路径; 四层交给 locate 静态定位。"
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "source_locations": {
+        "archetype": "sgl_kernel_builtin",
+        "archetype_code": "F2",
+        "source": "manual",
+        "needs_agent": false,
+        "layers": {
+          "interface_definition": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/python/sgl_kernel/elementwise.py",
+                "def_line": 258
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel",
+            "source": "manual"
+          },
+          "kernel_impl": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/csrc/elementwise/activation.cu",
+                "def_line": 85
+              },
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/include/flashinfer/activation.cuh",
+                "def_line": 28
+              }
+            ],
+            "repo_hint": null,
+            "source": "manual"
+          },
+          "py_cpp_binding": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/csrc/common_extension.cc",
+                "def_line": 76
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel",
+            "source": "manual"
+          },
+          "kernel_header": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/include/sgl_kernel_ops.h",
+                "def_line": 139
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel",
+            "source": "manual"
+          }
+        }
+      },
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/sgl_kernel_silu_and_mul"
+    },
+    {
+      "rank": 4,
+      "kernel": {
+        "raw_name": "flash_fwd_kernel_sm90",
+        "normalized_name": "fa3_fwd"
+      },
+      "low_level_id": "sgl_kernel_fa3_fwd",
+      "interface": "torch.ops.sgl_kernel.fwd",
+      "archetype": "sgl_kernel_thirdparty",
+      "archetype_code": "F3",
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 258
+        },
+        "implementation": {
+          "source_files": [],
+          "note": "FA3 通过 CMake FetchContent 从 sgl-attn 编入独立 flash_ops .so; 运行时无源码路径, 交 locate 静态定位 (impl 落在 sgl-attn 仓)。"
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "source_locations": {
+        "archetype": "sgl_kernel_thirdparty",
+        "archetype_code": "F3",
+        "source": "manual",
+        "needs_agent": false,
+        "layers": {
+          "interface_definition": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/python/sgl_kernel/flash_attn.py",
+                "def_line": 232
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel",
+            "source": "manual"
+          },
+          "kernel_impl": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sgl-attn/hopper/flash_api.cpp",
+                "def_line": 673
+              },
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sgl-attn/hopper/flash_fwd_launch_template.h",
+                "def_line": 31
+              },
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sgl-attn/hopper/flash_fwd_kernel_sm90.h",
+                "def_line": 179
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/sgl-attn",
+            "source": "manual"
+          },
+          "py_cpp_binding": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/csrc/flash_extension.cc",
+                "def_line": 25
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel",
+            "source": "manual"
+          },
+          "kernel_header": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/include/sgl_flash_kernel_ops.h",
+                "def_line": 45
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel",
+            "source": "manual"
+          }
+        }
+      },
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/sgl_kernel_fa3_fwd"
+    },
+    {
+      "rank": 5,
+      "kernel": {
+        "raw_name": "add_constant_kernel",
+        "normalized_name": "add_constant"
+      },
+      "low_level_id": "sglang_jit_add_constant",
+      "interface": "sglang.jit_kernel.add_constant",
+      "archetype": "sglang_jit",
+      "archetype_code": "F4",
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 318
+        },
+        "implementation": {
+          "source_files": [],
+          "note": "sglang 自有 JIT: 首次调用 load_jit 现场把 csrc/add_constant.cuh 编成 .so; 运行时源在构建目录, 交 locate 定位仓库内 .cuh。"
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "source_locations": {
+        "archetype": "sglang_jit",
+        "archetype_code": "F4",
+        "source": "manual",
+        "needs_agent": false,
+        "layers": {
+          "interface_definition": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/add_constant.py",
+                "def_line": 24
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang",
+            "source": "manual"
+          },
+          "kernel_impl": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/csrc/add_constant.cuh",
+                "def_line": 59
+              },
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/csrc/add_constant.cuh",
+                "def_line": 27
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang",
+            "source": "manual"
+          },
+          "py_cpp_binding": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/add_constant.py",
+                "def_line": 16
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang",
+            "source": "manual"
+          },
+          "kernel_header": {
+            "status": "not_applicable",
+            "hits": [],
+            "repo_hint": null,
+            "source": "dry_run"
+          }
+        }
+      },
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/sglang_jit_add_constant"
+    },
+    {
+      "rank": 6,
+      "kernel": {
+        "raw_name": "TopKTopPSamplingFromProbKernel",
+        "normalized_name": "top_k_top_p_sampling"
+      },
+      "low_level_id": "flashinfer_top_k_top_p_sampling",
+      "interface": "torch.ops.flashinfer.top_k_top_p_sampling_from_probs",
+      "archetype": "thirdparty_aot",
+      "archetype_code": "F5",
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 370
+        },
+        "implementation": {
+          "source_files": [],
+          "note": "flashinfer AOT: 预编译 .so 直接 load; 无源码路径, 交 locate 定位 csrc/*.cu + include/*.cuh。"
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "source_locations": {
+        "archetype": "thirdparty_aot",
+        "archetype_code": "F5",
+        "source": "manual",
+        "needs_agent": false,
+        "layers": {
+          "interface_definition": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/sampling.py",
+                "def_line": 1579
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/flashinfer",
+            "source": "manual"
+          },
+          "kernel_impl": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/csrc/sampling.cu",
+                "def_line": 277
+              },
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/include/flashinfer/sampling.cuh",
+                "def_line": 1606
+              },
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/include/flashinfer/sampling.cuh",
+                "def_line": 1192
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/flashinfer",
+            "source": "manual"
+          },
+          "py_cpp_binding": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/sampling.py",
+                "def_line": 68
+              },
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/csrc/flashinfer_sampling_binding.cu",
+                "def_line": 54
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/flashinfer",
+            "source": "manual"
+          },
+          "kernel_header": {
+            "status": "not_applicable",
+            "hits": [],
+            "repo_hint": null,
+            "source": "dry_run"
+          }
+        }
+      },
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/flashinfer_top_k_top_p_sampling"
+    },
+    {
+      "rank": 7,
+      "kernel": {
+        "raw_name": "rms_norm_kernel",
+        "normalized_name": "rms_norm"
+      },
+      "low_level_id": "flashinfer_triton_rms_norm",
+      "interface": "rms_norm_kernel",
+      "archetype": "thirdparty_triton_dsl",
+      "archetype_code": "F6",
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 411
+        },
+        "implementation": {
+          "source_files": [
+            "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/triton/kernels/norm.py"
+          ],
+          "symbols": [
+            "rms_norm_kernel"
+          ],
+          "definition_line": 8
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "source_locations": {
+        "archetype": "thirdparty_triton_dsl",
+        "archetype_code": "F6",
+        "source": "manual",
+        "needs_agent": false,
+        "layers": {
+          "interface_definition": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/triton/norm.py",
+                "def_line": 9
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/flashinfer",
+            "source": "manual"
+          },
+          "kernel_impl": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/triton/kernels/norm.py",
+                "def_line": 7
+              },
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/triton/kernels/quant.py",
+                "def_line": 5
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/flashinfer",
+            "source": "manual"
+          },
+          "py_cpp_binding": {
+            "status": "not_applicable",
+            "hits": [],
+            "repo_hint": null,
+            "source": "dry_run"
+          },
+          "kernel_header": {
+            "status": "not_applicable",
+            "hits": [],
+            "repo_hint": null,
+            "source": "dry_run"
+          }
+        }
+      },
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/flashinfer_triton_rms_norm"
+    },
+    {
+      "rank": 8,
+      "kernel": {
+        "raw_name": "BatchPrefillWithPagedKVCacheKernel",
+        "normalized_name": "batch_prefill_paged"
+      },
+      "low_level_id": "flashinfer_batch_prefill_paged",
+      "interface": "BatchPrefillWithPagedKVCacheWrapper.run",
+      "archetype": "thirdparty_cpp_jit",
+      "archetype_code": "F7",
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 500
+        },
+        "implementation": {
+          "source_files": [],
+          "note": "flashinfer C++ JIT: plan() 时现场渲染 .cu 并 gen_jit_spec, build_and_load 跑 ninja+nvcc; 源模板在 include/.../prefill.cuh, 交 locate 定位。"
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "source_locations": {
+        "archetype": "thirdparty_cpp_jit",
+        "archetype_code": "F7",
+        "source": "manual",
+        "needs_agent": false,
+        "layers": {
+          "interface_definition": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/prefill.py",
+                "def_line": 2198
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/flashinfer",
+            "source": "manual"
+          },
+          "kernel_impl": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/csrc/batch_prefill.cu",
+                "def_line": 203
+              },
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/include/flashinfer/attention/prefill.cuh",
+                "def_line": 3605
+              },
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/include/flashinfer/attention/prefill.cuh",
+                "def_line": 3409
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/flashinfer",
+            "source": "manual"
+          },
+          "py_cpp_binding": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/prefill.py",
+                "def_line": 447
+              },
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/csrc/batch_prefill_jit_binding.cu",
+                "def_line": 38
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/flashinfer",
+            "source": "manual"
+          },
+          "kernel_header": {
+            "status": "not_applicable",
+            "hits": [],
+            "repo_hint": null,
+            "source": "dry_run"
+          }
+        }
+      },
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/flashinfer_batch_prefill_paged"
+    },
+    {
+      "rank": 9,
+      "kernel": {
+        "raw_name": "scale_residual_norm_scale_shift_kernel",
+        "normalized_name": "fused_norm_scale_shift"
+      },
+      "low_level_id": "sglang_cutedsl_fused_norm_scale_shift",
+      "interface": "torch.ops.sglang.fused_norm_scale_shift",
+      "archetype": "sglang_jit",
+      "archetype_code": "F4",
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 567
+        },
+        "implementation": {
+          "source_files": [],
+          "note": "sglang 自有 CuTe DSL: 首次调用 cute.compile 现场编译 @cute.kernel; kernel 用 python DSL 写在仓库内, 交 locate 定位 (归类 F4 sglang_jit)。"
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "source_locations": {
+        "archetype": "sglang_jit",
+        "archetype_code": "F4",
+        "source": "manual",
+        "needs_agent": false,
+        "layers": {
+          "interface_definition": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/diffusion/cutedsl/scale_residual_norm_scale_shift.py",
+                "def_line": 279
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang",
+            "source": "manual"
+          },
+          "kernel_impl": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/diffusion/cutedsl/scale_residual_norm_scale_shift.py",
+                "def_line": 87
+              },
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/diffusion/cutedsl/scale_residual_norm_scale_shift.py",
+                "def_line": 134
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang",
+            "source": "manual"
+          },
+          "py_cpp_binding": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/diffusion/cutedsl/scale_residual_norm_scale_shift.py",
+                "def_line": 333
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang",
+            "source": "manual"
+          },
+          "kernel_header": {
+            "status": "not_applicable",
+            "hits": [],
+            "repo_hint": null,
+            "source": "dry_run"
+          }
+        }
+      },
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/sglang_cutedsl_fused_norm_scale_shift"
+    },
+    {
+      "rank": 10,
+      "kernel": {
+        "raw_name": "sm90_fp8_paged_mqa_logits",
+        "normalized_name": "fp8_paged_mqa_logits"
+      },
+      "low_level_id": "deepgemm_fp8_paged_mqa_logits",
+      "interface": "deep_gemm.fp8_paged_mqa_logits",
+      "archetype": "thirdparty_cpp_jit",
+      "archetype_code": "F7",
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 646
+        },
+        "implementation": {
+          "source_files": [],
+          "note": "三方 DeepGEMM: AOT 编 _C 扩展, 真正 kernel 由 C++ 内嵌 NVRTC 运行时生成并编译; python 只 import _C 符号, 交 locate 定位 C++ 调用链 (归类 F7)。"
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "source_locations": {
+        "archetype": "thirdparty_cpp_jit",
+        "archetype_code": "F7",
+        "source": "manual",
+        "needs_agent": false,
+        "layers": {
+          "interface_definition": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/DeepGEMM/deep_gemm/__init__.py",
+                "def_line": 68
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/DeepGEMM",
+            "source": "manual"
+          },
+          "kernel_impl": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/DeepGEMM/csrc/apis/attention.hpp",
+                "def_line": 401
+              },
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/DeepGEMM/csrc/jit_kernels/impls/smxx_fp8_fp4_paged_mqa_logits.hpp",
+                "def_line": 281
+              },
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/DeepGEMM/deep_gemm/include/deep_gemm/impls/sm90_fp8_paged_mqa_logits.cuh",
+                "def_line": 30
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/DeepGEMM",
+            "source": "manual"
+          },
+          "py_cpp_binding": {
+            "status": "resolved",
+            "hits": [
+              {
+                "file": "/Users/bytedance/Desktop/infra_agent/DeepGEMM/csrc/apis/attention.hpp",
+                "def_line": 445
+              }
+            ],
+            "repo_hint": "/Users/bytedance/Desktop/infra_agent/DeepGEMM",
+            "source": "manual"
+          },
+          "kernel_header": {
+            "status": "not_applicable",
+            "hits": [],
+            "repo_hint": null,
+            "source": "dry_run"
+          }
+        }
+      },
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/deepgemm_fp8_paged_mqa_logits"
+    }
+  ]
+}

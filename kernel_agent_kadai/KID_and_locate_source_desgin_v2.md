@@ -159,7 +159,7 @@ for each service_cmds[i] = {backend_name, cmd}:
   4. 解析 trace → 按 call_id 分 invocation → 取代表性 invocation
        → 每个代表 invocation 内 per-invocation 选热点 kernel     [trace_parser + 新聚合]
   5. 对每个 selected kernel：形态族分类（§4.3）                 [改造后的 source_resolver]
-  6. 附 runtime_event（wrapper + JIT/triton 运行时源信息）      [新：原样序列化]
+  6. 附 runtime_event（call_site + JIT/triton 运行时源信息）      [新：原样序列化]
   7. 写 decomposition_<backend_name>.schema.json
 ```
 
@@ -252,8 +252,7 @@ for each service_cmds[i] = {backend_name, cmd}:
   "metrics": { "duration_us": 123.4, "share_in_invocation": 0.21 },
   "interface": "torch.ops.sgl_kernel.fwd",
   "runtime_event": {
-    "wrapper": { "api": "...flash_attn", "file": "/abs/....py", "line": 88,
-                 "category": "sgl_kernel", "stage": "prefill", "forward_mode": "..." },
+    "call_site": { "file": "/abs/....py", "line": 88 },   // 该接口「被调用」处 (运行时调用栈白送)
     "implementation": {
       "kind": "sgl_kernel_source | runtime_jit_source | triton_source | pytorch_native | null",
       "source_files": ["/abs/.../csrc/xxx.cu"],   // JIT: 真实; triton: [kernel_file]; sgl_kernel AOT: []
@@ -264,15 +263,16 @@ for each service_cmds[i] = {backend_name, cmd}:
 }
 ```
 
-**三个「位置」别混（wrapper 白送两个，schema 里各就各位）**：运行时其实抓到三个不同的代码位置，实现/消费时要分清：
+> **`wrapper` 对象已移除（2026-07-15）**：早期 `runtime_event.wrapper` 记 `{api, file, line}` 三元组，其中 `api` 与顶层 `interface` 冗余、`file/line` 语义含糊（wrapper 定义处 vs 调用处）。现收敛为 **`call_site` = 该接口「被调用」的那一行 `{file, line}`**——所有 low\_level\_target 相关信息统一收敛到「它自身及其以下的 code」，不再往上记一个 wrapper 层。
+
+**两个「位置」别混（call_site 白送一个，schema 里各就各位）**：运行时抓到两个不同的代码位置，实现/消费时要分清：
 
 | 位置 | 含义 | schema 字段 | 白送情况 | 对应四层 |
 | --- | --- | --- | --- | --- |
-| **① launch 点** | `xxx[grid](...)` / `torch.ops...()` 这行调用 | `runtime_event.wrapper.file/line` | **所有类型都白送**（运行时调用栈 [`_caller_location`](file:///Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/runtime_instrumentation.py#L384-L393)） | 层 a 的**锚点**（收窄到 launch 语句处），非层 a 本身 |
+| **① call_site** | `xxx[grid](...)` / `torch.ops...()` 这行调用 | `runtime_event.call_site.file/line` | **所有类型都白送**（运行时调用栈 [`_caller_location`](file:///Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/runtime_instrumentation.py#L384-L393)） | 层 a 的**导航锚点**（收窄到 launch 语句处），非层 a 本身 |
 | **② kernel 定义** | `@triton.jit def` / JIT 的 `.cu` / AOT symbol | `runtime_event.implementation.source_files + definition_line` | triton/JIT **白送**；**sgl_kernel AOT 为空**（留 locate 静态补） | 层 b |
-| **③ target 接口** | 用户指定的那个函数（如 `_layer_norm_fwd`） | schema 顶层 `target` 段（非本 entry 内） | target wrapper 白送 | 层 a 主体 |
 
-> 关键区分：**「给 launch 行为加 wrapper」天然把 ①（launch 点）在运行时确定了**（调用栈白送），并顺带白送 ②（triton/JIT 类的 kernel 定义）；唯一例外是 sgl_kernel AOT，其 ② 运行时为空。① 是层 a 的锚点、③ 才是层 a 主体——实现 locate 时别把 ① 当成层 a 全部。
+> 关键区分：**call_site（①）是层 a 的导航锚点**（调用栈白送），并顺带白送 ②（triton/JIT 类的 kernel 定义）；唯一例外是 sgl_kernel AOT，其 ② 运行时为空。层 a 主体（接口自身 python def）由 locate Layer 1 从 call_site 出发定位。
 
 `interface` = 运行时抓到的接口名（`torch.ops.sgl_kernel.<op>` / triton fn 名 / `get_xxx_module().<op>`）。`runtime_event.implementation` 可能为 null（如纯 F0）或 `source_files=[]`（如 F2/F3 AOT）——这正是 locate 要静态补的部分。
 
@@ -318,19 +318,24 @@ skill 文档：`framework_engineer/skills/locate_kernel_source.md`（驱动 Laye
 ### 5.3 四层信息 + 三层架构
 
 四层（KID 需要的定位目标，供 Layer 3 抽取）：
-- **a. `interface_definition`**：接口定义（python），含 kernel launch 语句
-- **b. `kernel_impl`**：kernel 实现（`.cu`/`.cpp`/`.py`）
-- **c. `py_cpp_binding`**：py↔cpp 绑定（主要 sgl-kernel）
-- **d. `kernel_header`**：头文件 `.h/.cuh`
+- **a. `interface_definition`**（单文件）：接口定义（python）
+- **b. `kernel_impl`**（目录，按调用序）：kernel 实现调用链（`.cu`/`.cpp`/`.py`），host launcher → `__global__`
+- **c. `py_cpp_binding`**（目录，多文件多格式）：py↔cpp 绑定；AOT 是 `.cc`、sglang JIT 是 `.py`、flashinfer JIT 是 `.py` + `*_binding.cu` 两侧
+- **d. `kernel_header`**（目录）：与 `kernel_impl` 源文件**一一对应**的头文件 `.h/.cuh`
 
-**三层架构**：
-- **Layer 1 — deterministic 定位（CLI）**：对每个 kernel 按 `archetype` 分派，**能定就定，定不了也先跑一遍**，把每层标 `resolved / not_applicable / ambiguous / not_found`。歧义给多候选，失败给 `repo_hint`（manifest 里该库仓库根），**不写失败原因**（helper 是固定逻辑，做不好灵活搜索）。
-- **Layer 2 — agent 兜底**：读 Layer 1 结果，**只对 `ambiguous`/`not_found` 的层**，拿 `repo_hint` 的仓库根主动去找；补齐或标 `missed`。
-- **Layer 3 — 物料抽取（CLI，原 `import-decomposition`）**：定位齐了之后，按 `source_locations` 把四层源码抽成 `kernel_sources/<id>/` 文件 + `read_hints.txt`（详见 §5.6 末）。
+**三层架构（职责重划 2026-07-15，详见 [locate_source_locations_standard.md](file:///Users/bytedance/Desktop/infra_agent/kernel_agent/kernel_agent_kadai/locate_source_locations_standard.md) §9）**：
 
-**信息源优先级**（Layer 1 内部）：**先消费 `runtime_event`，缺了才静态解析**（机制①/②）。这段就是从 KID `_implementation_from_events` 搬来的逻辑：
-- `runtime_event.implementation.source_files` 非空（F4/F7 JIT、F1/F6 triton）→ 层 b/c/d 几乎白送，按后缀分（`.cu/.cpp`→b、`*_jit_binding.cu`→c、`.cuh/.h`→d）。
-- `runtime_event.wrapper.file/line` → 层 a 白送。
+定位是 **agent 强依赖**——真实代码的多级实现、模版/重载/宏、调用栈跟踪都不是固定 CLI 逻辑能 hold 住的。所以智能活集中在 Layer 2，Layer 1/3 收薄成确定性工具：
+
+- **Layer 1 — deterministic 定位（CLI，做薄）**：只做**可 100% 可靠**的确定层——① `interface_definition`（从 KID 的 call_site 出发，最近一层 python def）；② 固定模式的 binding（sgl-kernel `m.def/m.impl` 符号表、JIT 的 `load_jit`/`build_and_load` 行）。**原则上不碰** `kernel_impl` / `kernel_header`（哪怕 triton）——它无法判断多级实现与调用链。定不了的层标 `not_found` + `repo_hint`，不写失败原因。
+- **Layer 2 — agent（定位主力）**：读 Layer 1 结果，按自己对代码的理解，**尽力复现算子调用链上的核心逻辑**，填 `kernel_impl`（调用链）+ `kernel_header`（与 impl 对应）+ 补 binding 的 c++ 侧。**尽力而为，不设硬门槛**：能定到核心 kernel 就定，模版/宏/分支啃不动的标 best-effort。
+- **Layer 3 — 物料抽取（CLI，纯搬运）**：定位齐了之后，按 `source_locations` 把四层源码**拷贝整文件**成 `kernel_sources/<id>/` 文件 + `read_hints.txt`（详见 §5.6 末）。
+
+> **为什么 locate 可以"尽力而为"**：`schema.json` 里逐层的 `def_line`（一手导航线索）才是 locate 的**核心权威产物**——下游 translate_problem 看得到原仓库、据行号自行探索；`kernel_sources/` 的 extract 文件只是给看不到原仓库的 kernel_engineer 的**兜底参考**，允许残缺。且复杂算子几乎都有 UT，translate 靠 UT 即可收敛，locate 的完整度不是瓶颈。
+
+**信息源优先级**（Layer 1 内部）：**先消费 `runtime_event`，缺了才静态解析**（机制①/②）：
+- `runtime_event.implementation.source_files` 非空（F4/F7 JIT、F1/F6 triton）→ kernel 定义白送。
+- `runtime_event.call_site.file/line` → 层 a 的导航锚点白送（Layer 1 据此定位接口自身 def）。
 - `source_files` 为空（F2/F3 AOT）→ 走机制①静态符号解析。
 
 ### 5.4 按形态分派（分档）
@@ -378,12 +383,12 @@ def locate_kernel_source(
 
 @dataclass
 class LayerHit:
-    file: str; line_start: int | None; line_end: int | None
+    file: str; def_line: int | None   # 只填定义起始行; end 由 Layer 3 CLI 补进 read_hints
 
 @dataclass
 class LayerResult:
     status: Literal["resolved", "not_applicable", "ambiguous", "not_found", "missed"]
-    hits: list[LayerHit]            # resolved=1；ambiguous=多候选；not_found=[]
+    hits: list[LayerHit]            # 单文件层 resolved=1(>1=ambiguous)；目录层可多个；not_found=[]
     repo_hint: str | None           # 失败时给 manifest 里该库仓库根，交 agent
     source: Literal["locate_layer1", "locate_layer2_agent", "manual", "dry_run"]
                                     # 最后更新“这一层”的角色（逐层溯源）
@@ -458,37 +463,46 @@ Layer 3（extract）之后：
     decomposition_<backend>.schema.json  # 回填 kernel_sources_dir
     kernel_sources/<id>/                 # 四层源码文件（not_applicable/missed 为占位+注释）
       interface_definition.py            # 单文件层
-      py_cpp_binding.cc                  # 单文件层（或空文件 + 注释）
+      py_cpp_binding/                    # 目录层：多文件多格式（有序, 按 py->cpp 编号）
+        1_<mod>.py                       #   py 侧 build_and_load/load_jit
+        2_<mod>_binding.cu               #   c++ 侧 FFI 导出（flashinfer JIT）
       kernel_impl/                       # 目录层：调用链多文件（按调用序编号）
         1_<launcher>.cu
         2_<kernel>.cuh                   # 真正的 __global__（可能跨仓库）
-      kernel_header/                     # 目录层：与源文件对应（或空文件 + 注释）
+      kernel_header/                     # 目录层：与 impl 源文件一一对应（不编号；或空文件+注释）
         <header>.h
       read_hints.txt                     # 每个抽出文件的 read 行号范围
 ```
 
-`source_locations` 写进 schema 的形状（每 kernel entry 新增）：
+`source_locations` 写进 schema 的形状（每 kernel entry 新增；hit 为 `{file, def_line}`，end 由 Layer 3 补进 read_hints）：
 
 ```json
 "source_locations": {
-  "archetype": "F3",
+  "archetype": "F5",
   "source": "locate_layer2_agent",
   "needs_agent": false,
   "layers": {
-    "interface_definition": { "status": "resolved", "hits": [{"file":"...flash_attn.py","line_start":40,"line_end":95}], "repo_hint": null, "source": "locate_layer1" },
-    "kernel_impl":          { "status": "resolved", "hits": [{"file":".../sgl-attn/hopper/flash_api.cpp","line_start":300,"line_end":520}], "repo_hint": null, "source": "locate_layer2_agent" },
-    "py_cpp_binding":       { "status": "resolved", "hits": [{"file":".../csrc/flash_extension.cc","line_start":50,"line_end":80}], "repo_hint": null, "source": "locate_layer1" },
-    "kernel_header":        { "status": "resolved", "hits": [{"file":".../include/sgl_flash_kernel_ops.h","line_start":1,"line_end":60}], "repo_hint": null, "source": "locate_layer1" }
+    "interface_definition": { "status": "resolved", "hits": [{"file":".../sampling.py","def_line":1579}], "repo_hint": null, "source": "locate_layer1" },
+    "kernel_impl":          { "status": "resolved", "hits": [
+        {"file":".../csrc/sampling.cu","def_line":277},
+        {"file":".../include/flashinfer/sampling.cuh","def_line":1606},
+        {"file":".../include/flashinfer/sampling.cuh","def_line":1192}
+      ], "repo_hint": null, "source": "locate_layer2_agent" },
+    "py_cpp_binding":       { "status": "resolved", "hits": [
+        {"file":".../sampling.py","def_line":68},
+        {"file":".../csrc/flashinfer_sampling_binding.cu","def_line":54}
+      ], "repo_hint": null, "source": "locate_layer1" },
+    "kernel_header":        { "status": "not_applicable", "hits": [], "repo_hint": null, "source": "dry_run" }
   }
 }
 ```
 
-> 上例：层 a/c/d 由 Layer 1 CLI 定到（`locate_layer1`），层 b 是 Layer 2 agent 补的（`locate_layer2_agent`）→ 顶层派生聚合取 `locate_layer2_agent`。
+> 上例（F5 flashinfer）：`interface_definition`/`py_cpp_binding` 由 Layer 1 CLI 定（`locate_layer1`），`kernel_impl` 是 Layer 2 agent 补的（`locate_layer2_agent`）→ 顶层派生聚合取 `locate_layer2_agent`。binding 是**目录层多文件**（py `build_and_load` + c++ `*_binding.cu`）；`.cuh` header-impl 合一 → `kernel_header` = `not_applicable`。
 
 ### 5.8 约束
 
-- `interface_definition` / `kernel_impl` 不允许最终 null；`py_cpp_binding` / `kernel_header` 仅 F1/F4/F6/F7 的 DSL/triton 情形可 `not_applicable`。
-- 两层都失败的必填层最终标 `missed`，报接口名 + 形态 + repo_hint，交人工。
+- `interface_definition` / `kernel_impl` 是 locate **尽力而为**的主目标（不再是"缺失即硬停"的硬门槛，详见标准 §9）；`py_cpp_binding` / `kernel_header` 在 F0/F1/F6 及 header-impl 合一的 `.cuh` 情形可 `not_applicable`。
+- 定不到的层标 `missed`，报接口名 + 形态 + repo_hint，交人工；**不阻断** Layer 3 抽取（占位 + 注释）。
 - **不改运行环境**，不重编，不装包；只读源码/clone。
 - **依赖**：`resolve-third-party`（manifest 里的 clone 路径）+ KID（schema 里的 runtime_event）。
 
