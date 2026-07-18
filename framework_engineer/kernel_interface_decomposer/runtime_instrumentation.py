@@ -11,78 +11,97 @@ import os
 import sys
 import threading
 import time
+import urllib.parse
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
-from types import ModuleType
-from typing import Any, Callable
+from types import FrameType, ModuleType
+from typing import Any, Callable, ContextManager, Iterator
+
+from .capture_registry import CAPTURE_BY_ARCHETYPE
 
 
 _INSTALLED = False
 _CONFIG: dict[str, Any] = {}
 _EVENT_LOCK = threading.Lock()
+_COUNTER_LOCK = threading.Lock()
 _CALL_COUNTER = 0
-_CURRENT: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
-    "kid_current_invocation", default=None
+_CAPTURE_COUNTER = 0
+_WRITER_PID = os.getpid()
+_ACTIVE_TARGET_FRAMES: dict[tuple[int, int], ContextManager[Any]] = {}
+_TORCH_MODE_CLASS: type[Any] | None = None
+_CURRENT_HIGH: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
+    "kid_current_high", default=None
+)
+_CURRENT_CAPTURE: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "kid_current_capture", default=None
 )
 
 
 def install_from_env() -> None:
+    """Install capture hooks from a sitecustomize-injected runtime config."""
+
     global _INSTALLED, _CONFIG
     if _INSTALLED or os.environ.get("KID_ENABLE") != "1":
         return
     config_path = os.environ.get("KID_RUNTIME_CONFIG")
     if not config_path:
-        return
-    try:
-        _CONFIG = json.loads(Path(config_path).read_text())
-    except Exception as exc:
-        print(f"[kernel-interface-decomposer] failed to load runtime config: {exc}", file=sys.stderr)
-        return
+        raise RuntimeError("KID_RUNTIME_CONFIG is required when KID_ENABLE=1")
+    _CONFIG = json.loads(Path(config_path).read_text(encoding="utf-8"))
     _INSTALLED = True
-    _record_event("process_start", {})
+    if hasattr(os, "register_at_fork"):
+        os.register_at_fork(after_in_child=_after_fork)
     _install_import_hook()
     _patch_already_imported_modules()
+    _install_target_profiler()
 
 
-def _output_dir() -> Path:
-    return Path(_CONFIG.get("output_dir", ".")).resolve()
+def _after_fork() -> None:
+    global _EVENT_LOCK, _COUNTER_LOCK, _CALL_COUNTER, _CAPTURE_COUNTER, _WRITER_PID
+    _EVENT_LOCK = threading.Lock()
+    _COUNTER_LOCK = threading.Lock()
+    _CALL_COUNTER = 0
+    _CAPTURE_COUNTER = 0
+    _WRITER_PID = os.getpid()
+    _ACTIVE_TARGET_FRAMES.clear()
+    _CURRENT_HIGH.set(None)
+    _CURRENT_CAPTURE.set(None)
+
+
+def _target() -> dict[str, Any]:
+    return dict(_CONFIG.get("target") or {})
 
 
 def _target_file() -> Path:
-    return Path((_CONFIG.get("target") or {}).get("file", "")).resolve()
+    return Path(str(_target().get("file", ""))).expanduser().resolve()
 
 
-def _target_line() -> int:
-    return int((_CONFIG.get("target") or {}).get("line", 0))
+def _events_dir() -> Path:
+    value = _CONFIG.get("events_dir") or Path(_CONFIG.get("output_dir", ".")) / "capture_events"
+    return Path(str(value)).expanduser().resolve()
 
 
-def _third_party_prefixes() -> tuple[str, ...]:
-    resolution = _CONFIG.get("resolution") or {}
-    prefixes = resolution.get("third_party_prefixes") or []
-    return tuple(str(prefix) for prefix in prefixes)
+def _next_id(kind: str) -> str:
+    global _CALL_COUNTER, _CAPTURE_COUNTER
+    with _COUNTER_LOCK:
+        if kind == "high":
+            _CALL_COUNTER += 1
+            counter = _CALL_COUNTER
+            prefix = "h"
+        else:
+            _CAPTURE_COUNTER += 1
+            counter = _CAPTURE_COUNTER
+            prefix = "c"
+    return f"p{os.getpid()}-{prefix}{counter}"
 
 
-def _source_roots() -> list[str]:
-    roots = []
-    for item in (_CONFIG.get("resolution") or {}).get("source_roots") or []:
-        path = Path(str(item))
-        if not path.is_absolute():
-            path = Path(_CONFIG.get("workdir", ".")).resolve() / path
-        roots.append(str(path.resolve()))
-    return roots
-
-
-def _sanitize(value: Any) -> str:
-    text = str(value)
-    return text.replace("|", "/").replace("\n", " ")[:500]
-
-
-def _label(kind: str, fields: dict[str, Any]) -> str:
-    parts = [f"PYGPU:type={kind}"]
+def _label(kind: str, **fields: Any) -> str:
+    components = [f"KID:type={kind}"]
     for key, value in fields.items():
         if value is None:
             continue
-        parts.append(f"{key}={_sanitize(value)}")
-    return "|".join(parts)
+        encoded = urllib.parse.quote(str(value).replace("\n", " ")[:1000], safe="/.:_-<>")
+        components.append(f"{key}={encoded}")
+    return "|".join(components)
 
 
 def _nvtx_push(text: str) -> None:
@@ -92,7 +111,7 @@ def _nvtx_push(text: str) -> None:
         if torch.cuda.is_available():
             torch.cuda.nvtx.range_push(text)
     except Exception:
-        return
+        pass
 
 
 def _nvtx_pop() -> None:
@@ -102,447 +121,641 @@ def _nvtx_pop() -> None:
         if torch.cuda.is_available():
             torch.cuda.nvtx.range_pop()
     except Exception:
-        return
+        pass
 
 
-def _record_event(event_type: str, payload: dict[str, Any]) -> None:
-    out = _output_dir() / "events"
-    try:
-        out.mkdir(parents=True, exist_ok=True)
-        event = {
-            "event": event_type,
-            "ts_ns": time.monotonic_ns(),
-            "pid": os.getpid(),
-            "tid": threading.get_native_id(),
-            **payload,
-        }
-        path = out / f"events_{os.getpid()}.jsonl"
-        with _EVENT_LOCK:
-            with path.open("a") as f:
-                f.write(json.dumps(event, sort_keys=True, default=str) + "\n")
-    except Exception:
-        return
+def _write_capture_event(event: dict[str, Any]) -> None:
+    global _WRITER_PID
+    if _WRITER_PID != os.getpid():
+        _after_fork()
+    out = _events_dir()
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"events_{os.getpid()}.jsonl"
+    record = {
+        **event,
+        "pid": os.getpid(),
+        "tid": threading.get_native_id(),
+    }
+    with _EVENT_LOCK:
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
 
 
-def _locate_target_qualname() -> str | None:
-    explicit = (_CONFIG.get("target") or {}).get("qualified_name")
-    if explicit:
-        return str(explicit)
+def _locate_target_definition() -> tuple[str | None, int | None]:
+    explicit = _target().get("qualified_name")
     path = _target_file()
-    line = _target_line()
+    requested_line = int(_target().get("line", 0))
     try:
-        tree = ast.parse(path.read_text())
+        tree = ast.parse(path.read_text(encoding="utf-8"))
     except Exception:
-        return None
-
-    best: tuple[int, str] | None = None
+        return (str(explicit) if explicit else None, None)
+    candidates: list[tuple[int, str, int]] = []
 
     def visit(node: ast.AST, parents: list[str]) -> None:
-        nonlocal best
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            start = getattr(node, "lineno", 0)
-            end = getattr(node, "end_lineno", start)
-            if start <= line <= end:
-                name = ".".join([*parents, node.name])
-                span = end - start
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    if best is None or span <= best[0]:
-                        best = (span, name)
-                for child in ast.iter_child_nodes(node):
-                    visit(child, [*parents, node.name])
-                return
+            start = int(getattr(node, "lineno", 0))
+            end = int(getattr(node, "end_lineno", start))
+            next_parents = [*parents, node.name]
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and start <= requested_line <= end:
+                candidates.append((end - start, ".".join(next_parents), start))
+            for child in ast.iter_child_nodes(node):
+                visit(child, next_parents)
+            return
         for child in ast.iter_child_nodes(node):
             visit(child, parents)
 
     visit(tree, [])
-    return best[1] if best else None
+    if explicit:
+        explicit_text = str(explicit)
+        matching = [item for item in candidates if item[1] == explicit_text or item[1].endswith("." + explicit_text)]
+        if matching:
+            best = min(matching)
+            return explicit_text, best[2]
+        return explicit_text, None
+    if not candidates:
+        return None, None
+    best = min(candidates)
+    return best[1], best[2]
 
 
-def _find_forward_mode_from_value(value: Any, depth: int = 0) -> Any:
+def _find_forward_mode(value: Any, depth: int = 0) -> Any:
     if depth > 2 or value is None:
         return None
-    if hasattr(value, "forward_mode"):
-        try:
-            return getattr(value, "forward_mode")
-        except Exception:
-            return None
-    if isinstance(value, dict):
-        for item in value.values():
-            found = _find_forward_mode_from_value(item, depth + 1)
-            if found is not None:
-                return found
-    if isinstance(value, (list, tuple)):
-        for item in value:
-            found = _find_forward_mode_from_value(item, depth + 1)
-            if found is not None:
-                return found
+    try:
+        if hasattr(value, "forward_mode"):
+            return value.forward_mode
+    except Exception:
+        return None
+    values = value.values() if isinstance(value, dict) else value if isinstance(value, (tuple, list)) else ()
+    for item in values:
+        found = _find_forward_mode(item, depth + 1)
+        if found is not None:
+            return found
     return None
 
 
-def _stage_from_mode(mode: Any) -> tuple[str, str | None]:
+def _stage_from_frame(frame: FrameType) -> tuple[str, str | None]:
+    mode = None
+    for value in frame.f_locals.values():
+        mode = _find_forward_mode(value)
+        if mode is not None:
+            break
     if mode is None:
         return "unknown", None
-    mode_name = getattr(mode, "name", str(mode))
-    try:
-        if mode.is_mixed():
-            return "mixed", mode_name
-        if mode.is_prefill():
-            return "prefill", mode_name
-        if mode.is_decode():
-            return "decode", mode_name
-        if mode.is_idle():
-            return "idle", mode_name
-    except Exception:
-        pass
-    return "unknown", mode_name
-
-
-def _infer_stage(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[str, str | None]:
-    for value in (*args, kwargs):
-        mode = _find_forward_mode_from_value(value)
-        if mode is not None:
-            return _stage_from_mode(mode)
-    try:
-        frame = inspect.currentframe()
-        if frame is not None:
-            frame = frame.f_back
-        while frame is not None:
-            for key in ("forward_batch", "batch", "schedule_batch"):
-                if key in frame.f_locals:
-                    mode = _find_forward_mode_from_value(frame.f_locals[key])
-                    if mode is not None:
-                        return _stage_from_mode(mode)
-            frame = frame.f_back
-    except Exception:
-        pass
-    return "unknown", None
-
-
-def _wrap_target_callable(func: Callable[..., Any], qualname: str, file: str, line: int) -> Callable[..., Any]:
-    if getattr(func, "_kid_target_wrapped", False):
-        return func
-
-    @functools.wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        global _CALL_COUNTER
-        _CALL_COUNTER += 1
-        call_id = _CALL_COUNTER
-        stage, forward_mode = _infer_stage(args, kwargs)
-        ctx = {
-            "call_id": call_id,
-            "stage": stage,
-            "forward_mode": forward_mode,
-            "target_api": qualname,
-        }
-        token = _CURRENT.set(ctx)
-        fields = {
-            "call_id": call_id,
-            "api": qualname,
-            "file": file,
-            "line": line,
-            "stage": stage,
-            "forward_mode": forward_mode,
-            "pid": os.getpid(),
-        }
-        text = _label("target", fields)
-        _record_event("target_begin", fields)
-        _nvtx_push(text)
+    name = str(getattr(mode, "name", mode))
+    for method, stage in (
+        ("is_mixed", "mixed"),
+        ("is_prefill", "prefill"),
+        ("is_decode", "decode"),
+        ("is_idle", "idle"),
+    ):
         try:
-            return func(*args, **kwargs)
-        finally:
-            _nvtx_pop()
-            _record_event("target_end", fields)
-            _CURRENT.reset(token)
-
-    setattr(wrapper, "_kid_target_wrapped", True)
-    return wrapper
-
-
-def _wrap_regular_callable(
-    func: Callable[..., Any],
-    *,
-    api: str,
-    category: str,
-    implementation: dict[str, Any] | None = None,
-) -> Callable[..., Any]:
-    if getattr(func, "_kid_wrapper_wrapped", False):
-        return func
-
-    try:
-        file = inspect.getsourcefile(func)
-        line = inspect.getsourcelines(func)[1]
-    except Exception:
-        file = None
-        line = None
-
-    @functools.wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = _CURRENT.get()
-        if ctx is None:
-            return func(*args, **kwargs)
-        fields = {
-            "call_id": ctx.get("call_id"),
-            "api": api,
-            "category": category,
-            "file": file,
-            "line": line,
-            "stage": ctx.get("stage"),
-            "forward_mode": ctx.get("forward_mode"),
-        }
-        payload = {**fields}
-        if implementation:
-            payload["implementation"] = implementation
-        text = _label("wrap", fields)
-        _record_event("wrap_begin", payload)
-        _nvtx_push(text)
-        try:
-            return func(*args, **kwargs)
-        finally:
-            _nvtx_pop()
-            _record_event("wrap_end", payload)
-
-    setattr(wrapper, "_kid_wrapper_wrapped", True)
-    return wrapper
-
-
-def _wrap_target_in_module(module: ModuleType) -> None:
-    target_path = _target_file()
-    try:
-        module_path = Path(getattr(module, "__file__", "")).resolve()
-    except Exception:
-        return
-    if module_path != target_path:
-        return
-    qualname = _locate_target_qualname()
-    if not qualname:
-        _record_event("target_wrap_failed", {"reason": "qualname_not_found", "file": str(target_path)})
-        return
-    parts = qualname.split(".")
-    obj: Any = module
-    for part in parts[:-1]:
-        obj = getattr(obj, part, None)
-        if obj is None:
-            _record_event("target_wrap_failed", {"reason": "owner_not_found", "qualname": qualname})
-            return
-    leaf = parts[-1]
-    func = getattr(obj, leaf, None)
-    if func is None:
-        _record_event("target_wrap_failed", {"reason": "callable_not_found", "qualname": qualname})
-        return
-    setattr(obj, leaf, _wrap_target_callable(func, qualname, str(target_path), _target_line()))
-    _record_event("target_wrapped", {"api": qualname, "file": str(target_path), "line": _target_line()})
-
-
-def _wrap_module_functions(module: ModuleType, *, category: str) -> None:
-    for name, value in list(vars(module).items()):
-        if name.startswith("_") or not callable(value):
-            continue
-        if inspect.isclass(value) or inspect.ismodule(value):
-            continue
-        owner = getattr(value, "__module__", "")
-        if owner != module.__name__:
-            continue
-        api = f"{module.__name__}.{getattr(value, '__qualname__', name)}"
-        try:
-            setattr(module, name, _wrap_regular_callable(value, api=api, category=category))
+            if bool(getattr(mode, method)()):
+                return stage, name
         except Exception:
             continue
+    return "unknown", name
 
 
-def _patch_torch_functional(module: ModuleType) -> None:
-    names = [
-        "linear",
-        "conv1d",
-        "conv2d",
-        "layer_norm",
-        "rms_norm",
-        "scaled_dot_product_attention",
-        "silu",
-        "gelu",
-        "softmax",
-        "embedding",
-    ]
-    for name in names:
-        value = getattr(module, name, None)
-        if callable(value):
-            setattr(
-                module,
-                name,
-                _wrap_regular_callable(
-                    value,
-                    api=f"torch.nn.functional.{name}",
-                    category="pytorch_native",
-                    implementation={
-                        "kind": "pytorch_native",
-                        "source_status": "external_documented",
-                        "symbols": [f"torch.nn.functional.{name}"],
-                    },
-                ),
+def _high_capture_mode() -> ContextManager[Any]:
+    return _TORCH_MODE_CLASS() if _TORCH_MODE_CLASS is not None else nullcontext()
+
+
+@contextmanager
+def _high_scope(frame: FrameType, interface: str) -> Iterator[None]:
+    call_id = _next_id("high")
+    stage, forward_mode = _stage_from_frame(frame)
+    high = {
+        "call_id": call_id,
+        "interface": interface,
+        "file": frame.f_code.co_filename,
+        "definition_line": frame.f_code.co_firstlineno,
+        "boundary_code": frame.f_code,
+        "stage": stage,
+        "forward_mode": forward_mode,
+    }
+    token = _CURRENT_HIGH.set(high)
+    _nvtx_push(
+        _label(
+            "high",
+            call_id=call_id,
+            interface=interface,
+            file=frame.f_code.co_filename,
+            line=frame.f_code.co_firstlineno,
+            stage=stage,
+            forward_mode=forward_mode,
+        )
+    )
+    try:
+        with _high_capture_mode():
+            yield
+    finally:
+        _nvtx_pop()
+        _CURRENT_HIGH.reset(token)
+
+
+def _install_target_profiler() -> None:
+    target_path = _target_file()
+    qualname, definition_line = _locate_target_definition()
+    if not qualname:
+        raise RuntimeError(f"cannot resolve target function at {target_path}:{_target().get('line')}")
+    short_name = qualname.rsplit(".", 1)[-1]
+    previous = sys.getprofile()
+
+    def profile(frame: FrameType, event: str, arg: Any) -> Any:
+        key = (threading.get_ident(), id(frame))
+        if event == "call":
+            try:
+                same_file = Path(frame.f_code.co_filename).resolve() == target_path
+            except Exception:
+                same_file = False
+            code_qualname = str(getattr(frame.f_code, "co_qualname", frame.f_code.co_name))
+            name_matches = code_qualname == qualname or code_qualname.endswith("." + qualname) or (
+                frame.f_code.co_name == short_name
+                and (definition_line is None or frame.f_code.co_firstlineno == definition_line)
             )
+            if same_file and name_matches:
+                scope = _high_scope(frame, qualname)
+                scope.__enter__()
+                _ACTIVE_TARGET_FRAMES[key] = scope
+        elif event == "return":
+            scope = _ACTIVE_TARGET_FRAMES.pop(key, None)
+            if scope is not None:
+                scope.__exit__(None, None, None)
+        if previous is not None:
+            previous(frame, event, arg)
+        return profile
+
+    sys.setprofile(profile)
+    threading.setprofile(profile)
 
 
-def _caller_location() -> tuple[str | None, int | None, str | None]:
+def _frame_record(frame: FrameType) -> dict[str, Any]:
+    return {
+        "file": frame.f_code.co_filename,
+        "definition_line": frame.f_code.co_firstlineno,
+        "function": frame.f_code.co_name,
+        "qualname": str(getattr(frame.f_code, "co_qualname", frame.f_code.co_name)),
+        "call_site_to_next": {
+            "file": frame.f_code.co_filename,
+            "line": frame.f_lineno,
+        },
+    }
+
+
+def _capture_python_stack(high: dict[str, Any]) -> list[dict[str, Any]]:
     frame = inspect.currentframe()
     if frame is not None:
         frame = frame.f_back
+    inner_to_outer: list[FrameType] = []
+    boundary = high.get("boundary_code")
+    found = False
     while frame is not None:
-        filename = frame.f_code.co_filename
-        if "kernel_interface_decomposer" not in filename:
-            return filename, frame.f_lineno, frame.f_code.co_name
+        if frame.f_code is boundary:
+            inner_to_outer.append(frame)
+            found = True
+            break
+        inner_to_outer.append(frame)
         frame = frame.f_back
-    return None, None, None
+    if not found:
+        return []
+    ignored = {
+        "_capture_python_stack",
+        "execution_capture",
+        "__enter__",
+        "__torch_dispatch__",
+        "wrapped",
+        "wrapped_launcher",
+    }
+    return [
+        _frame_record(item)
+        for item in reversed(inner_to_outer)
+        if item.f_code.co_name not in ignored
+    ]
 
 
-def _patch_triton_module(module: ModuleType) -> None:
-    for class_name in ("JITFunction", "Autotuner", "Heuristics"):
-        cls = getattr(module, class_name, None)
-        if cls is None or getattr(cls, "_kid_getitem_patched", False):
-            continue
-        original = getattr(cls, "__getitem__", None)
-        if original is None:
-            continue
-
-        def make_getitem(orig: Callable[..., Any]) -> Callable[..., Any]:
-            @functools.wraps(orig)
-            def patched_getitem(self: Any, grid: Any) -> Any:
-                launcher = orig(self, grid)
-                if getattr(launcher, "_kid_triton_launcher_wrapped", False):
-                    return launcher
-                kernel_fn = getattr(self, "fn", None)
-                kernel_name = getattr(kernel_fn, "__name__", getattr(self, "__name__", type(self).__name__))
-                kernel_file = getattr(getattr(kernel_fn, "__code__", None), "co_filename", None)
-                kernel_line = getattr(getattr(kernel_fn, "__code__", None), "co_firstlineno", None)
-
-                @functools.wraps(launcher)
-                def wrapped_launcher(*args: Any, **kwargs: Any) -> Any:
-                    ctx = _CURRENT.get()
-                    if ctx is None:
-                        return launcher(*args, **kwargs)
-                    launch_file, launch_line, launch_func = _caller_location()
-                    fields = {
-                        "call_id": ctx.get("call_id"),
-                        "api": launch_func,
-                        "category": "triton_dsl",
-                        "kernel": kernel_name,
-                        "file": launch_file,
-                        "line": launch_line,
-                        "stage": ctx.get("stage"),
-                        "forward_mode": ctx.get("forward_mode"),
-                    }
-                    implementation = {
-                        "kind": "triton_source",
-                        "source_status": "resolved" if kernel_file else "unknown",
-                        "source_files": [kernel_file] if kernel_file else [],
-                        "symbols": [kernel_name],
-                        "definition_line": kernel_line,
-                    }
-                    payload = {**fields, "implementation": implementation}
-                    _record_event("wrap_begin", payload)
-                    _nvtx_push(_label("wrap", fields))
-                    try:
-                        return launcher(*args, **kwargs)
-                    finally:
-                        _nvtx_pop()
-                        _record_event("wrap_end", payload)
-
-                setattr(wrapped_launcher, "_kid_triton_launcher_wrapped", True)
-                return wrapped_launcher
-
-            return patched_getitem
-
-        setattr(cls, "__getitem__", make_getitem(original))
-        setattr(cls, "_kid_getitem_patched", True)
+@contextmanager
+def execution_capture(
+    *,
+    archetype: str,
+    execution_interface: str,
+    provider_hint: str | None = None,
+    implementation_hint: dict[str, Any] | None = None,
+) -> Iterator[None]:
+    high = _CURRENT_HIGH.get()
+    if high is None:
+        yield
+        return
+    if archetype not in CAPTURE_BY_ARCHETYPE:
+        raise ValueError(f"unknown KID capture archetype: {archetype}")
+    capture_id = _next_id("capture")
+    parent_capture_id = _CURRENT_CAPTURE.get()
+    token = _CURRENT_CAPTURE.set(capture_id)
+    stack = _capture_python_stack(high)
+    event = {
+        "event": "execution_capture",
+        "capture_id": capture_id,
+        "parent_capture_id": parent_capture_id,
+        "parent_call_id": high["call_id"],
+        "archetype": archetype,
+        "common_interface": CAPTURE_BY_ARCHETYPE[archetype].common_interfaces[0],
+        "execution_interface": execution_interface,
+        "provider_hint": provider_hint,
+        "execution_leaf": {
+            "archetype": archetype,
+            "interface": execution_interface,
+            "kind": "common_interface",
+        },
+        "implementation_hint": implementation_hint or {},
+        "cpu_capture_ns": time.monotonic_ns(),
+        "python_stack": stack,
+    }
+    _write_capture_event(event)
+    _nvtx_push(
+        _label(
+            "execution",
+            capture_id=capture_id,
+            parent_capture_id=parent_capture_id,
+            parent_call_id=high["call_id"],
+            archetype=archetype,
+            interface=execution_interface,
+            provider_hint=provider_hint,
+        )
+    )
+    try:
+        yield
+    finally:
+        _nvtx_pop()
+        _CURRENT_CAPTURE.reset(token)
 
 
-class _JitModuleProxy:
-    def __init__(self, module: Any, metadata: dict[str, Any]):
+def _callable_name(value: Any, fallback: str) -> str:
+    for candidate in (
+        getattr(value, "__qualname__", None),
+        getattr(value, "__name__", None),
+        getattr(getattr(value, "fn", None), "__qualname__", None),
+        getattr(getattr(value, "fn", None), "__name__", None),
+    ):
+        if candidate:
+            return str(candidate)
+    return fallback
+
+
+def _callable_hint(value: Any) -> dict[str, Any]:
+    candidate = getattr(value, "fn", value)
+    code = getattr(candidate, "__code__", None)
+    if code is not None:
+        return {"file": code.co_filename, "definition_line": code.co_firstlineno}
+    try:
+        source = inspect.getsourcefile(type(value)) or inspect.getsourcefile(value)
+    except (OSError, TypeError):
+        source = None
+    return {"file": source} if source else {}
+
+
+def _provider_from_path(path: str | None) -> str | None:
+    if not path:
+        return None
+    lowered = path.replace("\\", "/").lower()
+    for marker, provider in (
+        ("/flashinfer/", "flashinfer"),
+        ("/sglang/", "sglang"),
+        ("/sgl_kernel/", "sgl-kernel"),
+        ("/deep_gemm/", "deepgemm"),
+    ):
+        if marker in lowered:
+            return provider
+    return None
+
+
+def _captured_callable(
+    value: Callable[..., Any],
+    *,
+    archetype: str,
+    interface: str,
+    provider_hint: str | None = None,
+    implementation_hint: dict[str, Any] | None = None,
+) -> Callable[..., Any]:
+    if getattr(value, "_kid_runtime_wrapped", False):
+        return value
+
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        with execution_capture(
+            archetype=archetype,
+            execution_interface=interface,
+            provider_hint=provider_hint,
+            implementation_hint=implementation_hint or _callable_hint(value),
+        ):
+            return value(*args, **kwargs)
+
+    try:
+        functools.update_wrapper(wrapped, value)
+    except (AttributeError, TypeError):
+        pass
+    setattr(wrapped, "_kid_runtime_wrapped", True)
+    return wrapped
+
+
+class _CapturedModuleProxy:
+    def __init__(self, module: Any, provider_hint: str | None, origin: str):
         self._kid_module = module
-        self._kid_metadata = metadata
+        self._kid_provider_hint = provider_hint
+        self._kid_origin = origin
         self._kid_wrapped: dict[str, Any] = {}
 
-    def __getattr__(self, name: str) -> Any:
-        value = getattr(self._kid_module, name)
-        if not callable(value):
+    def _wrap(self, name: str, value: Any) -> Any:
+        if not callable(value) or name.startswith("_"):
             return value
-        if name in self._kid_wrapped:
-            return self._kid_wrapped[name]
-        wrappers = self._kid_metadata.get("wrappers_by_export", {})
-        implementation = wrappers.get(name, self._kid_metadata)
-        wrapped = _wrap_regular_callable(
-            value,
-            api=f"{self._kid_metadata.get('module_name', 'jit_module')}.{name}",
-            category="runtime_jit",
-            implementation=implementation,
-        )
-        self._kid_wrapped[name] = wrapped
-        return wrapped
+        if name not in self._kid_wrapped:
+            self._kid_wrapped[name] = _captured_callable(
+                value,
+                archetype="tvm_ffi_call",
+                interface=f"{self._kid_origin}.{name}",
+                provider_hint=self._kid_provider_hint,
+                implementation_hint={"factory": self._kid_origin, "export": name},
+            )
+        return self._kid_wrapped[name]
+
+    def __getattr__(self, name: str) -> Any:
+        return self._wrap(name, getattr(self._kid_module, name))
+
+    def __getitem__(self, name: str) -> Any:
+        return self._wrap(str(name), self._kid_module[name])
+
+    def __dir__(self) -> list[str]:
+        return sorted(set(dir(self._kid_module)) | set(self.__dict__))
 
     def __repr__(self) -> str:
         return repr(self._kid_module)
 
 
-def _patch_sglang_jit_utils(module: ModuleType) -> None:
-    original = getattr(module, "load_jit", None)
-    if original is None or getattr(original, "_kid_load_jit_patched", False):
+def _install_torch_dispatch(module: ModuleType) -> None:
+    global _TORCH_MODE_CLASS
+    if _TORCH_MODE_CLASS is not None:
+        return
+    try:
+        from torch.utils._python_dispatch import TorchDispatchMode
+    except Exception:
+        return
+
+    class KidTorchDispatchMode(TorchDispatchMode):
+        def __torch_dispatch__(
+            self,
+            func: Any,
+            types: Any,
+            args: tuple[Any, ...] = (),
+            kwargs: dict[str, Any] | None = None,
+        ) -> Any:
+            del types
+            text = str(func)
+            namespace = text.split(".", 1)[0]
+            provider = "pytorch" if namespace in {"aten", "prims"} else (
+                "sgl-kernel" if namespace == "sgl_kernel" else None
+            )
+            with execution_capture(
+                archetype="pytorch_dispatch",
+                execution_interface=text,
+                provider_hint=provider,
+            ):
+                return func(*args, **(kwargs or {}))
+
+    _TORCH_MODE_CLASS = KidTorchDispatchMode
+    _patch_torch_compile(module)
+
+
+def _patch_torch_compile(module: ModuleType) -> None:
+    original = getattr(module, "compile", None)
+    if not callable(original) or getattr(original, "_kid_compile_patched", False):
+        return
+
+    def suspend_mode(value: Callable[..., Any]) -> Callable[..., Any]:
+        if getattr(value, "_kid_compiled_callable_wrapped", False):
+            return value
+
+        @functools.wraps(value)
+        def wrapped(*args: Any, **kwargs: Any) -> Any:
+            if _CURRENT_HIGH.get() is None:
+                return value(*args, **kwargs)
+            try:
+                from torch.utils._python_dispatch import _pop_mode_temporarily
+
+                with _pop_mode_temporarily():
+                    return value(*args, **kwargs)
+            except RuntimeError:
+                return value(*args, **kwargs)
+
+        setattr(wrapped, "_kid_compiled_callable_wrapped", True)
+        return wrapped
+
+    @functools.wraps(original)
+    def patched_compile(*args: Any, **kwargs: Any) -> Any:
+        result = original(*args, **kwargs)
+        if args and callable(args[0]):
+            return suspend_mode(result)
+
+        @functools.wraps(result)
+        def decorator(func: Callable[..., Any]) -> Any:
+            return suspend_mode(result(func))
+
+        return decorator
+
+    setattr(patched_compile, "_kid_compile_patched", True)
+    module.compile = patched_compile
+
+
+def _patch_triton(module: ModuleType) -> None:
+    for class_name in ("JITFunction", "Autotuner", "Heuristics"):
+        cls = getattr(module, class_name, None)
+        if not isinstance(cls, type) or getattr(cls, "_kid_getitem_patched", False):
+            continue
+        original = getattr(cls, "__getitem__", None)
+        if not callable(original):
+            continue
+
+        def make_getitem(orig: Callable[..., Any]) -> Callable[..., Any]:
+            @functools.wraps(orig)
+            def patched(self: Any, grid: Any) -> Any:
+                launcher = orig(self, grid)
+                kernel = getattr(self, "fn", self)
+                interface = _callable_name(kernel, type(self).__name__)
+                hint = _callable_hint(kernel)
+                return _captured_callable(
+                    launcher,
+                    archetype="triton_launch",
+                    interface=interface,
+                    provider_hint=_provider_from_path(hint.get("file")),
+                    implementation_hint=hint,
+                )
+
+            return patched
+
+        cls.__getitem__ = make_getitem(original)
+        cls._kid_getitem_patched = True
+
+
+def _patch_cute(module: ModuleType) -> None:
+    original = getattr(module, "compile", None)
+    if not callable(original) or getattr(module, "_kid_compile_patched", False):
         return
 
     @functools.wraps(original)
-    def patched_load_jit(*args: Any, **kwargs: Any) -> Any:
-        result = original(*args, **kwargs)
-        kernel_path = Path(getattr(module, "KERNEL_PATH", ".")).resolve()
-        cpp_files = [str((kernel_path / "csrc" / item).resolve()) for item in kwargs.get("cpp_files") or []]
-        cuda_files = [str((kernel_path / "csrc" / item).resolve()) for item in kwargs.get("cuda_files") or []]
-        cpp_wrappers = kwargs.get("cpp_wrappers") or []
-        cuda_wrappers = kwargs.get("cuda_wrappers") or []
-        module_name = "sgl_kernel_jit_" + "_".join(str(arg) for arg in args)
-        wrappers_by_export = {}
-        for export_name, symbol in [*cpp_wrappers, *cuda_wrappers]:
-            wrappers_by_export[str(export_name)] = {
-                "kind": "runtime_jit_source",
-                "source_status": "resolved",
-                "source_files": cpp_files + cuda_files,
-                "symbols": [str(symbol)],
-                "export_name": str(export_name),
-                "compile_flags": {
-                    "extra_cflags": kwargs.get("extra_cflags") or [],
-                    "extra_cuda_cflags": kwargs.get("extra_cuda_cflags") or [],
-                    "extra_ldflags": kwargs.get("extra_ldflags") or [],
-                },
-            }
-        metadata = {
-            "kind": "runtime_jit_source",
-            "source_status": "resolved" if (cpp_files or cuda_files) else "unknown",
-            "module_name": module_name,
-            "source_files": cpp_files + cuda_files,
-            "wrappers_by_export": wrappers_by_export,
-        }
-        _record_event("jit_module_loaded", metadata)
-        return _JitModuleProxy(result, metadata)
+    def patched_compile(*args: Any, **kwargs: Any) -> Any:
+        compiled = original(*args, **kwargs)
+        kernel = args[0] if args else compiled
+        hint = _callable_hint(kernel)
+        return _captured_callable(
+            compiled,
+            archetype="cute_dsl_launch",
+            interface=_callable_name(kernel, type(kernel).__name__),
+            provider_hint=_provider_from_path(hint.get("file")),
+            implementation_hint=hint,
+        )
 
-    setattr(patched_load_jit, "_kid_load_jit_patched", True)
-    setattr(module, "load_jit", patched_load_jit)
+    module.compile = patched_compile
+    module._kid_compile_patched = True
+
+
+def _patch_tilelang(module: ModuleType) -> None:
+    cls = getattr(module, "JITKernel", None)
+    if not isinstance(cls, type) or getattr(cls, "_kid_call_patched", False):
+        return
+    original = getattr(cls, "__call__", None)
+    if not callable(original):
+        return
+
+    @functools.wraps(original)
+    def patched(self: Any, *args: Any, **kwargs: Any) -> Any:
+        hint = _callable_hint(self)
+        with execution_capture(
+            archetype="tilelang_launch",
+            execution_interface=_callable_name(self, type(self).__name__),
+            provider_hint=_provider_from_path(hint.get("file")),
+            implementation_hint=hint,
+        ):
+            return original(self, *args, **kwargs)
+
+    cls.__call__ = patched
+    cls._kid_call_patched = True
+
+
+def _patch_sglang_jit(module: ModuleType) -> None:
+    original = getattr(module, "load_jit", None)
+    if not callable(original) or getattr(original, "_kid_load_jit_patched", False):
+        return
+
+    @functools.wraps(original)
+    def patched(*args: Any, **kwargs: Any) -> Any:
+        loaded = original(*args, **kwargs)
+        name = str(args[0]) if args else "load_jit"
+        return _CapturedModuleProxy(loaded, "sglang", f"sglang_jit.{name}")
+
+    patched._kid_load_jit_patched = True
+    module.load_jit = patched
+
+
+def _patch_flashinfer_jit(module: ModuleType) -> None:
+    cls = getattr(module, "JitSpec", None)
+    if not isinstance(cls, type) or getattr(cls, "_kid_build_load_patched", False):
+        return
+    original = getattr(cls, "build_and_load", None)
+    if not callable(original):
+        return
+
+    @functools.wraps(original)
+    def patched(self: Any, *args: Any, **kwargs: Any) -> Any:
+        loaded = original(self, *args, **kwargs)
+        name = str(getattr(self, "name", type(self).__name__))
+        return _CapturedModuleProxy(loaded, "flashinfer", f"flashinfer_jit.{name}")
+
+    cls.build_and_load = patched
+    cls._kid_build_load_patched = True
+
+
+PYTHON_BINDING_EXPORTS: dict[str, tuple[str, ...]] = {
+    "deep_gemm": ("bf16_gemm_nt", "fp8_paged_mqa_logits"),
+}
+
+
+def _patch_python_bindings(module: ModuleType) -> None:
+    exports = PYTHON_BINDING_EXPORTS.get(module.__name__, ())
+    for name in exports:
+        value = getattr(module, name, None)
+        if not callable(value):
+            continue
+        setattr(
+            module,
+            name,
+            _captured_callable(
+                value,
+                archetype="python_binding",
+                interface=f"{module.__name__}.{name}",
+                provider_hint="deepgemm" if module.__name__ == "deep_gemm" else module.__name__,
+                implementation_hint={"module": module.__name__, "export": name},
+            ),
+        )
+
+
+def _patch_inductor(module: ModuleType) -> None:
+    cls = getattr(module, "CachingAutotuner", None)
+    if not isinstance(cls, type) or getattr(cls, "_kid_run_patched", False):
+        return
+    method_name = "run" if callable(getattr(cls, "run", None)) else "__call__"
+    original = getattr(cls, method_name, None)
+    if not callable(original):
+        return
+
+    @functools.wraps(original)
+    def patched(self: Any, *args: Any, **kwargs: Any) -> Any:
+        kernel = getattr(self, "fn", self)
+        with execution_capture(
+            archetype="inductor_launch",
+            execution_interface=_callable_name(kernel, "inductor.CachingAutotuner"),
+            implementation_hint=_callable_hint(kernel),
+        ):
+            return original(self, *args, **kwargs)
+
+    setattr(cls, method_name, patched)
+    cls._kid_run_patched = True
 
 
 def _instrument_module(module: ModuleType) -> None:
     name = getattr(module, "__name__", "")
-    _wrap_target_in_module(module)
-    if name == "torch.nn.functional":
-        _patch_torch_functional(module)
-    if name.startswith("sgl_kernel"):
-        _wrap_module_functions(module, category="sgl_kernel")
-    if name in {"sglang.jit_kernel.utils"}:
-        _patch_sglang_jit_utils(module)
-    if name in {"triton.runtime.jit", "triton.runtime.autotuner"}:
-        _patch_triton_module(module)
-    third_party = _third_party_prefixes()
-    if third_party and name.startswith(third_party):
-        _wrap_module_functions(module, category="third_party")
+    if name == "torch":
+        _install_torch_dispatch(module)
+    elif name in {"triton.runtime.jit", "triton.runtime.autotuner"}:
+        _patch_triton(module)
+    elif name == "cutlass.cute":
+        _patch_cute(module)
+    elif name == "tilelang":
+        _patch_tilelang(module)
+    elif name == "sglang.jit_kernel.utils":
+        _patch_sglang_jit(module)
+    elif name == "flashinfer.jit.core":
+        _patch_flashinfer_jit(module)
+    elif name in PYTHON_BINDING_EXPORTS:
+        _patch_python_bindings(module)
+    elif name == "torch._inductor.runtime.triton_heuristics":
+        _patch_inductor(module)
+
+
+_WATCHED_MODULES = frozenset(
+    {
+        "torch",
+        "triton.runtime.jit",
+        "triton.runtime.autotuner",
+        "cutlass.cute",
+        "tilelang",
+        "sglang.jit_kernel.utils",
+        "flashinfer.jit.core",
+        "deep_gemm",
+        "torch._inductor.runtime.triton_heuristics",
+    }
+)
 
 
 class _InstrumentingLoader(importlib.abc.Loader):
-    def __init__(self, wrapped: importlib.abc.Loader, fullname: str):
+    def __init__(self, wrapped: importlib.abc.Loader):
         self.wrapped = wrapped
-        self.fullname = fullname
 
     def create_module(self, spec: Any) -> Any:
         if hasattr(self.wrapped, "create_module"):
@@ -556,32 +769,14 @@ class _InstrumentingLoader(importlib.abc.Loader):
 
 class _InstrumentingFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname: str, path: Any = None, target: Any = None) -> Any:
-        if fullname.startswith("framework_engineer.kernel_interface_decomposer"):
+        del target
+        if fullname not in _WATCHED_MODULES:
             return None
         spec = importlib.machinery.PathFinder.find_spec(fullname, path)
-        if spec is None or spec.loader is None:
+        if spec is None or spec.loader is None or isinstance(spec.loader, _InstrumentingLoader):
             return None
-        if not _should_consider_module(fullname, spec):
-            return None
-        spec.loader = _InstrumentingLoader(spec.loader, fullname)
+        spec.loader = _InstrumentingLoader(spec.loader)
         return spec
-
-
-def _should_consider_module(fullname: str, spec: Any) -> bool:
-    if fullname in {"torch.nn.functional", "sglang.jit_kernel.utils", "triton.runtime.jit", "triton.runtime.autotuner"}:
-        return True
-    if fullname.startswith("sgl_kernel"):
-        return True
-    third_party = _third_party_prefixes()
-    if third_party and fullname.startswith(third_party):
-        return True
-    origin = getattr(spec, "origin", None)
-    if origin:
-        try:
-            return Path(origin).resolve() == _target_file()
-        except Exception:
-            return False
-    return False
 
 
 def _install_import_hook() -> None:
@@ -590,9 +785,7 @@ def _install_import_hook() -> None:
 
 
 def _patch_already_imported_modules() -> None:
-    for module in list(sys.modules.values()):
+    for name in _WATCHED_MODULES:
+        module = sys.modules.get(name)
         if isinstance(module, ModuleType):
-            try:
-                _instrument_module(module)
-            except Exception:
-                continue
+            _instrument_module(module)

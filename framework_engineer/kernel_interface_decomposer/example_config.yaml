@@ -1,44 +1,33 @@
-version: 1
-workdir: /Users/bytedance/Desktop/remote_dev_project/model_ana
-output_dir: ./kernel_decompose_out/qwen35_gdn
+schema_version: kid-runtime-config/v2
+backend_name: triton
+workdir: /workspace
+output_dir: /workspace/kid/cli_log/triton
 
 target:
-  file: ./sglang/python/sglang/srt/models/qwen3_5.py
-  line: 488
+  file: /workspace/sglang/python/sglang/srt/model_executor/model_runner.py
+  line: 500
+  qualified_name: ModelRunner.forward
 
-commands:
-  service: "python -m sglang.launch_server ..."
-  ready:
-    type: http
-    url: "http://127.0.0.1:30000/health"
-    timeout_sec: 300
-  test: "python test_request.py"
-  stop:
-    signal: SIGINT
-    grace_sec: 30
+cmd: "python -m sglang.launch_server --model-path /models/example"
+test_cmd: "python test_request.py"
+ready:
+  type: http
+  url: http://127.0.0.1:30000/health
+  timeout_sec: 300
+stop:
+  signal: SIGINT
+  grace_sec: 30
+env:
 
 selection:
-  per_invocation: true
-  top_k: 20
-  min_duration_us: 0
-  min_share_in_invocation: 0.0
-  stages: ["prefill", "decode", "mixed", "unknown"]
+  skip_invocations: 0
+  stages: [prefill, decode, unknown]
+  sample_count_per_stage: 1
+  sampling: last_n
+  aggregation: single
 
 profiling:
   nsys_bin: nsys
-  trace_cuda_graph_nodes: true
-  include_python_backtrace: true
-  skip_target_invocations: 0
   max_runtime_sec: 1800
-
-resolution:
-  source_roots:
-    - ./sglang/python
-    - ./sglang/sgl-kernel
-  third_party_prefixes:
-    - flashinfer
-    - flash_attn
-    - deep_gemm
-    - aiter
-    - kt_kernel
-
+  disable_cuda_graph: true
+  min_capture_coverage: 1.0

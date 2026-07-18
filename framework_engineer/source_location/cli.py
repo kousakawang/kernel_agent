@@ -1,13 +1,14 @@
-"""CLI for the source-location package.
-
-Currently exposes the Layer 3 ``extract`` subcommand (formerly
-`import-decomposition`). The Layer 1 ``locate`` subcommand is future work and is
-declared here as a stub so the command surface is discoverable.
+"""CLI for deterministic source location and Layer-3 extraction.
 
 Convention (matches third_party_solver/cli.py): progress -> stderr, JSON summary
 -> stdout, return code 0 on success / 2 on hard stop or config error.
 
-    python -m framework_engineer.source_location.cli extract \
+    python3 -m framework_engineer.source_location.cli locate \
+        --schema <kid-schema.json> \
+        --manifest <third_party_manifest.json> \
+        --sglang-repo-root <sglang-root> [--out <output-schema.json>]
+
+    python3 -m framework_engineer.source_location.cli extract \
         --schema <decomposition_*.schema.json> [--workspace-out <dir>] [--allow-empty]
 """
 
@@ -19,6 +20,7 @@ import sys
 from pathlib import Path
 
 from .extractor import extract_workspace
+from .locator import LocateError, locate_schema
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
@@ -58,20 +60,42 @@ def cmd_extract(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_locate(args: argparse.Namespace) -> int:  # pragma: no cover - stub
+def cmd_locate(args: argparse.Namespace) -> int:
+    try:
+        result = locate_schema(
+            Path(args.schema),
+            manifest_path=Path(args.manifest),
+            sglang_repo_root=Path(args.sglang_repo_root),
+            output_path=Path(args.out) if args.out is not None else None,
+        )
+    except (LocateError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    summary = result.summary()
     print(
-        "error: `locate` (Layer 1 deterministic locator) is not implemented yet; "
-        "see KID_and_locate_source_desgin_v2.md §5. Use dry_run to produce a "
-        "source_locations skeleton for now.",
+        "[locate] "
+        f"{summary['total']} kernels: "
+        f"resolved={summary['interface_resolved']}, "
+        f"ambiguous={summary['interface_ambiguous']}, "
+        f"not_found={summary['interface_not_found']}, "
+        f"not_applicable={summary['interface_not_applicable']}",
         file=sys.stderr,
     )
-    return 2
+    for skipped in result.skipped_roots:
+        print(
+            f"[locate] skipped manifest repo {skipped['name']}: "
+            f"{skipped['reason']}",
+            file=sys.stderr,
+        )
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m framework_engineer.source_location.cli",
-        description="Source-location Layer 3 extraction (+ future Layer 1 locate).",
+        prog="python3 -m framework_engineer.source_location.cli",
+        description="Source-location Layer 1 locate and Layer 3 extraction.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -86,7 +110,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     e.set_defaults(func=cmd_extract)
 
-    loc = sub.add_parser("locate", help="Layer 1 deterministic locator (not implemented).")
+    loc = sub.add_parser(
+        "locate", help="Layer 1: enrich a KID schema with source_locations."
+    )
+    loc.add_argument("--schema", type=Path, required=True)
+    loc.add_argument("--manifest", type=Path, required=True)
+    loc.add_argument("--sglang-repo-root", type=Path, required=True)
+    loc.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Write an enriched copy; defaults to atomically updating --schema.",
+    )
     loc.set_defaults(func=cmd_locate)
 
     return parser

@@ -1,4 +1,5 @@
-"""Automated GPU kernel interface decomposition workflow."""
+"""KID Runtime Capture CLI and execution-capture contracts."""
 
-SCHEMA_VERSION = "kernel-interface-decomposition/v1"
-
+RUNTIME_CONFIG_VERSION = "kid-runtime-config/v2"
+RUNTIME_CAPTURE_VERSION = "kid-runtime-capture/v1"
+ENVIRONMENT_VERSION = "kid-runtime-environment/v1"

@@ -674,9 +674,295 @@ def all_backends_test():
             print(f"[OK]   {name:26s} -> {shape}")
         except Exception as e:  # noqa: BLE001  (演示用途，容忍缺环境)
             print(f"[SKIP] {name:26s} -> {type(e).__name__}: {e}")
-            
+
+
+# #############################################################################
+# 第二组: F1-F5 各再挑一个【不同的】算子代表 (与上面的第一组算子不重复)
+#   命名 demo_Fx_alt(); 同样内嵌 _golden_* 参考实现 (仅定义, 不调用)。
+# #############################################################################
+
+
+# =============================================================================
+# F1-alt  sglang_triton  —  extend_attention_fwd (_fwd_kernel)
+# -----------------------------------------------------------------------------
+# 代表算子: extend / prefill 融合注意力 (在 prefix-KV 与 extend-KV 拼接上做 flash-attn,
+#           支持 causal / sliding-window / custom-mask)。与第一组的 recompute_w_u_fwd 不同。
+#
+# 代码证据 (sglang):
+#   python/sglang/srt/layers/attention/triton_ops/extend_attention.py:229  @triton.jit def _fwd_kernel(...)
+#   python/sglang/srt/layers/attention/triton_ops/extend_attention.py:561  def extend_attention_fwd(...)   # wrapper
+#   python/sglang/srt/layers/attention/triton_ops/extend_attention.py:618      _fwd_kernel[grid](...)      # kernel[grid](...)
+#   调用方 import + 调用:
+#   python/sglang/srt/layers/attention/triton_backend.py:103  from ...triton_ops.extend_attention import extend_attention_fwd
+#   python/sglang/srt/layers/attention/triton_backend.py:1143     self.extend_attention_fwd(q.view(...), k, v, o.view(...), k_buffer, v_buffer, ...)
+# =============================================================================
+def demo_F1_alt_sglang_triton():
+    # ---- import (与 triton_backend.py:103 一致) ----
+    from sglang.srt.layers.attention.triton_ops.extend_attention import (
+        extend_attention_fwd,
+    )
+
+    # ---- golden / 参考实现 (仅供对照, 不调用) ----
+    # 找到的 UT: sglang/test/registered/attention/test_triton_attention_kernels.py:30-101
+    #   golden = extend_attention_fwd_torch, 对照 torch.allclose(rtol/atol=1e-3)。下面摘核心段。
+    def _golden_extend_attention(q, k, v, o, k_cache, v_cache,
+                                 qo_indptr, kv_indptr, kv_indices, sliding_window_size):
+        # 摘自 extend_attention_fwd_torch (test_triton_attention_kernels.py:30-101)
+        import torch.nn.functional as F
+
+        B = qo_indptr.size(0) - 1
+        _, H_Q, D = q.shape
+        _, H_KV, _ = k.shape
+        group_size = H_Q // H_KV
+        scale = 1.0 / D**0.5
+        for i in range(B):
+            q_s, q_e = int(qo_indptr[i]), int(qo_indptr[i + 1])
+            kv_s, kv_e = int(kv_indptr[i]), int(kv_indptr[i + 1])
+            k_prefix = k_cache[kv_indices[kv_s:kv_e]]
+            v_prefix = v_cache[kv_indices[kv_s:kv_e]]
+            k_full = torch.cat([k_prefix, k[q_s:q_e]], dim=0)
+            v_full = torch.cat([v_prefix, v[q_s:q_e]], dim=0)
+            if group_size != 1:
+                k_full = k_full.repeat_interleave(group_size, dim=1)
+                v_full = v_full.repeat_interleave(group_size, dim=1)
+            prefix_len, extend_len = k_prefix.size(0), (q_e - q_s)
+            total_len = prefix_len + extend_len
+            pos_keys = torch.arange(total_len, device=q.device)
+            t = prefix_len + torch.arange(extend_len, device=q.device)
+            causal_mask = pos_keys.unsqueeze(0) <= t.unsqueeze(1)
+            if sliding_window_size and sliding_window_size > 0:
+                start = (t - sliding_window_size).clamp_min(0)
+            else:
+                start = torch.zeros_like(t)
+            window_mask = pos_keys.unsqueeze(0) >= start.unsqueeze(1)
+            final_mask = causal_mask & window_mask
+            attn = torch.einsum("qhd,khd->qhk", q[q_s:q_e], k_full) * scale
+            attn = attn.masked_fill(~final_mask.unsqueeze(1), float("-inf"))
+            attn = F.softmax(attn, dim=-1)
+            o[q_s:q_e] = torch.einsum("qhk,khd->qhd", attn, v_full)
+        return o
+
+    # ---- 假输入 ----
+    dt = torch.bfloat16
+    H_Q, H_KV, D = 2, 2, 64
+    prefix_len, extend_len = 3, 4
+    total = prefix_len + extend_len
+    q = torch.randn(extend_len, H_Q, D, dtype=dt, device=CUDA)
+    k = torch.randn(extend_len, H_KV, D, dtype=dt, device=CUDA)
+    v = torch.randn(extend_len, H_KV, D, dtype=dt, device=CUDA)
+    o = torch.empty(extend_len, H_Q, D, dtype=dt, device=CUDA)
+    k_buffer = torch.randn(total, H_KV, D, dtype=dt, device=CUDA)
+    v_buffer = torch.randn(total, H_KV, D, dtype=dt, device=CUDA)
+    qo_indptr = torch.tensor([0, extend_len], dtype=torch.int32, device=CUDA)
+    kv_indptr = torch.tensor([0, prefix_len], dtype=torch.int32, device=CUDA)
+    kv_indices = torch.arange(prefix_len, dtype=torch.int32, device=CUDA)
+
+    # ---- 调用 wrapper (内部 launch @triton.jit _fwd_kernel) ----
+    extend_attention_fwd(
+        q, k, v, o, k_buffer, v_buffer,
+        qo_indptr, kv_indptr, kv_indices,
+        custom_mask=None, is_causal=True, mask_indptr=None,
+        max_len_extend=extend_len,
+    )
+    return o
+
+
+# =============================================================================
+# F2-alt  sgl_kernel_builtin  —  gelu_and_mul
+# -----------------------------------------------------------------------------
+# 代表算子: gelu_and_mul (GEGLU: exact-erf gelu(前半) * 后半)。与第一组的 silu_and_mul 不同。
+#
+# 代码证据:
+#   [python wrapper]  sgl-kernel/python/sgl_kernel/elementwise.py:288  def gelu_and_mul(input, out=None)
+#                     sgl-kernel/python/sgl_kernel/elementwise.py:299      torch.ops.sgl_kernel.gelu_and_mul.default(out, input)
+#   [in-tree CUDA源]  sgl-kernel/csrc/elementwise/activation.cu:129        void gelu_and_mul(at::Tensor& out, at::Tensor& input) {...
+#                     sgl-kernel/csrc/elementwise/activation.cu:143          flashinfer::activation::act_and_mul_kernel<c_type, gelu><<<...>>>(...)
+#   [torch.ops 注册]  sgl-kernel/csrc/common_extension.cc:82               m.def("gelu_and_mul(Tensor! out, Tensor input) -> ()");
+#                     sgl-kernel/csrc/common_extension.cc:83               m.impl("gelu_and_mul", torch::kCUDA, &gelu_and_mul);
+#   [编入扩展 CMake]  sgl-kernel/CMakeLists.txt:265                        "csrc/elementwise/activation.cu"
+# =============================================================================
+def demo_F2_alt_sgl_kernel_builtin():
+    # ---- import ----
+    from sgl_kernel import gelu_and_mul
+
+    # ---- golden / 参考实现 (仅供对照, 不调用) ----
+    # 找到的 UT: sglang/sgl-kernel/tests/test_activation.py:33-37 (test_fused_gelu_mul)
+    #   golden 内联一行 (L35), 对照 torch.testing.assert_close(rtol/atol=1e-3)
+    def _golden_gelu_and_mul(x):
+        # 摘自 test_activation.py:35 —— exact-erf gelu(前半) * 后半
+        dim = x.shape[-1] // 2
+        return x[..., dim:] * torch.nn.functional.gelu(x[..., :dim], approximate="none")
+
+    # ---- 假输入: 最后一维偶数、fp16、16B 对齐 (fp16 -> 末维需为 8 的倍数) ----
+    x = torch.randn(2, 3, 16, device=CUDA, dtype=torch.float16)  # 末维 2*d=16
+
+    # ---- 调用 (等价于 torch.ops.sgl_kernel.gelu_and_mul.default(out, x)) ----
+    out = gelu_and_mul(x)  # -> (2, 3, 8)
+    return out
+
+
+# =============================================================================
+# F3-alt  sgl_kernel_thirdparty  —  flash_attn_with_kvcache
+# -----------------------------------------------------------------------------
+# 代表算子: flash_attn_with_kvcache (FA3 带 KV-cache 的 decode/增量注意力; 可选 paged/RoPE)。
+#   与第一组的 flash_attn_varlen_func 不同, 但底层同为 FetchContent 编入的 sgl-attn FA3 op。
+#
+# 代码证据:
+#   [FetchContent 拉三方] sgl-kernel/CMakeLists.txt:82-87   FetchContent_Declare(repo-flash-attention URL .../sgl-attn/...)
+#   [三方源编入 flash_ops] sgl-kernel/CMakeLists.txt:475-491  "${repo-flash-attention_SOURCE_DIR}/hopper/flash_api.cpp" ... Python_add_library(flash_ops ...)
+#   [三方 kernel 源/注册] sgl-attn/hopper/flash_api.cpp:1673  TORCH_LIBRARY(flash_attn_3, m) { m.def("fwd(" ...   # 只在 sgl-attn 仓库
+#   [python wrapper]     sgl-kernel/python/sgl_kernel/flash_attn.py:36   def flash_attn_with_kvcache(...)
+#                        sgl-kernel/python/sgl_kernel/flash_attn.py:190      out,... = torch.ops.sgl_kernel.fwd.default(...)
+# =============================================================================
+def demo_F3_alt_sgl_kernel_thirdparty():
+    # ---- import ----
+    from sgl_kernel.flash_attn import flash_attn_with_kvcache
+
+    # ---- golden / 参考实现 (仅供对照, 不调用) ----
+    # 找到的 UT: sglang/sgl-kernel/tests/test_flash_attention.py:541 (test_flash_attn_kvcache),
+    #   kernel 调用 :892; golden = attention_ref (:186-330, 纯 torch 注意力), 对照
+    #   "误差 <= 2x torch-fp16 误差" (:995-1002)。下面摘 attention_ref 的核心数学。
+    def _golden_attention_ref(q, k, v, causal=False):
+        # 摘自 attention_ref 核心段 (test_flash_attention.py:244-300)
+        import math
+
+        from einops import repeat
+
+        q, k, v = q.float(), k.float(), v.float()
+        k = repeat(k, "b s h d -> b s (h g) d", g=q.shape[2] // k.shape[2])
+        v = repeat(v, "b s h d -> b s (h g) d", g=q.shape[2] // v.shape[2])
+        softmax_scale = 1.0 / math.sqrt(q.shape[-1])
+        scores = torch.einsum("bthd,bshd->bhts", q * softmax_scale, k)
+        if causal:
+            sq, sk = q.shape[1], k.shape[1]
+            row = torch.arange(sq, device=q.device).unsqueeze(1)
+            col = torch.arange(sk, device=q.device).unsqueeze(0)
+            scores.masked_fill_(col > row + (sk - sq), float("-inf"))
+        attention = torch.softmax(scores, dim=-1).to(v.dtype)
+        return torch.einsum("bhts,bshd->bthd", attention, v)
+
+    # ---- 假输入: 1 个 new query token 的 decode step ----
+    dt = torch.bfloat16
+    batch, seqlen_q, nheads, headdim = 2, 1, 4, 64
+    nheads_k, seqlen_cache = 4, 16
+    q = torch.randn(batch, seqlen_q, nheads, headdim, device=CUDA, dtype=dt)
+    k_cache = torch.randn(batch, seqlen_cache, nheads_k, headdim, device=CUDA, dtype=dt)
+    v_cache = torch.randn(batch, seqlen_cache, nheads_k, headdim, device=CUDA, dtype=dt)
+    cache_seqlens = torch.full((batch,), 8, dtype=torch.int32, device=CUDA)  # 有效前缀长
+
+    # ---- 调用 (内部 -> torch.ops.sgl_kernel.fwd.default) ----
+    out = flash_attn_with_kvcache(
+        q, k_cache, v_cache, cache_seqlens=cache_seqlens, causal=True
+    )
+    return out
+
+
+# =============================================================================
+# F4-alt  sglang_jit (from csrc)  —  activation (run_activation / silu_and_mul)
+# -----------------------------------------------------------------------------
+# 代表算子: sglang.jit_kernel.activation 的门控激活 (silu/gelu/gelu_tanh 的 act(前半)*后半)。
+#   与第一组的 add_constant / rmsnorm 不同, 但同为 sglang 自有 csrc 的运行时 JIT。
+#
+# 代码证据 (sglang):
+#   [import loader]  python/sglang/jit_kernel/activation.py:34   load_jit("activation", *args, cuda_files=["elementwise/activation.cuh"], ...)
+#   [自有源]         python/sglang/jit_kernel/csrc/elementwise/activation.cuh  (ActivationKernel<...>::run_activation)
+#   [公开 API]       python/sglang/jit_kernel/activation.py:83   def run_activation(...)   / :144 silu_and_mul
+#   [import + 调用]  python/sglang/srt/layers/activation.py:57   from sglang.jit_kernel.activation import (gelu_and_mul, gelu_tanh_and_mul, relu2, silu_and_mul)
+#                    python/sglang/srt/layers/activation.py:102      silu_and_mul(x, out)
+# =============================================================================
+def demo_F4_alt_sglang_jit_csrc():
+    # ---- import (与 srt/layers/activation.py:57 一致) ----
+    from sglang.jit_kernel.activation import run_activation, silu_and_mul
+
+    # ---- golden / 参考实现 (仅供对照, 不调用) ----
+    # 找到的 UT: sglang/python/sglang/jit_kernel/tests/test_activation.py:35-45 (_reference)
+    #   对照 run_activation (:61-64) 用 torch.testing.assert_close。
+    def _golden_activation(op_name, x):
+        # 摘自 test_activation.py:35-45 (_reference)
+        import torch.nn.functional as F
+
+        d = x.shape[-1] // 2
+        lhs = x[..., :d].float()
+        rhs = x[..., d:]
+        if op_name == "silu":
+            act = F.silu(lhs)
+        elif op_name == "gelu":
+            act = F.gelu(lhs, approximate="none")
+        else:
+            act = F.gelu(lhs, approximate="tanh")
+        return act.to(dtype=x.dtype) * rhs
+
+    # ---- 假输入: 门控输入末维 = 2*hidden ----
+    x = torch.randn(7, 16, dtype=torch.bfloat16, device=CUDA)  # hidden = 8
+
+    # ---- 调用: 首次调用会现场编译 csrc/elementwise/activation.cuh (之后缓存) ----
+    out = silu_and_mul(x)  # 等价 run_activation("silu", x, None) -> (7, 8)
+    return out
+
+
+# =============================================================================
+# F5-alt  thirdparty_aot  —  flashinfer.sampling.min_p_sampling_from_probs
+# -----------------------------------------------------------------------------
+# 代表算子: min-p 采样 (保留 prob >= p*max_prob 的 token 再采样)。预编译 AOT,
+#   注册为 torch.ops.flashinfer.*。与第一组的 top_k_top_p_sampling_from_probs 不同。
+#
+# 代码证据:
+#   [sglang import]  python/sglang/srt/layers/sampler.py:29   from flashinfer.sampling import (min_p_sampling_from_probs, ...)
+#   [sglang 调用]    python/sglang/srt/layers/sampler.py:239      batch_next_token_ids = min_p_sampling_from_probs(probs, sampling_info.min_ps)
+#   [AOT 机制]       flashinfer/flashinfer/sampling.py:66   module = gen_sampling_module().build_and_load()
+#                    flashinfer/flashinfer/sampling.py:343  @register_custom_op("flashinfer::min_p_sampling_from_probs", ...)
+#                    flashinfer/flashinfer/jit/core.py:307  build_and_load: if self.is_aot: return self.load(self.aot_path)  # 预编译 .so
+#                    flashinfer/flashinfer/aot.py:602       gen_sampling_module(),   # 在 AOT 预编列表内
+# =============================================================================
+def demo_F5_alt_thirdparty_aot():
+    # ---- import (与 sampler.py:29 一致) ----
+    from flashinfer.sampling import min_p_sampling_from_probs
+
+    # ---- golden / 参考实现 (仅供对照, 不调用) ----
+    # 找到的 UT: flashinfer/tests/utils/test_sampling.py:292-317 (test_min_p_sampling)
+    #   采样随机, 无闭式 golden; 构造 min-p 合法 token mask, 断言采样落在 mask==1 上。
+    def _golden_min_p_mask(normalized_prob, p):
+        # 摘自 test_sampling.py:298-305 (inline golden mask)
+        batch_size, vocab_size = normalized_prob.shape
+        sorted_prob, indices = torch.sort(normalized_prob, descending=False)
+        top_probs = sorted_prob[:, -1].unsqueeze(-1)  # 每行最大 prob
+        scaled_p = p * top_probs
+        mask = torch.zeros(batch_size, vocab_size, dtype=torch.int32, device=normalized_prob.device)
+        mask.scatter_add_(1, indices, (sorted_prob >= scaled_p).int())
+        return mask
+
+    # ---- 假输入: (batch=4, vocab=5) 归一化概率 ----
+    pre = torch.rand(4, 5, device=CUDA)
+    probs = pre / pre.sum(dim=-1, keepdim=True)
+    min_p = torch.full((4,), 0.1, device=CUDA)
+
+    # ---- 调用 (底层 torch.ops.flashinfer.min_p_sampling_from_probs, 预编译 AOT) ----
+    ids = min_p_sampling_from_probs(probs, min_p)  # -> int32 (4,)
+    return ids
+
+
+# 第二组汇总表 (F1-F5 的不同算子)
+BACKENDS_ALT = {
+    "F1_sglang_triton(alt)":      demo_F1_alt_sglang_triton,       # extend_attention_fwd
+    "F2_sgl_kernel_builtin(alt)": demo_F2_alt_sgl_kernel_builtin,  # gelu_and_mul
+    "F3_sgl_kernel_thirdparty(alt)": demo_F3_alt_sgl_kernel_thirdparty,  # flash_attn_with_kvcache
+    "F4_sglang_jit_csrc(alt)":    demo_F4_alt_sglang_jit_csrc,     # jit_kernel activation
+    "F5_thirdparty_aot(alt)":     demo_F5_alt_thirdparty_aot,      # min_p_sampling_from_probs
+}
+
+
+def all_backends_alt_test():
+    for name, fn in BACKENDS_ALT.items():
+        try:
+            out = fn()
+            shape = tuple(out.shape) if hasattr(out, "shape") else type(out)
+            print(f"[OK]   {name:30s} -> {shape}")
+        except Exception as e:  # noqa: BLE001  (演示用途，容忍缺环境)
+            print(f"[SKIP] {name:30s} -> {type(e).__name__}: {e}")
+
 
 if __name__ == "__main__":
     # 仅演示"import + 调用"结构; 绝大多数需要 CUDA GPU + 对应包。
     # 这里逐个 try 运行，缺环境则打印跳过原因(不影响作为"证据清单"阅读)。
     all_backends_test()
+    all_backends_alt_test()

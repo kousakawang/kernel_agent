@@ -2,362 +2,671 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import urllib.parse
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
-from .config import DecomposerConfig
-from .source_resolver import SourceResolver
+from .config import RuntimeCaptureConfig
+from .sampling import select_invocations
 
 
-@dataclass
-class RangeEvent:
+RUNTIME_CAPTURE_VERSION = "kid-runtime-capture/v1"
+LABEL_PREFIX = "KID:"
+
+
+@dataclass(frozen=True)
+class NvtxRange:
     start: int
     end: int
-    fields: dict[str, Any]
-    pid: int | None = None
-    tid: int | None = None
-
-
-@dataclass
-class KernelEvent:
-    start: int
-    end: int
-    name: str
-    correlation_id: int | None
-    pid: int | None = None
-    tid: int | None = None
+    fields: dict[str, str]
+    global_tid: int | None
+    global_pid: int | None
 
     @property
     def duration_us(self) -> float:
         return max(0, self.end - self.start) / 1000.0
 
+    @property
+    def process_id(self) -> int | None:
+        return _os_pid(self.global_pid if self.global_pid is not None else self.global_tid)
 
-@dataclass
-class RuntimeEvent:
+
+@dataclass(frozen=True)
+class ApiEvent:
     start: int
     end: int
     correlation_id: int
-    name: str | None = None
-    pid: int | None = None
-    tid: int | None = None
+    name: str | None
+    global_tid: int | None
+    global_pid: int | None
+    source_table: str
+
+    @property
+    def process_id(self) -> int | None:
+        return _os_pid(self.global_pid if self.global_pid is not None else self.global_tid)
 
 
-class TraceParser:
-    def __init__(self, config: DecomposerConfig, resolver: SourceResolver):
-        self.config = config
-        self.resolver = resolver
-        self.selection = config.selection
-        self.string_ids: dict[int, str] = {}
+@dataclass(frozen=True)
+class KernelEvent:
+    start: int
+    end: int
+    correlation_id: int
+    name: str
+    global_pid: int | None
+    device_id: int | None
+    stream_id: int | None
+    source_table: str
 
-    def parse(self, sqlite_path: Path) -> list[dict[str, Any]]:
-        conn = sqlite3.connect(sqlite_path)
-        conn.row_factory = sqlite3.Row
-        try:
-            self.string_ids = self._load_string_ids(conn)
-            ranges = self._load_pygpu_ranges(conn)
-            kernels = self._load_kernels(conn)
-            runtimes = self._load_runtimes(conn)
-        finally:
-            conn.close()
+    @property
+    def duration_us(self) -> float:
+        return max(0, self.end - self.start) / 1000.0
 
-        targets = [event for event in ranges if event.fields.get("type") == "target"]
-        wrappers = [event for event in ranges if event.fields.get("type") == "wrap"]
-        targets.sort(key=lambda event: event.start)
-        skip = int(self.config.profiling.get("skip_target_invocations", 0))
-        if skip:
-            targets = targets[skip:]
-        runtime_by_corr = {event.correlation_id: event for event in runtimes}
+    @property
+    def process_id(self) -> int | None:
+        return _os_pid(self.global_pid)
 
-        by_call: dict[str, dict[str, Any]] = {}
-        all_kernel_records: dict[str, list[dict[str, Any]]] = {}
-        for kernel in kernels:
-            runtime = runtime_by_corr.get(kernel.correlation_id) if kernel.correlation_id is not None else None
-            ts = runtime.start if runtime else kernel.start
-            target = _find_enclosing(targets, ts, runtime.tid if runtime else kernel.tid)
-            if target is None:
-                continue
-            stage = target.fields.get("stage", "unknown")
-            allowed = self.selection.get("stages")
-            if allowed and stage not in allowed:
-                continue
-            call_id = str(target.fields.get("call_id", "unknown"))
-            wrapper = _find_enclosing(wrappers, ts, runtime.tid if runtime else kernel.tid)
-            wrapper_fields = dict(wrapper.fields) if wrapper else {}
-            record = {
-                "kernel_event": kernel,
-                "runtime_event": runtime,
-                "wrapper": wrapper_fields,
-            }
-            all_kernel_records.setdefault(call_id, []).append(record)
-            if call_id not in by_call:
-                by_call[call_id] = {
-                    "call_id": _to_int_or_raw(target.fields.get("call_id")),
-                    "pid": target.pid,
-                    "tid": target.tid,
-                    "stage": stage,
-                    "forward_mode": target.fields.get("forward_mode"),
-                    "start_ns": target.start,
-                    "end_ns": target.end,
-                    "selected_kernels": [],
-                }
 
-        invocations: list[dict[str, Any]] = []
-        for call_id, invocation in sorted(by_call.items(), key=lambda item: invocation_sort_key(item[1])):
-            records = all_kernel_records.get(call_id, [])
-            selected = self._select_records(records)
-            invocation["selected_kernels"] = [
-                self._record_to_schema(idx + 1, record, records) for idx, record in enumerate(selected)
-            ]
-            invocations.append(invocation)
-        return invocations
-
-    def _select_records(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        top_k = int(self.selection.get("top_k", 20))
-        min_duration = float(self.selection.get("min_duration_us", 0))
-        min_share = float(self.selection.get("min_share_in_invocation", 0.0))
-        total_us = sum(item["kernel_event"].duration_us for item in records) or 1.0
-        out = []
-        for record in sorted(records, key=lambda item: item["kernel_event"].duration_us, reverse=True):
-            duration = record["kernel_event"].duration_us
-            share = duration / total_us
-            if duration < min_duration or share < min_share:
-                continue
-            out.append(record)
-            if top_k and len(out) >= top_k:
-                break
-        return out
-
-    def _record_to_schema(self, rank: int, record: dict[str, Any], all_records: list[dict[str, Any]]) -> dict[str, Any]:
-        kernel: KernelEvent = record["kernel_event"]
-        total_us = sum(item["kernel_event"].duration_us for item in all_records) or 1.0
-        normalized = normalize_kernel_name(kernel.name)
-        category, wrapper_info, implementation = self.resolver.resolve(
-            raw_kernel_name=kernel.name,
-            normalized_kernel_name=normalized,
-            wrapper=record.get("wrapper"),
-        )
-        return {
-            "rank": rank,
-            "selection_reason": "top_k",
-            "kernel": {
-                "raw_name": kernel.name,
-                "normalized_name": normalized,
-                "category": category,
-            },
-            "metrics": {
-                "duration_us": kernel.duration_us,
-                "share_in_invocation": kernel.duration_us / total_us,
-            },
-            "wrapper": wrapper_info,
-            "implementation": implementation,
-            "attribution": {
-                "method": "cuda_correlation_id+nvtx" if record.get("runtime_event") else "nvtx_time_containment",
-                "confidence": "high" if record.get("wrapper") else "medium",
-            },
-        }
-
-    def _load_string_ids(self, conn: sqlite3.Connection) -> dict[int, str]:
-        tables = _tables(conn)
-        string_table = next((name for name in tables if name.lower() == "stringids"), None)
-        if not string_table:
-            return {}
-        cols = _columns(conn, string_table)
-        id_col = _first(cols, ["id", "Id"])
-        value_col = _first(cols, ["value", "string", "name"])
-        if not id_col or not value_col:
-            return {}
-        out = {}
-        for row in conn.execute(f'SELECT "{id_col}", "{value_col}" FROM "{string_table}"'):
-            try:
-                out[int(row[0])] = str(row[1])
-            except Exception:
-                continue
-        return out
-
-    def _load_pygpu_ranges(self, conn: sqlite3.Connection) -> list[RangeEvent]:
-        out: list[RangeEvent] = []
-        for table in _tables(conn):
-            if "nvtx" not in table.lower():
-                continue
-            cols = _columns(conn, table)
-            start_col = _first(cols, ["start", "startNs", "startTime"])
-            end_col = _first(cols, ["end", "endNs", "endTime"])
-            if not start_col or not end_col:
-                continue
-            for row in conn.execute(f'SELECT * FROM "{table}"'):
-                text = self._row_text(row)
-                if not text or "PYGPU:type=" not in text:
-                    continue
-                fields = parse_pygpu_label(text)
-                out.append(
-                    RangeEvent(
-                        start=int(row[start_col]),
-                        end=int(row[end_col]),
-                        fields=fields,
-                        pid=_row_int(row, ["globalPid", "pid", "processId"]),
-                        tid=_row_int(row, ["globalTid", "tid", "threadId"]),
-                    )
-                )
-        return out
-
-    def _row_text(self, row: sqlite3.Row) -> str | None:
-        keys = set(row.keys())
-        for key in ("text", "name", "message"):
-            if key in keys and row[key] is not None:
-                return str(row[key])
-        for key in ("textId", "nameId", "messageId", "domainId"):
-            if key in keys and row[key] is not None:
-                value = self.string_ids.get(int(row[key]))
-                if value:
-                    return value
+def _os_pid(value: int | None) -> int | None:
+    if value is None:
         return None
-
-    def _load_kernels(self, conn: sqlite3.Connection) -> list[KernelEvent]:
-        out: list[KernelEvent] = []
-        for table in _tables(conn):
-            lowered = table.lower()
-            if "kernel" not in lowered or "runtime" in lowered:
-                continue
-            cols = _columns(conn, table)
-            start_col = _first(cols, ["start", "startNs", "startTime"])
-            end_col = _first(cols, ["end", "endNs", "endTime"])
-            corr_col = _first(cols, ["correlationId", "correlation_id"])
-            if not start_col or not end_col:
-                continue
-            for row in conn.execute(f'SELECT * FROM "{table}"'):
-                name = self._kernel_name(row)
-                if not name:
-                    continue
-                out.append(
-                    KernelEvent(
-                        start=int(row[start_col]),
-                        end=int(row[end_col]),
-                        name=name,
-                        correlation_id=int(row[corr_col]) if corr_col and row[corr_col] is not None else None,
-                        pid=_row_int(row, ["globalPid", "pid", "processId"]),
-                        tid=_row_int(row, ["globalTid", "tid", "threadId"]),
-                    )
-                )
-        return out
-
-    def _kernel_name(self, row: sqlite3.Row) -> str | None:
-        keys = set(row.keys())
-        for key in ("demangledName", "shortName", "mangledName", "name"):
-            if key in keys and row[key] is not None:
-                value = row[key]
-                if isinstance(value, int):
-                    return self.string_ids.get(int(value), str(value))
-                return str(value)
-        for key in ("demangledNameId", "shortNameId", "mangledNameId", "nameId"):
-            if key in keys and row[key] is not None:
-                return self.string_ids.get(int(row[key]), str(row[key]))
-        return None
-
-    def _load_runtimes(self, conn: sqlite3.Connection) -> list[RuntimeEvent]:
-        out: list[RuntimeEvent] = []
-        for table in _tables(conn):
-            lowered = table.lower()
-            if "runtime" not in lowered or "cupti" not in lowered:
-                continue
-            cols = _columns(conn, table)
-            start_col = _first(cols, ["start", "startNs", "startTime"])
-            end_col = _first(cols, ["end", "endNs", "endTime"])
-            corr_col = _first(cols, ["correlationId", "correlation_id"])
-            if not start_col or not end_col or not corr_col:
-                continue
-            for row in conn.execute(f'SELECT * FROM "{table}"'):
-                if row[corr_col] is None:
-                    continue
-                out.append(
-                    RuntimeEvent(
-                        start=int(row[start_col]),
-                        end=int(row[end_col]),
-                        correlation_id=int(row[corr_col]),
-                        name=self._row_text(row),
-                        pid=_row_int(row, ["globalPid", "pid", "processId"]),
-                        tid=_row_int(row, ["globalTid", "tid", "threadId"]),
-                    )
-                )
-        return out
-
-
-def parse_pygpu_label(text: str) -> dict[str, Any]:
-    fields: dict[str, Any] = {}
-    marker = "PYGPU:"
-    start = text.find(marker)
-    if start >= 0:
-        text = text[start + len(marker) :]
-    for part in text.split("|"):
-        if "=" not in part:
-            continue
-        key, value = part.split("=", 1)
-        fields[key] = value
-    return fields
-
-
-def normalize_kernel_name(name: str) -> str:
-    text = name.strip()
-    for prefix in ("void ", "__global__ "):
-        if text.startswith(prefix):
-            text = text[len(prefix) :]
-    if "(" in text:
-        text = text.split("(", 1)[0]
-    return text.strip()
-
-
-def _find_enclosing(events: list[RangeEvent], ts: int, tid: int | None = None) -> RangeEvent | None:
-    candidates = [event for event in events if event.start <= ts <= event.end]
-    if tid is not None:
-        same_tid = [event for event in candidates if event.tid in {None, tid}]
-        if same_tid:
-            candidates = same_tid
-    if not candidates:
-        return None
-    return min(candidates, key=lambda event: event.end - event.start)
+    # Nsight encodes globalPid/globalTid as pid << 24 (plus tid for globalTid).
+    return (value >> 24) & 0xFFFFFF if value >= (1 << 24) else value
 
 
 def _tables(conn: sqlite3.Connection) -> list[str]:
     return [
-        row[0]
+        str(row[0])
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
     ]
 
 
-def _columns(conn: sqlite3.Connection, table: str) -> list[str]:
-    return [row[1] for row in conn.execute(f'PRAGMA table_info("{table}")')]
+def _columns(conn: sqlite3.Connection, table: str) -> dict[str, str]:
+    return {
+        str(row[1]).lower(): str(row[1])
+        for row in conn.execute(f'PRAGMA table_info("{table}")')
+    }
 
 
-def _first(cols: list[str], candidates: list[str]) -> str | None:
-    lowered = {col.lower(): col for col in cols}
+def _first(columns: dict[str, str], candidates: Iterable[str]) -> str | None:
     for candidate in candidates:
-        if candidate.lower() in lowered:
-            return lowered[candidate.lower()]
+        value = columns.get(candidate.lower())
+        if value is not None:
+            return value
     return None
 
 
-def _row_int(row: sqlite3.Row, keys: list[str]) -> int | None:
-    available = set(row.keys())
-    for key in keys:
-        if key in available and row[key] is not None:
+def _row_int(row: sqlite3.Row, candidates: Iterable[str]) -> int | None:
+    keys = {key.lower(): key for key in row.keys()}
+    for candidate in candidates:
+        actual = keys.get(candidate.lower())
+        if actual is not None and row[actual] is not None:
+            return int(row[actual])
+    return None
+
+
+def _load_string_ids(conn: sqlite3.Connection) -> dict[int, str]:
+    strings: dict[int, str] = {}
+    for table in _tables(conn):
+        if table.lower() not in {"stringids", "string_ids"}:
+            continue
+        columns = _columns(conn, table)
+        id_column = _first(columns, ("id", "stringId", "string_id"))
+        value_column = _first(columns, ("value", "string", "text"))
+        if id_column is None or value_column is None:
+            continue
+        for row in conn.execute(f'SELECT * FROM "{table}"'):
+            if row[id_column] is not None and row[value_column] is not None:
+                strings[int(row[id_column])] = str(row[value_column])
+    return strings
+
+
+def _row_text(row: sqlite3.Row, strings: dict[int, str]) -> str | None:
+    keys = {key.lower(): key for key in row.keys()}
+    for candidate in ("text", "jsonText", "name", "message"):
+        actual = keys.get(candidate.lower())
+        if actual is not None and row[actual] is not None:
+            return str(row[actual])
+    for candidate in ("textId", "jsonTextId", "nameId"):
+        actual = keys.get(candidate.lower())
+        if actual is not None and row[actual] is not None:
+            return strings.get(int(row[actual]), str(row[actual]))
+    return None
+
+
+def _parse_label(text: str) -> dict[str, str]:
+    position = text.find(LABEL_PREFIX)
+    if position < 0:
+        return {}
+    fields: dict[str, str] = {}
+    for component in text[position + len(LABEL_PREFIX) :].split("|"):
+        if "=" not in component:
+            continue
+        key, value = component.split("=", 1)
+        fields[key] = urllib.parse.unquote(value)
+    return fields
+
+
+def _load_nvtx_ranges(
+    conn: sqlite3.Connection, strings: dict[int, str]
+) -> tuple[list[NvtxRange], list[str]]:
+    ranges: list[NvtxRange] = []
+    used_tables: list[str] = []
+    for table in _tables(conn):
+        if "nvtx" not in table.lower():
+            continue
+        columns = _columns(conn, table)
+        start_column = _first(columns, ("start", "startNs", "startTime"))
+        end_column = _first(columns, ("end", "endNs", "endTime"))
+        if start_column is None or end_column is None:
+            continue
+        used = False
+        for row in conn.execute(f'SELECT * FROM "{table}"'):
+            if row[start_column] is None or row[end_column] is None:
+                continue
+            text = _row_text(row, strings)
+            if not text or LABEL_PREFIX not in text:
+                continue
+            fields = _parse_label(text)
+            if fields.get("type") not in {"high", "execution"}:
+                continue
+            ranges.append(
+                NvtxRange(
+                    start=int(row[start_column]),
+                    end=int(row[end_column]),
+                    fields=fields,
+                    global_tid=_row_int(row, ("globalTid", "tid", "threadId")),
+                    global_pid=_row_int(row, ("globalPid", "pid", "processId")),
+                )
+            )
+            used = True
+        if used:
+            used_tables.append(table)
+    ranges.sort(key=lambda item: (item.start, item.end))
+    return ranges, used_tables
+
+
+def _load_api_events(
+    conn: sqlite3.Connection, strings: dict[int, str]
+) -> tuple[list[ApiEvent], list[str]]:
+    events: list[ApiEvent] = []
+    used_tables: list[str] = []
+    for table in _tables(conn):
+        lowered = table.lower()
+        if "cupti" not in lowered or not ("runtime" in lowered or "driver" in lowered):
+            continue
+        columns = _columns(conn, table)
+        start_column = _first(columns, ("start", "startNs", "startTime"))
+        end_column = _first(columns, ("end", "endNs", "endTime"))
+        correlation_column = _first(columns, ("correlationId", "correlation_id"))
+        if start_column is None or end_column is None or correlation_column is None:
+            continue
+        used = False
+        for row in conn.execute(f'SELECT * FROM "{table}"'):
+            if row[start_column] is None or row[correlation_column] is None:
+                continue
+            end = row[end_column]
+            events.append(
+                ApiEvent(
+                    start=int(row[start_column]),
+                    end=int(end) if end is not None else int(row[start_column]),
+                    correlation_id=int(row[correlation_column]),
+                    name=_row_text(row, strings),
+                    global_tid=_row_int(row, ("globalTid", "tid", "threadId")),
+                    global_pid=_row_int(row, ("globalPid", "pid", "processId")),
+                    source_table=table,
+                )
+            )
+            used = True
+        if used:
+            used_tables.append(table)
+    events.sort(key=lambda item: item.start)
+    return events, used_tables
+
+
+def _kernel_name(row: sqlite3.Row, strings: dict[int, str]) -> str | None:
+    keys = {key.lower(): key for key in row.keys()}
+    for candidate in (
+        "demangledName",
+        "shortName",
+        "mangledName",
+        "name",
+        "demangledNameId",
+        "shortNameId",
+        "mangledNameId",
+        "nameId",
+    ):
+        actual = keys.get(candidate.lower())
+        if actual is None or row[actual] is None:
+            continue
+        value = row[actual]
+        return strings.get(int(value), str(value)) if isinstance(value, int) else str(value)
+    return None
+
+
+def _load_kernel_events(
+    conn: sqlite3.Connection, strings: dict[int, str]
+) -> tuple[list[KernelEvent], list[str]]:
+    events: list[KernelEvent] = []
+    used_tables: list[str] = []
+    seen: set[tuple[Any, ...]] = set()
+    for table in _tables(conn):
+        lowered = table.lower()
+        if "cupti" not in lowered or "kernel" not in lowered or "runtime" in lowered:
+            continue
+        columns = _columns(conn, table)
+        start_column = _first(columns, ("start", "startNs", "startTime"))
+        end_column = _first(columns, ("end", "endNs", "endTime"))
+        correlation_column = _first(columns, ("correlationId", "correlation_id"))
+        if start_column is None or end_column is None or correlation_column is None:
+            continue
+        used = False
+        for row in conn.execute(f'SELECT * FROM "{table}"'):
+            if any(row[column] is None for column in (start_column, end_column, correlation_column)):
+                continue
+            name = _kernel_name(row, strings)
+            if not name:
+                continue
+            event = KernelEvent(
+                start=int(row[start_column]),
+                end=int(row[end_column]),
+                correlation_id=int(row[correlation_column]),
+                name=name,
+                global_pid=_row_int(row, ("globalPid", "pid", "processId")),
+                device_id=_row_int(row, ("deviceId", "device", "device_id")),
+                stream_id=_row_int(row, ("streamId", "stream", "stream_id")),
+                source_table=table,
+            )
+            key = (
+                event.start,
+                event.end,
+                event.correlation_id,
+                event.name,
+                event.global_pid,
+                event.device_id,
+                event.stream_id,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            events.append(event)
+            used = True
+        if used:
+            used_tables.append(table)
+    events.sort(key=lambda item: item.start)
+    return events, used_tables
+
+
+def _find_enclosing(
+    ranges: Iterable[NvtxRange], timestamp: int, api: ApiEvent
+) -> NvtxRange | None:
+    candidates = [
+        item
+        for item in ranges
+        if item.start <= timestamp <= item.end
+        and (
+            item.process_id is None
+            or api.process_id is None
+            or item.process_id == api.process_id
+        )
+    ]
+    if api.global_tid is not None:
+        same_thread = [
+            item for item in candidates if item.global_tid in {None, api.global_tid}
+        ]
+        if same_thread:
+            candidates = same_thread
+    return min(candidates, key=lambda item: item.end - item.start) if candidates else None
+
+
+def _load_capture_events(
+    events_dir: Path,
+) -> tuple[dict[tuple[int | None, str], dict[str, Any]], list[Path]]:
+    paths = sorted(events_dir.glob("events_*.jsonl")) if events_dir.is_dir() else [events_dir]
+    events: dict[tuple[int | None, str], dict[str, Any]] = {}
+    for path in paths:
+        if not path.exists():
+            continue
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if not line.strip():
+                continue
             try:
-                return int(row[key])
-            except Exception:
-                return None
-    return None
+                event = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(f"invalid JSONL {path}:{line_number}: {exc}") from exc
+            if event.get("event") != "execution_capture":
+                continue
+            capture_id = str(event.get("capture_id"))
+            key = (int(event["pid"]) if event.get("pid") is not None else None, capture_id)
+            if key in events:
+                raise RuntimeError(f"duplicate capture event id in process: {key}")
+            events[key] = event
+    return events, [path for path in paths if path.exists()]
 
 
-def _to_int_or_raw(value: Any) -> Any:
-    try:
-        return int(value)
-    except Exception:
-        return value
+def _capture_event_for(
+    capture_events: dict[tuple[int | None, str], dict[str, Any]],
+    execution: NvtxRange,
+) -> dict[str, Any]:
+    capture_id = str(execution.fields.get("capture_id"))
+    exact = capture_events.get((execution.process_id, capture_id))
+    if exact is not None:
+        return exact
+    matches = [event for (pid, cid), event in capture_events.items() if cid == capture_id]
+    if len(matches) == 1:
+        return matches[0]
+    return {}
 
 
-def invocation_sort_key(invocation: dict[str, Any]) -> tuple[int, str]:
-    start = invocation.get("start_ns")
-    try:
-        return int(start), str(invocation.get("call_id"))
-    except Exception:
-        return 0, str(invocation.get("call_id"))
+class RuntimeTraceParser:
+    def __init__(self, config: RuntimeCaptureConfig):
+        self.config = config
 
+    def parse(self, sqlite_path: Path, events_dir: Path) -> dict[str, Any]:
+        conn = sqlite3.connect(str(sqlite_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            strings = _load_string_ids(conn)
+            ranges, nvtx_tables = _load_nvtx_ranges(conn, strings)
+            api_events, api_tables = _load_api_events(conn, strings)
+            kernel_events, kernel_tables = _load_kernel_events(conn, strings)
+            table_names = _tables(conn)
+        finally:
+            conn.close()
+
+        capture_events, event_paths = _load_capture_events(events_dir)
+        high_ranges = [item for item in ranges if item.fields.get("type") == "high"]
+        execution_ranges = [item for item in ranges if item.fields.get("type") == "execution"]
+        if not high_ranges:
+            raise RuntimeError(
+                "No KID high-level NVTX ranges found. SQLite tables: "
+                + ", ".join(table_names)
+            )
+        if not kernel_events:
+            raise RuntimeError(
+                "No CUDA GPU kernel activities found. SQLite tables: "
+                + ", ".join(table_names)
+            )
+
+        graph_launches = [
+            event
+            for event in api_events
+            if event.name and "graphlaunch" in event.name.replace("_", "").lower()
+        ]
+        if graph_launches:
+            raise RuntimeError(
+                "CUDA Graph launch activity was observed; Runtime Capture requires eager execution"
+            )
+
+        apis_by_key: dict[tuple[int | None, int], list[ApiEvent]] = defaultdict(list)
+        for event in api_events:
+            apis_by_key[(event.process_id, event.correlation_id)].append(event)
+
+        high_index = {id(item): index for index, item in enumerate(high_ranges)}
+        execution_index = {id(item): index for index, item in enumerate(execution_ranges)}
+        kernel_rows: list[dict[str, Any]] = []
+        kernels_by_high: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        kernels_by_execution: dict[int, list[dict[str, Any]]] = defaultdict(list)
+
+        for ordinal, kernel in enumerate(kernel_events, start=1):
+            apis = list(apis_by_key.get((kernel.process_id, kernel.correlation_id), []))
+            if not apis:
+                apis = [
+                    item
+                    for (pid, correlation), values in apis_by_key.items()
+                    if correlation == kernel.correlation_id
+                    and (pid is None or kernel.process_id is None)
+                    for item in values
+                ]
+            matches: list[tuple[NvtxRange, NvtxRange | None, ApiEvent]] = []
+            for api in apis:
+                high = _find_enclosing(high_ranges, api.start, api)
+                if high is None:
+                    continue
+                execution = _find_enclosing(execution_ranges, api.start, api)
+                if execution is not None and str(execution.fields.get("parent_call_id")) != str(
+                    high.fields.get("call_id")
+                ):
+                    execution = None
+                matches.append((high, execution, api))
+            if not matches:
+                continue
+            high, execution, api = max(
+                matches, key=lambda item: (item[1] is not None, item[2].start)
+            )
+            global_pid = kernel.global_pid
+            kernel_id = f"p{global_pid or 0}-c{kernel.correlation_id}-k{ordinal}"
+            row = {
+                "kernel_id": kernel_id,
+                "correlation_id": kernel.correlation_id,
+                "name": kernel.name,
+                "global_pid": global_pid,
+                "device_id": kernel.device_id,
+                "stream_id": kernel.stream_id,
+                "gpu_start_ns": kernel.start,
+                "gpu_end_ns": kernel.end,
+                "duration_us": kernel.duration_us,
+                "launch_api": {
+                    "name": api.name,
+                    "start_ns": api.start,
+                    "table": api.source_table,
+                },
+                "high_call_id": str(high.fields.get("call_id")),
+                "owner_capture_id": (
+                    str(execution.fields.get("capture_id")) if execution else None
+                ),
+            }
+            kernel_rows.append(row)
+            kernels_by_high[high_index[id(high)]].append(row)
+            if execution is not None:
+                kernels_by_execution[execution_index[id(execution)]].append(row)
+
+        invocations: list[dict[str, Any]] = []
+        for high_position, high in enumerate(high_ranges):
+            high_kernels = kernels_by_high.get(high_position, [])
+            high_total_us = sum(item["duration_us"] for item in high_kernels)
+            child_ranges = [
+                execution
+                for execution in execution_ranges
+                if str(execution.fields.get("parent_call_id"))
+                == str(high.fields.get("call_id"))
+                and execution.process_id == high.process_id
+                and high.start <= execution.start <= execution.end <= high.end
+            ]
+            child_ranges.sort(key=lambda item: item.start)
+            entries: list[dict[str, Any]] = []
+            for execution in child_ranges:
+                direct_kernels = kernels_by_execution.get(execution_index[id(execution)], [])
+                event = _capture_event_for(capture_events, execution)
+                capture_id = str(execution.fields.get("capture_id"))
+                provider_hint = event.get("provider_hint", event.get("provider"))
+                implementation_hint = event.get(
+                    "implementation_hint", event.get("implementation", {})
+                )
+                direct_us = sum(item["duration_us"] for item in direct_kernels)
+                entries.append(
+                    {
+                        "capture_id": capture_id,
+                        "parent_capture_id": execution.fields.get(
+                            "parent_capture_id", event.get("parent_capture_id")
+                        ),
+                        "parent_call_id": str(execution.fields.get("parent_call_id")),
+                        "archetype": execution.fields.get(
+                            "archetype", event.get("archetype", "unknown")
+                        ),
+                        "common_interface": event.get("common_interface"),
+                        "execution_interface": execution.fields.get(
+                            "interface", event.get("execution_interface", "unknown")
+                        ),
+                        "provider_hint": provider_hint,
+                        "execution_leaf": event.get("execution_leaf"),
+                        "implementation_hint": implementation_hint or {},
+                        "python_stack": event.get("python_stack", []),
+                        "child_capture_ids": [],
+                        "kernel_ids": [item["kernel_id"] for item in direct_kernels],
+                        "inclusive_kernel_ids": [],
+                        "metrics": {
+                            "nvtx_cpu_duration_us": execution.duration_us,
+                            "direct_gpu_kernel_sum_us": direct_us,
+                            "direct_share_of_high_gpu": (
+                                direct_us / high_total_us if high_total_us else 0.0
+                            ),
+                        },
+                        "_start_ns": execution.start,
+                    }
+                )
+
+            by_capture = {str(entry["capture_id"]): entry for entry in entries}
+            for entry in entries:
+                parent = by_capture.get(str(entry.get("parent_capture_id")))
+                if parent is not None:
+                    parent["child_capture_ids"].append(entry["capture_id"])
+            kernel_by_id = {item["kernel_id"]: item for item in high_kernels}
+
+            def populate(entry: dict[str, Any], visiting: set[str]) -> list[str]:
+                capture_id = str(entry["capture_id"])
+                if capture_id in visiting:
+                    raise RuntimeError(f"capture parent cycle detected at {capture_id}")
+                inclusive = list(entry["kernel_ids"])
+                for child_id in entry["child_capture_ids"]:
+                    child = by_capture.get(str(child_id))
+                    if child is None:
+                        continue
+                    for kernel_id in populate(child, {*visiting, capture_id}):
+                        if kernel_id not in inclusive:
+                            inclusive.append(kernel_id)
+                entry["inclusive_kernel_ids"] = inclusive
+                inclusive_us = sum(
+                    kernel_by_id[kernel_id]["duration_us"]
+                    for kernel_id in inclusive
+                    if kernel_id in kernel_by_id
+                )
+                entry["metrics"]["inclusive_gpu_kernel_sum_us"] = inclusive_us
+                entry["metrics"]["inclusive_share_of_high_gpu"] = (
+                    inclusive_us / high_total_us if high_total_us else 0.0
+                )
+                entry["attribution_role"] = (
+                    "kernel_owner" if entry["kernel_ids"] else "ancestor_context"
+                )
+                return inclusive
+
+            for entry in entries:
+                populate(entry, set())
+
+            raw_for_call = [
+                event
+                for event in capture_events.values()
+                if str(event.get("parent_call_id", event.get("high_call_id")))
+                == str(high.fields.get("call_id"))
+                and (event.get("pid") is None or int(event["pid"]) == high.process_id)
+            ]
+            materialized = [entry for entry in entries if entry["inclusive_kernel_ids"]]
+            capture_without_kernel_count = max(0, len(raw_for_call) - len(materialized))
+            ranked = sorted(
+                materialized,
+                key=lambda item: (
+                    -float(item["metrics"]["direct_gpu_kernel_sum_us"]),
+                    int(item["_start_ns"]),
+                ),
+            )
+            for rank, entry in enumerate(ranked, start=1):
+                entry["hotspot_rank"] = rank
+            materialized.sort(key=lambda item: int(item["_start_ns"]))
+            for entry in materialized:
+                entry.pop("_start_ns", None)
+
+            attributed_ids = {
+                kernel_id for entry in materialized for kernel_id in entry["kernel_ids"]
+            }
+            unattributed = [
+                item["kernel_id"]
+                for item in high_kernels
+                if item["kernel_id"] not in attributed_ids
+            ]
+            attributed_us = sum(
+                item["duration_us"]
+                for item in high_kernels
+                if item["kernel_id"] in attributed_ids
+            )
+            invocations.append(
+                {
+                    "high_level": {
+                        "call_id": str(high.fields.get("call_id")),
+                        "interface": high.fields.get("interface", "unknown"),
+                        "nvtx_cpu_duration_us": high.duration_us,
+                        "kernel_ids": [item["kernel_id"] for item in high_kernels],
+                        "gpu_kernel_sum_us": high_total_us,
+                        "stage": high.fields.get("stage", "unknown"),
+                    },
+                    "execution_captures": materialized,
+                    "raw_capture_event_count": len(raw_for_call),
+                    "capture_without_kernel_count": capture_without_kernel_count,
+                    "unattributed_kernel_ids": unattributed,
+                    "coverage": attributed_us / high_total_us if high_total_us else 0.0,
+                    "_nvtx_start_ns": high.start,
+                }
+            )
+
+        selected_invocations, selection_diagnostics = select_invocations(
+            invocations, self.config.selection
+        )
+        selected_call_ids = {
+            str(item["high_level"]["call_id"]) for item in selected_invocations
+        }
+        selected_kernel_ids = {
+            kernel_id
+            for invocation in selected_invocations
+            for kernel_id in invocation["high_level"]["kernel_ids"]
+        }
+        selected_kernels = [
+            item
+            for item in kernel_rows
+            if item["kernel_id"] in selected_kernel_ids
+            and str(item["high_call_id"]) in selected_call_ids
+        ]
+        min_coverage = float(self.config.profiling.get("min_capture_coverage", 1.0))
+        insufficient = [
+            item["high_level"]["call_id"]
+            for item in selected_invocations
+            if float(item["coverage"]) + 1e-12 < min_coverage
+        ]
+        if insufficient:
+            raise RuntimeError(
+                f"capture coverage below {min_coverage:.3f} for high call ids: {insufficient}"
+            )
+
+        return {
+            "schema_version": RUNTIME_CAPTURE_VERSION,
+            "backend_name": self.config.backend_name,
+            "target": {
+                "interface": self.config.target_qualified_name
+                or high_ranges[0].fields.get("interface"),
+                "file": str(self.config.target_file),
+                "line": self.config.target_line,
+            },
+            "invocation_selection": dict(self.config.selection),
+            "metric_definition": {
+                "gpu_kernel_sum_us": "sum of Nsight GPU kernel activity durations; not end-to-end wall time",
+                "nvtx_cpu_duration_us": "CPU-side NVTX push-to-pop duration",
+                "coverage": "execution-capture-attributed GPU duration / all high-level GPU duration",
+            },
+            "invocations": selected_invocations,
+            "kernels": selected_kernels,
+            "diagnostics": {
+                "nvtx_tables": nvtx_tables,
+                "cuda_api_tables": api_tables,
+                "kernel_tables": kernel_tables,
+                "high_range_count": len(high_ranges),
+                "execution_range_count": len(execution_ranges),
+                "capture_event_count": len(capture_events),
+                "capture_event_files": [str(path) for path in event_paths],
+                "cuda_api_event_count": len(api_events),
+                "trace_kernel_count": len(kernel_events),
+                "high_related_kernel_count": len(kernel_rows),
+                "materialized_execution_capture_count": sum(
+                    len(item["execution_captures"]) for item in selected_invocations
+                ),
+                **selection_diagnostics,
+            },
+        }

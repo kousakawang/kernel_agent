@@ -1,0 +1,194 @@
+"""Execution capture registry for KID.
+
+The registry classifies *how an execution was observed*.  It deliberately does
+not classify source ownership, build mode, or implementation language.  The
+selected ``archetype`` is therefore known at capture time and can be copied to
+the final KID schema without source-location inference.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+
+
+CaptureStatus = Literal["verified", "partial", "planned"]
+CAPTURE_REGISTRY_VERSION = "kid-execution-capture/v2"
+
+
+@dataclass(frozen=True)
+class CaptureAdapterSpec:
+    """Static contract for one execution capture mechanism."""
+
+    archetype: str
+    common_interfaces: tuple[str, ...]
+    covers: tuple[str, ...]
+    install_strategy: str
+    provider_hint: str
+    status: CaptureStatus
+    limitations: tuple[str, ...] = ()
+
+
+CAPTURE_REGISTRY: tuple[CaptureAdapterSpec, ...] = (
+    CaptureAdapterSpec(
+        archetype="pytorch_dispatch",
+        common_interfaces=(
+            "torch.utils._python_dispatch.TorchDispatchMode.__torch_dispatch__",
+        ),
+        covers=(
+            "PyTorch ATen operators",
+            "torch.library custom operators with Tensor dispatch",
+            "torch.ops operators registered by AOT or JIT extensions",
+        ),
+        install_strategy=(
+            "enter a TorchDispatchMode only for an active high-level invocation"
+        ),
+        provider_hint=(
+            "derive an optional hint from the operator namespace; leave unresolved "
+            "ownership to the semantic resolver"
+        ),
+        status="verified",
+        limitations=(
+            "an operator without Tensor dispatch needs another adapter",
+            "CUDA Graph replay must be disabled during discovery",
+        ),
+    ),
+    CaptureAdapterSpec(
+        archetype="triton_launch",
+        common_interfaces=(
+            "triton.runtime.jit.JITFunction.__getitem__ launcher",
+            "triton.runtime.autotuner.Autotuner.__getitem__ launcher",
+            "triton.runtime.autotuner.Heuristics.__getitem__ launcher",
+        ),
+        covers=(
+            "Triton kernels owned by sglang",
+            "Triton kernels owned by third-party packages",
+            "Triton autotuned and heuristic launchers",
+        ),
+        install_strategy="patch the launcher-producing class methods at import time",
+        provider_hint="derive an optional hint from the kernel definition module/file",
+        status="verified",
+        limitations=(
+            "Triton upstream class layout changes require a compatibility probe",
+        ),
+    ),
+    CaptureAdapterSpec(
+        archetype="cute_dsl_launch",
+        common_interfaces=(
+            "callable returned by cutlass.cute.compile",
+        ),
+        covers=(
+            "CuTe DSL kernels owned by sglang",
+            "CuTe DSL kernels owned by third-party packages such as FlashAttention",
+        ),
+        install_strategy=(
+            "patch cutlass.cute.compile before workload modules are imported and wrap "
+            "the returned runtime callable"
+        ),
+        provider_hint="derive an optional hint from the kernel definition module/file",
+        status="verified",
+        limitations=(
+            "compile results created before hook installation cannot be retrofitted",
+        ),
+    ),
+    CaptureAdapterSpec(
+        archetype="tilelang_launch",
+        common_interfaces=("tilelang.JITKernel.__call__",),
+        covers=(
+            "TileLang JIT kernels owned by sglang",
+            "TileLang kernels owned by third-party packages",
+        ),
+        install_strategy=(
+            "patch the shared JITKernel callable class before TileLang workload import"
+        ),
+        provider_hint="derive an optional hint from the decorated kernel module/file",
+        status="verified",
+        limitations=(
+            "TileLang class layout changes require a compatibility probe",
+        ),
+    ),
+    CaptureAdapterSpec(
+        archetype="tvm_ffi_call",
+        common_interfaces=(
+            "exported callable on a tvm_ffi.module.Module",
+            "module returned by sglang.jit_kernel.utils.load_jit",
+            "module returned by flashinfer.jit.core.JitSpec.build_and_load",
+        ),
+        covers=(
+            "sglang runtime-compiled C++/CUDA module exports",
+            "FlashInfer AOT and JIT module exports",
+        ),
+        install_strategy=(
+            "patch registered load factories and proxy callable exports on returned modules"
+        ),
+        provider_hint="the load-factory adapter supplies an ownership hint",
+        status="verified",
+        limitations=(
+            "each TVM-FFI-producing factory must be registered",
+        ),
+    ),
+    CaptureAdapterSpec(
+        archetype="inductor_launch",
+        common_interfaces=(
+            "torch._inductor.runtime.triton_heuristics.CachingAutotuner.run",
+        ),
+        covers=(
+            "Triton kernels generated by torch.compile/Inductor",
+        ),
+        install_strategy=(
+            "patch the Inductor CachingAutotuner runtime method and temporarily remove "
+            "the discovery TorchDispatchMode while executing an already-compiled region"
+        ),
+        provider_hint=(
+            "the semantic provider comes from the caller source; Inductor itself is not "
+            "the source owner"
+        ),
+        status="verified",
+        limitations=(
+            "extern kernels inside a compiled graph may still be captured by another adapter",
+            "PyTorch runtime class changes require a compatibility probe",
+        ),
+    ),
+    CaptureAdapterSpec(
+        archetype="python_binding",
+        common_interfaces=(
+            "registered Python-visible extension/binding export callable",
+        ),
+        covers=(
+            "direct pybind11, nanobind, or CPython extension exports",
+            "AOT/JIT extension calls that do not enter PyTorch dispatcher",
+            "downloaded-binary or internally-JITed kernels exposed as Python bindings",
+        ),
+        install_strategy=(
+            "wrap registered provider module exports; third-party modules are adapted "
+            "individually when they bypass PyTorch dispatcher"
+        ),
+        provider_hint="the registered adapter may emit its concrete package name",
+        status="verified",
+        limitations=(
+            "arbitrary C-extension callables cannot be discovered reliably from Python",
+            "provider-specific export registration is required",
+        ),
+    ),
+)
+
+
+CAPTURE_BY_ARCHETYPE = {spec.archetype: spec for spec in CAPTURE_REGISTRY}
+
+
+def validate_capture_registry() -> None:
+    """Fail fast on ambiguous schema values or incomplete adapter contracts."""
+
+    archetypes = [spec.archetype for spec in CAPTURE_REGISTRY]
+    if len(archetypes) != len(set(archetypes)):
+        raise ValueError("capture registry contains duplicate archetype values")
+    for spec in CAPTURE_REGISTRY:
+        if not spec.archetype or not spec.common_interfaces or not spec.covers:
+            raise ValueError(f"incomplete capture adapter spec: {spec!r}")
+        if spec.status not in {"verified", "partial", "planned"}:
+            raise ValueError(
+                f"invalid capture status for {spec.archetype}: {spec.status}"
+            )
+
+
+validate_capture_registry()

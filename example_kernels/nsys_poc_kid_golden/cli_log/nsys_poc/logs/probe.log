@@ -1,0 +1,13 @@
+$ /usr/bin/python3 -u /mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py --probe-worker --size 2048 --cases pytorch_native,sgl_kernel_builtin,sgl_kernel_sgl_attn,sglang_triton,flashinfer_triton,sglang_jit,flashinfer_ffi,sglang_cutedsl,deepgemm_binding,sglang_tilelang,sglang_inductor --probe-json /mnt/infra_agent/nsys_poc_golden_run/environment_probe.json
+[probe] pytorch_native: {'status': 'passed', 'elapsed_s': 0.15771297365427017, 'output_shape': [1024, 1024], 'output_dtype': 'torch.float16'}
+[probe] sgl_kernel_builtin: {'status': 'passed', 'elapsed_s': 0.0012274160981178284, 'output_shape': [64, 2048], 'output_dtype': 'torch.float16'}
+[probe] sgl_kernel_sgl_attn: {'status': 'passed', 'elapsed_s': 0.01071876659989357, 'output_shape': [4, 2, 64], 'output_dtype': 'torch.bfloat16'}
+Unable to import `torchao` Tensor objects. This may affect loading checkpoints serialized with `torchao`
+[probe] sglang_triton: {'status': 'passed', 'elapsed_s': 4.281469505280256, 'output_shape': [512, 2048], 'output_dtype': 'torch.float16'}
+[probe] flashinfer_triton: {'status': 'passed', 'elapsed_s': 0.004534527659416199, 'output_shape': [64, 2048], 'output_dtype': 'torch.float16'}
+[probe] sglang_jit: {'status': 'passed', 'elapsed_s': 0.008153319358825684, 'output_shape': [4096], 'output_dtype': 'torch.int32'}
+[probe] flashinfer_ffi: {'status': 'passed', 'elapsed_s': 0.029883649200201035, 'output_shape': [4], 'output_dtype': 'torch.int32'}
+[probe] sglang_cutedsl: {'status': 'passed', 'elapsed_s': 0.5109208077192307, 'output_shape': [1, 4, 2048], 'output_dtype': 'torch.bfloat16'}
+[probe] deepgemm_binding: {'status': 'passed', 'elapsed_s': 0.05910627916455269, 'output_shape': [128, 128], 'output_dtype': 'torch.bfloat16'}
+[probe] sglang_tilelang: {'status': 'passed', 'elapsed_s': 1.4355993419885635, 'output_shape': [2, 16, 4], 'output_dtype': 'torch.float32'}
+[probe] sglang_inductor: {'status': 'passed', 'elapsed_s': 0.31176042929291725, 'output_shape': [8, 4096], 'output_dtype': 'torch.float32'}

@@ -1,0 +1,357 @@
+{
+  "schema_version": "kernel-interface-decomposition/v2",
+  "backend_name": "nsys_poc",
+  "target": {
+    "interface": "high_level",
+    "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+    "line": 1095
+  },
+  "coverage_report": {
+    "per_invocation": [
+      {
+        "call_id": "1",
+        "stage": "unknown",
+        "covered_us": 48.096,
+        "total_gpu_us": 48.096000000000004,
+        "coverage": 1.0,
+        "unattributed_kernel_ids": []
+      }
+    ],
+    "min_coverage": 1.0,
+    "semantic_target_count": 11,
+    "gpu_kernel_count": 12,
+    "uncaptured_hint": null
+  },
+  "kernels": [
+    {
+      "rank": 1,
+      "low_level_id": "poc_pytorch_matmul",
+      "kernel": {
+        "raw_name": "nvjet_sm90_hsh_128x128_64x6_1x2_h_bz_NNT",
+        "normalized_name": "torch_matmul_gemm"
+      },
+      "interface": "torch.matmul",
+      "archetype": "pytorch_dispatch",
+      "provider": "pytorch",
+      "metrics": {
+        "duration_us": 21.536,
+        "share_in_invocation": 0.447771124417831
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 1
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+          "line": 810
+        },
+        "attribution": {
+          "method": "python_stack+execution_capture+cuda_correlation_id",
+          "confidence": "high"
+        }
+      }
+    },
+    {
+      "rank": 2,
+      "low_level_id": "poc_sgl_attn_flash_attn_varlen",
+      "kernel": {
+        "raw_name": "void cutlass::device_kernel<flash::enable_sm90_or_later<flash::FlashAttnFwdSm90<flash::CollectiveMainloopFwdSm90<(int)2, cute::tuple<cute::C<(int)1>, cute::C<(int)1>, cute::C<(int)1>>, cute::tuple<cute::C<(int)64>, cute::C<(int)192>, cute::C<(int)64>>, (int)64, cutlass::bfloat16_t, float, cutlass::arch::Sm90, (bool)1, (bool)0, (bool)0, (bool)1, (bool)0, (bool)0, (bool)0, (bool)1, (bool)1, (bool)0, (bool)0, (bool)0, cutlass::bfloat16_t, (int)1>, flash::CollectiveEpilogueFwd<cute::tuple<cute::C<(int)64>, cute::C<(int)64>, cute::C<(int)192>>, cute::tuple<cute::C<(int)1>, cute::C<(int)1>, cute::C<(int)1>>, cutlass::bfloat16_t, cutlass::arch::Sm90, (int)128, (bool)1, (bool)0, (bool)0, (bool)0>, flash::VarlenDynamicPersistentTileScheduler<(int)64, (int)192, (int)128, (int)32, (bool)0, (bool)0, (bool)1, (bool)1, (bool)1, (bool)1>>>>(T1::Params)",
+        "normalized_name": "flash_attn_varlen_fwd_sm90"
+      },
+      "interface": "sgl_kernel.flash_attn.flash_attn_varlen_func",
+      "archetype": "pytorch_dispatch",
+      "provider": "sgl-attn",
+      "metrics": {
+        "duration_us": 9.408,
+        "share_in_invocation": 0.19560878243512972
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 1
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+          "line": 834
+        },
+        "attribution": {
+          "method": "python_stack+execution_capture+cuda_correlation_id",
+          "confidence": "high"
+        }
+      }
+    },
+    {
+      "rank": 3,
+      "low_level_id": "poc_flashinfer_min_p_sampling",
+      "kernel": {
+        "raw_name": "void flashinfer::sampling::MinPSamplingFromProbKernel<(unsigned int)1024, (cub::_V_300302_SM_750_800_890_900_1000_1030_1200::BlockScanAlgorithm)2, (cub::_V_300302_SM_750_800_890_900_1000_1030_1200::BlockReduceAlgorithm)2, (unsigned int)4, (bool)1, float, int>(T6 *, float *, T7 *, bool *, T7 *, float, unsigned int, unsigned long *, unsigned long, unsigned long *, unsigned long)",
+        "normalized_name": "min_p_sampling_from_probs"
+      },
+      "interface": "flashinfer.sampling.min_p_sampling_from_probs",
+      "archetype": "tvm_ffi_call",
+      "provider": "flashinfer",
+      "metrics": {
+        "duration_us": 4.576,
+        "share_in_invocation": 0.09514304723885561
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 1
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+          "line": 891
+        },
+        "attribution": {
+          "method": "python_stack+execution_capture+cuda_correlation_id",
+          "confidence": "high"
+        }
+      }
+    },
+    {
+      "rank": 4,
+      "low_level_id": "poc_sglang_triton_rms_norm",
+      "kernel": {
+        "raw_name": "_rms_norm_tiled_onepass",
+        "normalized_name": "triton_one_pass_rms_norm"
+      },
+      "interface": "sglang.jit_kernel.diffusion.triton.rmsnorm_onepass.triton_one_pass_rms_norm",
+      "archetype": "triton_launch",
+      "provider": "sglang",
+      "metrics": {
+        "duration_us": 2.272,
+        "share_in_invocation": 0.04723885562208915
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 1
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+          "line": 856
+        },
+        "attribution": {
+          "method": "python_stack+execution_capture+cuda_correlation_id",
+          "confidence": "high"
+        }
+      }
+    },
+    {
+      "rank": 5,
+      "low_level_id": "poc_deepgemm_bf16_gemm_nt",
+      "kernel": {
+        "raw_name": "void deep_gemm::sm90_bf16_gemm_impl<(cute::UMMA::Major)0, (cute::UMMA::Major)0, (unsigned int)0, (unsigned int)0, (unsigned int)0, (unsigned int)1, (unsigned int)64, (unsigned int)16, (unsigned int)64, (unsigned int)128, (unsigned int)128, (unsigned int)32, (unsigned int)16, (unsigned int)128, (unsigned int)128, (unsigned int)1, (bool)0, (unsigned int)78, (deep_gemm::GemmType)0, (bool)0, cutlass::bfloat16_t>(int *, unsigned int, unsigned int, unsigned int, CUtensorMap_st, CUtensorMap_st, CUtensorMap_st)",
+        "normalized_name": "deepgemm_bf16_gemm_nt"
+      },
+      "interface": "deep_gemm.bf16_gemm_nt",
+      "archetype": "python_binding",
+      "provider": "deepgemm",
+      "metrics": {
+        "duration_us": 2.176,
+        "share_in_invocation": 0.04524284763805722
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 1
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+          "line": 933
+        },
+        "attribution": {
+          "method": "python_stack+execution_capture+cuda_correlation_id",
+          "confidence": "high"
+        }
+      }
+    },
+    {
+      "rank": 6,
+      "low_level_id": "poc_sglang_tilelang_hc_split_sinkhorn",
+      "kernel": {
+        "raw_name": "hc_split_sinkhorn_kernel__kernel",
+        "normalized_name": "hc_split_sinkhorn"
+      },
+      "interface": "sglang.srt.layers.mhc.hc_split_sinkhorn",
+      "archetype": "tilelang_launch",
+      "provider": "sglang",
+      "metrics": {
+        "duration_us": 1.92,
+        "share_in_invocation": 0.039920159680638716
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 1
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+          "line": 947
+        },
+        "attribution": {
+          "method": "python_stack+execution_capture+cuda_correlation_id",
+          "confidence": "high"
+        }
+      }
+    },
+    {
+      "rank": 7,
+      "low_level_id": "poc_flashinfer_triton_rms_norm",
+      "kernel": {
+        "raw_name": "rms_norm_kernel",
+        "normalized_name": "flashinfer_rms_norm"
+      },
+      "interface": "flashinfer.triton.norm.rms_norm",
+      "archetype": "triton_launch",
+      "provider": "flashinfer",
+      "metrics": {
+        "duration_us": 1.568,
+        "share_in_invocation": 0.03260146373918829
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 1
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+          "line": 868
+        },
+        "attribution": {
+          "method": "python_stack+execution_capture+cuda_correlation_id",
+          "confidence": "high"
+        }
+      }
+    },
+    {
+      "rank": 8,
+      "low_level_id": "poc_sglang_cutedsl_fused_norm_scale_shift",
+      "kernel": {
+        "raw_name": "kernel_cutlass_kernel_sglangjit_kerneldiffusioncutedslscale_residual_norm_scale_shiftScaleResidualNormScaleShift_object_at__tensorptrbf16_gmem_align32_o_2048div2048div20481___tensorptrbf1_0",
+        "normalized_name": "fused_norm_scale_shift"
+      },
+      "interface": "sglang.jit_kernel.diffusion.cutedsl.scale_residual_norm_scale_shift.fused_norm_scale_shift",
+      "archetype": "cute_dsl_launch",
+      "provider": "sglang",
+      "metrics": {
+        "duration_us": 1.504,
+        "share_in_invocation": 0.03127079174983367
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 1
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+          "line": 912
+        },
+        "attribution": {
+          "method": "python_stack+execution_capture+cuda_correlation_id",
+          "confidence": "high"
+        }
+      }
+    },
+    {
+      "rank": 9,
+      "low_level_id": "poc_sgl_kernel_silu_and_mul",
+      "kernel": {
+        "raw_name": "void flashinfer::activation::act_and_mul_kernel<__half, &silu<float>>(T1 *, const T1 *, int)",
+        "normalized_name": "silu_and_mul"
+      },
+      "interface": "sgl_kernel.silu_and_mul",
+      "archetype": "pytorch_dispatch",
+      "provider": "sgl-kernel",
+      "metrics": {
+        "duration_us": 1.312,
+        "share_in_invocation": 0.027278775781769793
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 1
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+          "line": 820
+        },
+        "attribution": {
+          "method": "python_stack+execution_capture+cuda_correlation_id",
+          "confidence": "high"
+        }
+      }
+    },
+    {
+      "rank": 10,
+      "low_level_id": "poc_sglang_inductor_scaling_penalties",
+      "kernel": {
+        "raw_name": "triton_poi_fused_copy__div_lt_mul_where_0",
+        "normalized_name": "apply_scaling_penalties_inductor"
+      },
+      "interface": "sglang.srt.sampling.penaltylib.repetition_penalty.apply_scaling_penalties",
+      "archetype": "inductor_launch",
+      "provider": "sglang",
+      "metrics": {
+        "duration_us": 0.96,
+        "share_in_invocation": 0.019960079840319358
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 1
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+          "line": 962
+        },
+        "attribution": {
+          "method": "python_stack+execution_capture+cuda_correlation_id",
+          "confidence": "high"
+        }
+      }
+    },
+    {
+      "rank": 11,
+      "low_level_id": "poc_sglang_jit_add_constant",
+      "kernel": {
+        "raw_name": "void <unnamed>::add_constant_kernel<(int)5>(int *, const int *, unsigned long)",
+        "normalized_name": "add_constant"
+      },
+      "interface": "sglang.jit_kernel.add_constant.add_constant",
+      "archetype": "tvm_ffi_call",
+      "provider": "sglang",
+      "metrics": {
+        "duration_us": 0.864,
+        "share_in_invocation": 0.017964071856287425
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 1
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+          "line": 879
+        },
+        "attribution": {
+          "method": "python_stack+execution_capture+cuda_correlation_id",
+          "confidence": "high"
+        }
+      }
+    }
+  ]
+}

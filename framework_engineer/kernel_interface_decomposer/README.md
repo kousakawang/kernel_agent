@@ -1,88 +1,120 @@
-# Kernel Interface Decomposer
+# KID Runtime Capture CLI
 
-Automates the workflow for decomposing a high-level Python model interface into
-GPU kernels, Python wrappers, and implementation source locations.
+This package implements the deterministic first stage of Kernel Interface
+Decomposition. It captures execution-level events and correlates them with GPU
+kernels. Semantic interface selection is performed later by the Semantic
+Resolver Agent.
 
-## Quick Start
+## Configuration
 
-Create a config:
+Each `kid-runtime-config/v2` file describes one backend and one test command:
 
-```yaml
-version: 1
-workdir: /path/to/model_ana
-output_dir: ./kernel_decompose_out/qwen35_gdn
-
-target:
-  file: ./sglang/python/sglang/srt/models/qwen3_5.py
-  line: 488
-
-commands:
-  service: "python -m sglang.launch_server ..."
-  ready:
-    type: http
-    url: "http://127.0.0.1:30000/health"
-    timeout_sec: 300
-  test: "python test_request.py"
-  stop:
-    signal: SIGINT
-    grace_sec: 30
-
-selection:
-  per_invocation: true
-  top_k: 20
-  min_duration_us: 0
-  min_share_in_invocation: 0.0
-  stages: ["prefill", "decode", "mixed", "unknown"]
-
-profiling:
-  nsys_bin: nsys
-  trace_cuda_graph_nodes: true
-  include_python_backtrace: true
-  skip_target_invocations: 0
-  max_runtime_sec: 1800
-
-resolution:
-  source_roots:
-    - ./sglang/python
-    - ./sglang/sgl-kernel
-  third_party_prefixes:
-    - flashinfer
-    - flash_attn
-    - deep_gemm
-    - aiter
-    - kt_kernel
+```json
+{
+  "schema_version": "kid-runtime-config/v2",
+  "backend_name": "triton",
+  "workdir": "/workspace",
+  "output_dir": "/workspace/kid/cli_log/triton",
+  "target": {
+    "file": "/workspace/sglang/model_runner.py",
+    "line": 500,
+    "qualified_name": "ModelRunner.forward"
+  },
+  "cmd": "python -m sglang.launch_server ...",
+  "test_cmd": "python test_request.py",
+  "ready": {
+    "type": "http",
+    "url": "http://127.0.0.1:30000/health",
+    "timeout_sec": 300
+  },
+  "stop": {"signal": "SIGINT", "grace_sec": 30},
+  "env": {},
+  "selection": {
+    "skip_invocations": 0,
+    "stages": ["prefill", "decode", "unknown"],
+    "sample_count_per_stage": 1,
+    "sampling": "last_n",
+    "aggregation": "single"
+  },
+  "profiling": {
+    "nsys_bin": "nsys",
+    "max_runtime_sec": 1800,
+    "disable_cuda_graph": true,
+    "min_capture_coverage": 1.0
+  }
+}
 ```
 
-Run:
+Set `cmd` to `null` to profile `test_cmd` directly. Warmup belongs inside the
+test workload and should run outside the selected high-level invocation.
+
+Sampling supports `all`, `last_n`, and `single`. `last_n` selects the final N
+invocations independently per stage; `single` is the golden-compatible alias
+for `last_n` with N=1. Raw JSONL and SQLite always retain every invocation.
+
+## Commands
 
 ```bash
-python3 -m framework_engineer.kernel_interface_decomposer run config.yaml
+python3 -m framework_engineer.kernel_interface_decomposer capture config.json
+
+python3 -m framework_engineer.kernel_interface_decomposer analyze config.json \
+  --sqlite path/to/profile.sqlite \
+  --events-dir path/to/capture_events
 ```
 
-Analyze an existing trace:
+`capture` runs the service/test lifecycle and Nsight Systems. `analyze` only
+rebuilds normalized Runtime Capture data from existing evidence. The old `run`
+command and direct semantic/source resolution are intentionally unsupported.
 
-```bash
-python3 -m framework_engineer.kernel_interface_decomposer analyze config.yaml --nsys-rep out/profile.nsys-rep
-```
-
-Main output:
+## Output
 
 ```text
-<output_dir>/decomposition.schema.json
-<output_dir>/profile.nsys-rep
-<output_dir>/profile.sqlite
-<output_dir>/events/events_<pid>.jsonl
-<output_dir>/service.log
-<output_dir>/test.log
+<output_dir>/
+├── environment_probe.json
+├── runtime_capture.schema.json
+├── capture_events/events_<pid>.jsonl
+├── trace/profile.sqlite
+└── logs/{probe,nsys,test,summary}.log
 ```
 
-## Notes
+`profile.nsys-rep` is temporary and is removed after SQLite export. The Runtime
+schema contains complete high→execution stacks, nested capture relationships,
+CUDA launch correlation, direct/inclusive GPU duration, and attribution
+coverage. It must not contain semantic targets or source-location results.
 
-- The runtime injector is installed through a generated `sitecustomize.py` under
-  `<output_dir>/_inject`; no SGLang source files are modified by default.
-- Stage labels come from `forward_batch.forward_mode` when available and are
-  written into `PYGPU:type=target` and `PYGPU:type=wrap` NVTX ranges.
-- Runtime JIT source resolution records `load_jit` `cuda_files`, `cpp_files`,
-  wrapper exports, and compile flags when the JIT module is loaded.
-- PyTorch native ops intentionally stop at public API / ATen op boundaries.
+## Validation and tests
 
+```bash
+PYTHONPATH=kernel_agent python3 -m \
+  framework_engineer.kernel_interface_decomposer.artifact_validator \
+  --runtime-only kernel_agent/example_kernels/nsys_poc_kid_golden
+
+PYTHONPATH=kernel_agent python3 -m unittest discover \
+  -s kernel_agent/framework_engineer/kernel_interface_decomposer/tests -v
+```
+
+`test_cli_analyze_golden.py` is the formal offline end-to-end CLI regression:
+it invokes `python -m ... analyze` in a subprocess, validates the generated
+artifact directory, and compares the normalized Runtime schema with the
+retained Nsight PoC golden. Run it alone with:
+
+```bash
+PYTHONPATH=kernel_agent python3 -m unittest \
+  framework_engineer.kernel_interface_decomposer.tests.test_cli_analyze_golden -v
+```
+
+The full `capture` regression requires CUDA and Nsight Systems and is opt-in so
+normal local test discovery stays GPU-free. With the remote Python runner, use:
+
+```bash
+cd kernel_agent
+KID_RUN_GPU_E2E=1 python -m unittest \
+  framework_engineer.kernel_interface_decomposer.tests.test_cli_capture_golden -v
+```
+
+It runs all 11 mandatory PoC cases through the formal `capture` command, runs
+the Runtime artifact validator, and compares stable capture/kernel structure
+with the golden. Runtime IDs and measured durations are intentionally not fixed.
+
+Capture categories and adapter boundaries are defined in
+[CAPTURE_MECHANISMS.md](CAPTURE_MECHANISMS.md) and `capture_registry.py`.

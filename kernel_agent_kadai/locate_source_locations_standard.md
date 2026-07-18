@@ -241,8 +241,8 @@ locate 分三层，**定位的智能活集中在 Layer 2**，Layer 1/3 都是确
 
 | Layer | 类型 | 定什么 | 不定什么 |
 | --- | --- | --- | --- |
-| **Layer 1** | 确定性 CLI | 只做**可 100% 可靠**的：① `interface_definition`（KID 已给 call_site，最近一层 python def 是固定推导）；② 固定模式的 binding（sgl-kernel `m.def/m.impl` 符号表、JIT 的 `load_jit`/`build_and_load` 行）。 | **不碰** `kernel_impl` / `kernel_header`（哪怕 triton）——调用链展开、多级实现判断都不是固定规则能做对的。 |
-| **Layer 2** | agent | **算子实现定位的主力**。读 Layer 1 结果，按自己对代码的理解，**尽力复现算子调用链上的核心逻辑**，把 `kernel_impl`（调用链）+ `kernel_header`（与 impl 一一对应）+ 补全 binding 的 c++ 侧填好。 | 模版/重载/宏展开/ifelse 分支这类静态啃不动的，标 best-effort，不强求穷尽。 |
+| **Layer 1** | 确定性 CLI | 只做**可 100% 可靠**的：① `interface_definition`（KID 已给 call_site，最近一层 python def 是固定推导）；② **已注册 `binding_provider`** 的 binding（按 provider 注册，一套规则一次性拿全该 provider 的所有 binding hit）。 | **不碰** `kernel_impl` / `kernel_header`（哪怕 triton）——调用链展开、多级实现判断都不是固定规则能做对的。 |
+| **Layer 2** | agent | **算子实现定位的主力**。读 Layer 1 结果，按自己对代码的理解，**尽力复现算子调用链上的核心逻辑**，把 `kernel_impl`（调用链）+ `kernel_header`（与 impl 一一对应）填好；以及**未注册 provider** 的 binding（已注册 provider 的 binding 由 Layer 1 一次性拿全）。 | 模版/重载/宏展开/ifelse 分支这类静态啃不动的，标 best-effort，不强求穷尽。 |
 | **Layer 3** | 确定性 CLI | 只做**搬运**：按 `source_locations` 的 `{file, def_line}` 拷贝整文件、用 range-completion 补 end line 写进 `read_hints.txt`、回填 `kernel_sources_dir`。 | 不改 `source_locations`、不做任何语义判断。 |
 
 **定位是尽力而为，不是硬门槛**：`kernel_impl` 能定到核心 kernel 就定，调用链上的 device helper（如 flashinfer triton 的 `scale_and_clamp`）由 agent 判断值不值得纳入，**不设硬规则**。定不全不阻断——因为 `schema.json` 里逐层的 `def_line`（一手导航线索）才是 locate 的核心产物，下游 translate_problem 看得到原仓库、可据行号自行探索；`kernel_sources/` 的 extract 文件是给看不到原仓库的 kernel_engineer 的**兜底参考**，允许残缺。

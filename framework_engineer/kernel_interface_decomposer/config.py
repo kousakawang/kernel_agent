@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Any
 
 
+RUNTIME_CONFIG_VERSION = "kid-runtime-config/v2"
+SAMPLING_STRATEGIES = frozenset({"all", "last_n", "single"})
+
+
 class ConfigError(ValueError):
     pass
 
@@ -46,12 +50,7 @@ def _parse_scalar(value: str) -> Any:
 
 
 class _SimpleYamlParser:
-    """Small YAML subset parser for the config shape used by this tool.
-
-    Supports nested mappings, block lists, inline scalar lists, quoted strings,
-    numbers, booleans and null. It deliberately avoids arbitrary YAML features
-    so the workflow does not depend on PyYAML being installed in the target env.
-    """
+    """Parse the small YAML subset accepted by the KID config CLI."""
 
     def __init__(self, text: str):
         self.lines: list[tuple[int, str]] = []
@@ -86,20 +85,16 @@ class _SimpleYamlParser:
             line_indent, text = self.lines[self.index]
             if line_indent < indent or text.startswith("- "):
                 break
-            if line_indent > indent:
-                raise ConfigError(f"Unexpected indentation near: {text}")
-            if ":" not in text:
-                raise ConfigError(f"Expected key/value entry near: {text}")
+            if line_indent > indent or ":" not in text:
+                raise ConfigError(f"Invalid YAML near: {text}")
             key, rest = text.split(":", 1)
-            key = key.strip()
-            rest = rest.strip()
             self.index += 1
-            if rest:
-                out[key] = _parse_scalar(rest)
+            if rest.strip():
+                out[key.strip()] = _parse_scalar(rest.strip())
             elif self.index < len(self.lines) and self.lines[self.index][0] > indent:
-                out[key] = self._parse_node(self.lines[self.index][0])
+                out[key.strip()] = self._parse_node(self.lines[self.index][0])
             else:
-                out[key] = {}
+                out[key.strip()] = None
         return out
 
     def _parse_list(self, indent: int) -> list[Any]:
@@ -119,8 +114,6 @@ class _SimpleYamlParser:
                     nested = self._parse_node(self.lines[self.index][0])
                     if isinstance(nested, dict):
                         value.update(nested)
-                    else:
-                        value[key.strip()] = nested
                 out.append(value)
             else:
                 out.append(_parse_scalar(item))
@@ -128,94 +121,182 @@ class _SimpleYamlParser:
 
 
 def load_mapping(path: Path) -> dict[str, Any]:
-    text = path.read_text()
-    if path.suffix.lower() == ".json":
-        data = json.loads(text)
-    else:
-        data = _SimpleYamlParser(text).parse()
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ConfigError(f"cannot read config {path}: {exc}") from exc
+    try:
+        data = json.loads(text) if path.suffix.lower() == ".json" else _SimpleYamlParser(text).parse()
+    except (json.JSONDecodeError, IndexError) as exc:
+        raise ConfigError(f"invalid config {path}: {exc}") from exc
     if not isinstance(data, dict):
-        raise ConfigError("Top-level config must be a mapping")
+        raise ConfigError("top-level config must be a mapping")
     return data
 
 
-@dataclass
-class DecomposerConfig:
+def _mapping(value: Any, name: str, *, nullable: bool = False) -> dict[str, Any] | None:
+    if value is None and nullable:
+        return None
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ConfigError(f"{name} must be a mapping" + (" or null" if nullable else ""))
+    return dict(value)
+
+
+def _resolve_path(value: Any, *, base: Path, name: str) -> Path:
+    if value in {None, ""}:
+        raise ConfigError(f"{name} is required")
+    path = Path(str(value)).expanduser()
+    return path.resolve() if path.is_absolute() else (base / path).resolve()
+
+
+@dataclass(frozen=True)
+class RuntimeCaptureConfig:
     path: Path
-    version: int
+    schema_version: str
+    backend_name: str
     workdir: Path
     output_dir: Path
     target_file: Path
     target_line: int
-    service_cmd: str | None
-    test_cmd: str | None
-    ready: dict[str, Any] = field(default_factory=dict)
-    stop: dict[str, Any] = field(default_factory=dict)
+    target_qualified_name: str | None
+    command: str | None
+    test_command: str
+    ready: dict[str, Any] | None = None
+    stop: dict[str, Any] | None = None
+    env: dict[str, str] = field(default_factory=dict)
     selection: dict[str, Any] = field(default_factory=dict)
     profiling: dict[str, Any] = field(default_factory=dict)
-    resolution: dict[str, Any] = field(default_factory=dict)
-    target_qualified_name: str | None = None
 
     @classmethod
-    def load(cls, path: str | os.PathLike[str]) -> "DecomposerConfig":
-        config_path = Path(path).resolve()
+    def load(cls, path: str | os.PathLike[str]) -> "RuntimeCaptureConfig":
+        config_path = Path(path).expanduser().resolve()
         raw = load_mapping(config_path)
+        version = str(raw.get("schema_version", ""))
+        if version != RUNTIME_CONFIG_VERSION:
+            raise ConfigError(
+                f"schema_version must be {RUNTIME_CONFIG_VERSION!r}; got {version!r}"
+            )
+
+        backend_name = str(raw.get("backend_name", "")).strip()
+        if not backend_name or "/" in backend_name or "\\" in backend_name:
+            raise ConfigError("backend_name must be a non-empty directory-safe name")
         base = config_path.parent
-        workdir = Path(raw.get("workdir", base)).expanduser()
-        if not workdir.is_absolute():
-            workdir = (base / workdir).resolve()
-        output_dir = Path(raw.get("output_dir", "kernel_decompose_out")).expanduser()
-        if not output_dir.is_absolute():
-            output_dir = (workdir / output_dir).resolve()
+        workdir = _resolve_path(raw.get("workdir", base), base=base, name="workdir")
+        output_dir = _resolve_path(
+            raw.get("output_dir"), base=workdir, name="output_dir"
+        )
+        if output_dir.name != backend_name:
+            raise ConfigError(
+                "output_dir must end with backend_name so config/cli_log/output/ref stay aligned"
+            )
 
-        target = raw.get("target") or {}
-        if not isinstance(target, dict):
-            raise ConfigError("target must be a mapping")
-        target_file_raw = target.get("file")
-        target_line = target.get("line")
-        if not target_file_raw or target_line is None:
-            raise ConfigError("target.file and target.line are required")
-        target_file = Path(str(target_file_raw)).expanduser()
-        if not target_file.is_absolute():
-            target_file = (workdir / target_file).resolve()
+        target = _mapping(raw.get("target"), "target") or {}
+        target_file = _resolve_path(
+            target.get("file"), base=workdir, name="target.file"
+        )
+        try:
+            target_line = int(target.get("line"))
+        except (TypeError, ValueError) as exc:
+            raise ConfigError("target.line must be a positive integer") from exc
+        if target_line <= 0:
+            raise ConfigError("target.line must be a positive integer")
 
-        commands = raw.get("commands") or {}
-        if not isinstance(commands, dict):
-            raise ConfigError("commands must be a mapping")
+        command_raw = raw.get("cmd")
+        command = None if command_raw is None else str(command_raw).strip() or None
+        test_command = str(raw.get("test_cmd", "")).strip()
+        if not test_command:
+            raise ConfigError("test_cmd is required")
+        ready = _mapping(raw.get("ready"), "ready", nullable=True)
+        stop = _mapping(raw.get("stop"), "stop", nullable=True)
+        if command is None and (ready or stop):
+            raise ConfigError("ready/stop are only valid when cmd is not null")
+
+        env_raw = _mapping(raw.get("env"), "env") or {}
+        env: dict[str, str] = {}
+        for key, value in env_raw.items():
+            if value is None:
+                raise ConfigError(f"env.{key} cannot be null")
+            env[str(key)] = str(value)
+
+        selection = _mapping(raw.get("selection"), "selection") or {}
+        selection = {
+            "skip_invocations": int(selection.get("skip_invocations", 0)),
+            "stages": list(selection.get("stages") or []),
+            "sample_count_per_stage": int(selection.get("sample_count_per_stage", 1)),
+            "sampling": str(selection.get("sampling", "last_n")),
+            "aggregation": str(selection.get("aggregation", "single")),
+        }
+        if selection["skip_invocations"] < 0:
+            raise ConfigError("selection.skip_invocations must be >= 0")
+        if selection["sample_count_per_stage"] <= 0:
+            raise ConfigError("selection.sample_count_per_stage must be > 0")
+        if selection["sampling"] not in SAMPLING_STRATEGIES:
+            raise ConfigError(
+                "selection.sampling must be one of " + ", ".join(sorted(SAMPLING_STRATEGIES))
+            )
+        if selection["sampling"] == "single" and selection["sample_count_per_stage"] != 1:
+            raise ConfigError("selection.sampling=single requires sample_count_per_stage=1")
+        if selection["aggregation"] != "single":
+            raise ConfigError("Runtime Capture v1 only supports aggregation=single")
+        if not all(isinstance(item, str) and item for item in selection["stages"]):
+            raise ConfigError("selection.stages must contain non-empty strings")
+
+        profiling = _mapping(raw.get("profiling"), "profiling") or {}
+        profiling = {
+            **profiling,
+            "nsys_bin": str(profiling.get("nsys_bin", "nsys")),
+            "max_runtime_sec": float(profiling.get("max_runtime_sec", 1800)),
+            "disable_cuda_graph": bool(profiling.get("disable_cuda_graph", True)),
+            "min_capture_coverage": float(profiling.get("min_capture_coverage", 1.0)),
+        }
+        if profiling["max_runtime_sec"] <= 0:
+            raise ConfigError("profiling.max_runtime_sec must be > 0")
+        if not profiling["disable_cuda_graph"]:
+            raise ConfigError("CUDA Graph discovery is unsupported; disable_cuda_graph must be true")
+        if not 0 <= profiling["min_capture_coverage"] <= 1:
+            raise ConfigError("profiling.min_capture_coverage must be in [0, 1]")
 
         return cls(
             path=config_path,
-            version=int(raw.get("version", 1)),
+            schema_version=version,
+            backend_name=backend_name,
             workdir=workdir,
             output_dir=output_dir,
             target_file=target_file,
-            target_line=int(target_line),
-            service_cmd=commands.get("service"),
-            test_cmd=commands.get("test"),
-            ready=commands.get("ready") or {},
-            stop=commands.get("stop") or {},
-            selection=raw.get("selection") or {},
-            profiling=raw.get("profiling") or {},
-            resolution=raw.get("resolution") or {},
-            target_qualified_name=target.get("qualified_name"),
+            target_line=target_line,
+            target_qualified_name=(
+                str(target["qualified_name"]) if target.get("qualified_name") else None
+            ),
+            command=command,
+            test_command=test_command,
+            ready=ready,
+            stop=stop,
+            env=env,
+            selection=selection,
+            profiling=profiling,
         )
 
-    def runtime_config_path(self) -> Path:
-        return self.output_dir / "runtime_config.json"
+    def events_dir(self) -> Path:
+        return self.output_dir / "capture_events"
 
-    def nsys_output_base(self) -> Path:
-        return self.output_dir / "profile"
+    def trace_dir(self) -> Path:
+        return self.output_dir / "trace"
 
-    def nsys_rep_path(self) -> Path:
-        return self.output_dir / "profile.nsys-rep"
+    def logs_dir(self) -> Path:
+        return self.output_dir / "logs"
 
     def sqlite_path(self) -> Path:
-        return self.output_dir / "profile.sqlite"
+        return self.trace_dir() / "profile.sqlite"
 
     def schema_path(self) -> Path:
-        return self.output_dir / "decomposition.schema.json"
+        return self.output_dir / "runtime_capture.schema.json"
 
-    def to_runtime_dict(self) -> dict[str, Any]:
+    def runtime_config(self, *, events_dir: Path | None = None) -> dict[str, Any]:
         return {
+            "schema_version": self.schema_version,
+            "backend_name": self.backend_name,
             "workdir": str(self.workdir),
             "output_dir": str(self.output_dir),
             "target": {
@@ -223,7 +304,10 @@ class DecomposerConfig:
                 "line": self.target_line,
                 "qualified_name": self.target_qualified_name,
             },
+            "events_dir": str(events_dir or self.events_dir()),
             "selection": self.selection,
-            "resolution": self.resolution,
         }
 
+
+# Temporary import compatibility for callers being migrated in the same change.
+DecomposerConfig = RuntimeCaptureConfig

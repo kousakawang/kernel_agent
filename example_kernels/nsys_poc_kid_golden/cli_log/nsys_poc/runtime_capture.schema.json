@@ -1,0 +1,1799 @@
+{
+  "schema_version": "kid-runtime-capture/v1",
+  "backend_name": "nsys_poc",
+  "target": {
+    "interface": "high_level",
+    "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+    "line": 1095
+  },
+  "invocation_selection": {
+    "skip_invocations": 0,
+    "stages": [
+      "unknown"
+    ],
+    "sample_count_per_stage": 1,
+    "sampling": "single",
+    "aggregation": "single"
+  },
+  "metric_definition": {
+    "gpu_kernel_sum_us": "sum of Nsight GPU kernel activity durations; not end-to-end wall time",
+    "nvtx_cpu_duration_us": "CPU-side NVTX push-to-pop duration",
+    "coverage": "execution-capture-attributed GPU duration / all high-level GPU duration"
+  },
+  "invocations": [
+    {
+      "high_level": {
+        "call_id": "1",
+        "interface": "high_level",
+        "nvtx_cpu_duration_us": 6164.228,
+        "kernel_ids": [
+          "p315237144199168-c6801-k38",
+          "p315237144199168-c6814-k39",
+          "p315237144199168-c6845-k40",
+          "p315237144199168-c6859-k41",
+          "p315237144199168-c6877-k42",
+          "p315237144199168-c6884-k43",
+          "p315237144199168-c6892-k44",
+          "p315237144199168-c6924-k45",
+          "p315237144199168-c6936-k46",
+          "p315237144199168-c6945-k47",
+          "p315237144199168-c6969-k48",
+          "p315237144199168-c6976-k49"
+        ],
+        "gpu_kernel_sum_us": 48.096,
+        "stage": "unknown"
+      },
+      "execution_captures": [
+        {
+          "capture_id": "1",
+          "parent_capture_id": null,
+          "parent_call_id": "1",
+          "archetype": "pytorch_dispatch",
+          "common_interface": "torch.utils._python_dispatch.TorchDispatchMode.__torch_dispatch__",
+          "execution_interface": "aten.mm.default",
+          "provider_hint": "pytorch",
+          "execution_leaf": {
+            "archetype": "pytorch_dispatch",
+            "interface": "aten.mm.default",
+            "kind": "common_interface"
+          },
+          "implementation_hint": {},
+          "python_stack": [
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1094,
+              "function": "high_level",
+              "qualname": "high_level",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1096
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1067,
+              "function": "_run_cases",
+              "qualname": "_run_cases",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1081
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 809,
+              "function": "run",
+              "qualname": "_case_pytorch_native.<locals>.run",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 810
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+              "definition_line": 42,
+              "function": "inner",
+              "qualname": "_disable_dynamo.<locals>.inner",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+                "line": 54
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+              "definition_line": 1240,
+              "function": "_fn",
+              "qualname": "DisableContext.__call__.<locals>._fn",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+                "line": 1263
+              }
+            }
+          ],
+          "child_capture_ids": [],
+          "kernel_ids": [
+            "p315237144199168-c6801-k38"
+          ],
+          "inclusive_kernel_ids": [
+            "p315237144199168-c6801-k38"
+          ],
+          "metrics": {
+            "nvtx_cpu_duration_us": 202.944,
+            "direct_gpu_kernel_sum_us": 21.536,
+            "direct_share_of_high_gpu": 0.44777112441783107,
+            "inclusive_gpu_kernel_sum_us": 21.536,
+            "inclusive_share_of_high_gpu": 0.44777112441783107
+          },
+          "attribution_role": "kernel_owner",
+          "hotspot_rank": 1
+        },
+        {
+          "capture_id": "3",
+          "parent_capture_id": null,
+          "parent_call_id": "1",
+          "archetype": "pytorch_dispatch",
+          "common_interface": "torch.utils._python_dispatch.TorchDispatchMode.__torch_dispatch__",
+          "execution_interface": "sgl_kernel.silu_and_mul.default",
+          "provider_hint": "sgl-kernel",
+          "execution_leaf": {
+            "archetype": "pytorch_dispatch",
+            "interface": "sgl_kernel.silu_and_mul.default",
+            "kind": "common_interface"
+          },
+          "implementation_hint": {},
+          "python_stack": [
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1094,
+              "function": "high_level",
+              "qualname": "high_level",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1096
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1067,
+              "function": "_run_cases",
+              "qualname": "_run_cases",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1081
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 819,
+              "function": "run",
+              "qualname": "_case_sgl_kernel_builtin.<locals>.run",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 820
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/sgl_kernel/elementwise.py",
+              "definition_line": 258,
+              "function": "silu_and_mul",
+              "qualname": "silu_and_mul",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/sgl_kernel/elementwise.py",
+                "line": 269
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+              "definition_line": 864,
+              "function": "__call__",
+              "qualname": "OpOverload.__call__",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+                "line": 865
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+              "definition_line": 42,
+              "function": "inner",
+              "qualname": "_disable_dynamo.<locals>.inner",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+                "line": 54
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+              "definition_line": 1240,
+              "function": "_fn",
+              "qualname": "DisableContext.__call__.<locals>._fn",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+                "line": 1263
+              }
+            }
+          ],
+          "child_capture_ids": [],
+          "kernel_ids": [
+            "p315237144199168-c6814-k39"
+          ],
+          "inclusive_kernel_ids": [
+            "p315237144199168-c6814-k39"
+          ],
+          "metrics": {
+            "nvtx_cpu_duration_us": 49.561,
+            "direct_gpu_kernel_sum_us": 1.312,
+            "direct_share_of_high_gpu": 0.027278775781769796,
+            "inclusive_gpu_kernel_sum_us": 1.312,
+            "inclusive_share_of_high_gpu": 0.027278775781769796
+          },
+          "attribution_role": "kernel_owner",
+          "hotspot_rank": 9
+        },
+        {
+          "capture_id": "4",
+          "parent_capture_id": null,
+          "parent_call_id": "1",
+          "archetype": "pytorch_dispatch",
+          "common_interface": "torch.utils._python_dispatch.TorchDispatchMode.__torch_dispatch__",
+          "execution_interface": "sgl_kernel.fwd.default",
+          "provider_hint": "sgl-attn",
+          "execution_leaf": {
+            "archetype": "pytorch_dispatch",
+            "interface": "sgl_kernel.fwd.default",
+            "kind": "common_interface"
+          },
+          "implementation_hint": {},
+          "python_stack": [
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1094,
+              "function": "high_level",
+              "qualname": "high_level",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1096
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1067,
+              "function": "_run_cases",
+              "qualname": "_run_cases",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1081
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 833,
+              "function": "run",
+              "qualname": "_case_sgl_kernel_sgl_attn.<locals>.run",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 834
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/sgl_kernel/flash_attn.py",
+              "definition_line": 231,
+              "function": "flash_attn_varlen_func",
+              "qualname": "flash_attn_varlen_func",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/sgl_kernel/flash_attn.py",
+                "line": 278
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+              "definition_line": 864,
+              "function": "__call__",
+              "qualname": "OpOverload.__call__",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+                "line": 865
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+              "definition_line": 42,
+              "function": "inner",
+              "qualname": "_disable_dynamo.<locals>.inner",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+                "line": 54
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+              "definition_line": 1240,
+              "function": "_fn",
+              "qualname": "DisableContext.__call__.<locals>._fn",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+                "line": 1263
+              }
+            }
+          ],
+          "child_capture_ids": [],
+          "kernel_ids": [
+            "p315237144199168-c6845-k40",
+            "p315237144199168-c6859-k41"
+          ],
+          "inclusive_kernel_ids": [
+            "p315237144199168-c6845-k40",
+            "p315237144199168-c6859-k41"
+          ],
+          "metrics": {
+            "nvtx_cpu_duration_us": 140.915,
+            "direct_gpu_kernel_sum_us": 9.408,
+            "direct_share_of_high_gpu": 0.19560878243512975,
+            "inclusive_gpu_kernel_sum_us": 9.408,
+            "inclusive_share_of_high_gpu": 0.19560878243512975
+          },
+          "attribution_role": "kernel_owner",
+          "hotspot_rank": 2
+        },
+        {
+          "capture_id": "5",
+          "parent_capture_id": null,
+          "parent_call_id": "1",
+          "archetype": "pytorch_dispatch",
+          "common_interface": "torch.utils._python_dispatch.TorchDispatchMode.__torch_dispatch__",
+          "execution_interface": "sglang.triton_one_pass_rms_norm_cuda.default",
+          "provider_hint": "sglang",
+          "execution_leaf": {
+            "archetype": "pytorch_dispatch",
+            "interface": "sglang.triton_one_pass_rms_norm_cuda.default",
+            "kind": "common_interface"
+          },
+          "implementation_hint": {},
+          "python_stack": [
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1094,
+              "function": "high_level",
+              "qualname": "high_level",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1096
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1067,
+              "function": "_run_cases",
+              "qualname": "_run_cases",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1081
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 855,
+              "function": "run",
+              "qualname": "_case_sglang_triton.<locals>.run",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 856
+              }
+            },
+            {
+              "file": "/sgl-workspace/sglang/python/sglang/jit_kernel/diffusion/triton/rmsnorm_onepass.py",
+              "definition_line": 68,
+              "function": "triton_one_pass_rms_norm",
+              "qualname": "triton_one_pass_rms_norm",
+              "call_site_to_next": {
+                "file": "/sgl-workspace/sglang/python/sglang/jit_kernel/diffusion/triton/rmsnorm_onepass.py",
+                "line": 69
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+              "definition_line": 1257,
+              "function": "__call__",
+              "qualname": "OpOverloadPacket.__call__",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+                "line": 1269
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+              "definition_line": 42,
+              "function": "inner",
+              "qualname": "_disable_dynamo.<locals>.inner",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+                "line": 54
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+              "definition_line": 1240,
+              "function": "_fn",
+              "qualname": "DisableContext.__call__.<locals>._fn",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+                "line": 1263
+              }
+            }
+          ],
+          "child_capture_ids": [
+            "6"
+          ],
+          "kernel_ids": [],
+          "inclusive_kernel_ids": [
+            "p315237144199168-c6877-k42"
+          ],
+          "metrics": {
+            "nvtx_cpu_duration_us": 316.241,
+            "direct_gpu_kernel_sum_us": 0,
+            "direct_share_of_high_gpu": 0.0,
+            "inclusive_gpu_kernel_sum_us": 2.272,
+            "inclusive_share_of_high_gpu": 0.047238855622089154
+          },
+          "attribution_role": "ancestor_context",
+          "hotspot_rank": 12
+        },
+        {
+          "capture_id": "6",
+          "parent_capture_id": "5",
+          "parent_call_id": "1",
+          "archetype": "triton_launch",
+          "common_interface": "triton.runtime.jit.JITFunction.__getitem__ launcher",
+          "execution_interface": "_rms_norm_tiled_onepass",
+          "provider_hint": "sglang",
+          "execution_leaf": {
+            "archetype": "triton_launch",
+            "interface": "_rms_norm_tiled_onepass",
+            "kind": "common_interface"
+          },
+          "implementation_hint": {
+            "definition_line": 11,
+            "file": "/sgl-workspace/sglang/python/sglang/jit_kernel/diffusion/triton/rmsnorm_onepass.py"
+          },
+          "python_stack": [
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1094,
+              "function": "high_level",
+              "qualname": "high_level",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1096
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1067,
+              "function": "_run_cases",
+              "qualname": "_run_cases",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1081
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 855,
+              "function": "run",
+              "qualname": "_case_sglang_triton.<locals>.run",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 856
+              }
+            },
+            {
+              "file": "/sgl-workspace/sglang/python/sglang/jit_kernel/diffusion/triton/rmsnorm_onepass.py",
+              "definition_line": 68,
+              "function": "triton_one_pass_rms_norm",
+              "qualname": "triton_one_pass_rms_norm",
+              "call_site_to_next": {
+                "file": "/sgl-workspace/sglang/python/sglang/jit_kernel/diffusion/triton/rmsnorm_onepass.py",
+                "line": 69
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+              "definition_line": 1257,
+              "function": "__call__",
+              "qualname": "OpOverloadPacket.__call__",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+                "line": 1269
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+              "definition_line": 42,
+              "function": "inner",
+              "qualname": "_disable_dynamo.<locals>.inner",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+                "line": 54
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+              "definition_line": 1240,
+              "function": "_fn",
+              "qualname": "DisableContext.__call__.<locals>._fn",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+                "line": 1263
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+              "definition_line": 864,
+              "function": "__call__",
+              "qualname": "OpOverload.__call__",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+                "line": 865
+              }
+            },
+            {
+              "file": "/sgl-workspace/sglang/python/sglang/jit_kernel/diffusion/triton/rmsnorm_onepass.py",
+              "definition_line": 40,
+              "function": "_triton_one_pass_rms_norm_cuda",
+              "qualname": "_triton_one_pass_rms_norm_cuda",
+              "call_site_to_next": {
+                "file": "/sgl-workspace/sglang/python/sglang/jit_kernel/diffusion/triton/rmsnorm_onepass.py",
+                "line": 55
+              }
+            }
+          ],
+          "child_capture_ids": [],
+          "kernel_ids": [
+            "p315237144199168-c6877-k42"
+          ],
+          "inclusive_kernel_ids": [
+            "p315237144199168-c6877-k42"
+          ],
+          "metrics": {
+            "nvtx_cpu_duration_us": 100.718,
+            "direct_gpu_kernel_sum_us": 2.272,
+            "direct_share_of_high_gpu": 0.047238855622089154,
+            "inclusive_gpu_kernel_sum_us": 2.272,
+            "inclusive_share_of_high_gpu": 0.047238855622089154
+          },
+          "attribution_role": "kernel_owner",
+          "hotspot_rank": 4
+        },
+        {
+          "capture_id": "7",
+          "parent_capture_id": null,
+          "parent_call_id": "1",
+          "archetype": "triton_launch",
+          "common_interface": "triton.runtime.jit.JITFunction.__getitem__ launcher",
+          "execution_interface": "rms_norm_kernel",
+          "provider_hint": "flashinfer",
+          "execution_leaf": {
+            "archetype": "triton_launch",
+            "interface": "rms_norm_kernel",
+            "kind": "common_interface"
+          },
+          "implementation_hint": {
+            "definition_line": 7,
+            "file": "/usr/local/lib/python3.12/dist-packages/flashinfer/triton/kernels/norm.py"
+          },
+          "python_stack": [
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1094,
+              "function": "high_level",
+              "qualname": "high_level",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1096
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1067,
+              "function": "_run_cases",
+              "qualname": "_run_cases",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1081
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 867,
+              "function": "run",
+              "qualname": "_case_flashinfer_triton.<locals>.run",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 868
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/flashinfer/triton/norm.py",
+              "definition_line": 9,
+              "function": "rms_norm",
+              "qualname": "rms_norm",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/flashinfer/triton/norm.py",
+                "line": 27
+              }
+            }
+          ],
+          "child_capture_ids": [],
+          "kernel_ids": [
+            "p315237144199168-c6884-k43"
+          ],
+          "inclusive_kernel_ids": [
+            "p315237144199168-c6884-k43"
+          ],
+          "metrics": {
+            "nvtx_cpu_duration_us": 72.73,
+            "direct_gpu_kernel_sum_us": 1.568,
+            "direct_share_of_high_gpu": 0.03260146373918829,
+            "inclusive_gpu_kernel_sum_us": 1.568,
+            "inclusive_share_of_high_gpu": 0.03260146373918829
+          },
+          "attribution_role": "kernel_owner",
+          "hotspot_rank": 7
+        },
+        {
+          "capture_id": "9",
+          "parent_capture_id": null,
+          "parent_call_id": "1",
+          "archetype": "tvm_ffi_call",
+          "common_interface": "exported callable on a tvm_ffi.module.Module",
+          "execution_interface": "sglang_jit.add_constant.add_constant",
+          "provider_hint": "sglang",
+          "execution_leaf": {
+            "archetype": "tvm_ffi_call",
+            "interface": "sglang_jit.add_constant.add_constant",
+            "kind": "common_interface"
+          },
+          "implementation_hint": {
+            "export": "add_constant",
+            "factory": "sglang_jit.add_constant"
+          },
+          "python_stack": [
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1094,
+              "function": "high_level",
+              "qualname": "high_level",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1096
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1067,
+              "function": "_run_cases",
+              "qualname": "_run_cases",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1081
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 878,
+              "function": "run",
+              "qualname": "_case_sglang_jit.<locals>.run",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 879
+              }
+            },
+            {
+              "file": "/sgl-workspace/sglang/python/sglang/jit_kernel/add_constant.py",
+              "definition_line": 24,
+              "function": "add_constant",
+              "qualname": "add_constant",
+              "call_site_to_next": {
+                "file": "/sgl-workspace/sglang/python/sglang/jit_kernel/add_constant.py",
+                "line": 27
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 590,
+              "function": "wrapped",
+              "qualname": "_captured_callable.<locals>.wrapped",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 591
+              }
+            }
+          ],
+          "child_capture_ids": [],
+          "kernel_ids": [
+            "p315237144199168-c6892-k44"
+          ],
+          "inclusive_kernel_ids": [
+            "p315237144199168-c6892-k44"
+          ],
+          "metrics": {
+            "nvtx_cpu_duration_us": 35.127,
+            "direct_gpu_kernel_sum_us": 0.864,
+            "direct_share_of_high_gpu": 0.017964071856287428,
+            "inclusive_gpu_kernel_sum_us": 0.864,
+            "inclusive_share_of_high_gpu": 0.017964071856287428
+          },
+          "attribution_role": "kernel_owner",
+          "hotspot_rank": 11
+        },
+        {
+          "capture_id": "21",
+          "parent_capture_id": null,
+          "parent_call_id": "1",
+          "archetype": "tvm_ffi_call",
+          "common_interface": "exported callable on a tvm_ffi.module.Module",
+          "execution_interface": "flashinfer_jit.sampling.min_p_sampling_from_probs",
+          "provider_hint": "flashinfer",
+          "execution_leaf": {
+            "archetype": "tvm_ffi_call",
+            "interface": "flashinfer_jit.sampling.min_p_sampling_from_probs",
+            "kind": "common_interface"
+          },
+          "implementation_hint": {
+            "export": "min_p_sampling_from_probs",
+            "factory": "flashinfer_jit.sampling"
+          },
+          "python_stack": [
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1094,
+              "function": "high_level",
+              "qualname": "high_level",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1096
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1067,
+              "function": "_run_cases",
+              "qualname": "_run_cases",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1081
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 890,
+              "function": "run",
+              "qualname": "_case_flashinfer_ffi.<locals>.run",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 891
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/flashinfer/api_logging.py",
+              "definition_line": 2307,
+              "function": "_auto_dump_wrapper",
+              "qualname": "_attach_fi_trace.<locals>._auto_dump_wrapper",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/flashinfer/api_logging.py",
+                "line": 2333
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/flashinfer/sampling.py",
+              "definition_line": 1191,
+              "function": "min_p_sampling_from_probs",
+              "qualname": "min_p_sampling_from_probs",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/flashinfer/sampling.py",
+                "line": 1287
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/flashinfer/sampling.py",
+              "definition_line": 343,
+              "function": "min_p_sampling_from_probs",
+              "qualname": "get_sampling_module.<locals>.min_p_sampling_from_probs",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/flashinfer/sampling.py",
+                "line": 371
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 590,
+              "function": "wrapped",
+              "qualname": "_captured_callable.<locals>.wrapped",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 591
+              }
+            }
+          ],
+          "child_capture_ids": [],
+          "kernel_ids": [
+            "p315237144199168-c6924-k45"
+          ],
+          "inclusive_kernel_ids": [
+            "p315237144199168-c6924-k45"
+          ],
+          "metrics": {
+            "nvtx_cpu_duration_us": 57.805,
+            "direct_gpu_kernel_sum_us": 4.576,
+            "direct_share_of_high_gpu": 0.09514304723885562,
+            "inclusive_gpu_kernel_sum_us": 4.576,
+            "inclusive_share_of_high_gpu": 0.09514304723885562
+          },
+          "attribution_role": "kernel_owner",
+          "hotspot_rank": 3
+        },
+        {
+          "capture_id": "22",
+          "parent_capture_id": null,
+          "parent_call_id": "1",
+          "archetype": "pytorch_dispatch",
+          "common_interface": "torch.utils._python_dispatch.TorchDispatchMode.__torch_dispatch__",
+          "execution_interface": "sglang.fused_norm_scale_shift.default",
+          "provider_hint": "sglang",
+          "execution_leaf": {
+            "archetype": "pytorch_dispatch",
+            "interface": "sglang.fused_norm_scale_shift.default",
+            "kind": "common_interface"
+          },
+          "implementation_hint": {},
+          "python_stack": [
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1094,
+              "function": "high_level",
+              "qualname": "high_level",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1096
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1067,
+              "function": "_run_cases",
+              "qualname": "_run_cases",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1081
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 911,
+              "function": "run",
+              "qualname": "_case_sglang_cutedsl.<locals>.run",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 912
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_library/custom_ops.py",
+              "definition_line": 697,
+              "function": "__call__",
+              "qualname": "CustomOpDef.__call__",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_library/custom_ops.py",
+                "line": 698
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+              "definition_line": 864,
+              "function": "__call__",
+              "qualname": "OpOverload.__call__",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+                "line": 865
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_library/autograd.py",
+              "definition_line": 108,
+              "function": "autograd_impl",
+              "qualname": "make_autograd_impl.<locals>.autograd_impl",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_library/autograd.py",
+                "line": 112
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_library/autograd.py",
+              "definition_line": 34,
+              "function": "forward_no_grad",
+              "qualname": "make_autograd_impl.<locals>.forward_no_grad",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_library/autograd.py",
+                "line": 41
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+              "definition_line": 869,
+              "function": "redispatch",
+              "qualname": "OpOverload.redispatch",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+                "line": 872
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+              "definition_line": 42,
+              "function": "inner",
+              "qualname": "_disable_dynamo.<locals>.inner",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+                "line": 54
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+              "definition_line": 1240,
+              "function": "_fn",
+              "qualname": "DisableContext.__call__.<locals>._fn",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+                "line": 1263
+              }
+            }
+          ],
+          "child_capture_ids": [
+            "23"
+          ],
+          "kernel_ids": [],
+          "inclusive_kernel_ids": [
+            "p315237144199168-c6936-k46"
+          ],
+          "metrics": {
+            "nvtx_cpu_duration_us": 345.101,
+            "direct_gpu_kernel_sum_us": 0,
+            "direct_share_of_high_gpu": 0.0,
+            "inclusive_gpu_kernel_sum_us": 1.504,
+            "inclusive_share_of_high_gpu": 0.03127079174983367
+          },
+          "attribution_role": "ancestor_context",
+          "hotspot_rank": 13
+        },
+        {
+          "capture_id": "23",
+          "parent_capture_id": "22",
+          "parent_call_id": "1",
+          "archetype": "cute_dsl_launch",
+          "common_interface": "callable returned by cutlass.cute.compile",
+          "execution_interface": "ScaleResidualNormScaleShift",
+          "provider_hint": "sglang",
+          "execution_leaf": {
+            "archetype": "cute_dsl_launch",
+            "interface": "ScaleResidualNormScaleShift",
+            "kind": "common_interface"
+          },
+          "implementation_hint": {
+            "file": "/sgl-workspace/sglang/python/sglang/jit_kernel/diffusion/cutedsl/scale_residual_norm_scale_shift.py"
+          },
+          "python_stack": [
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1094,
+              "function": "high_level",
+              "qualname": "high_level",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1096
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1067,
+              "function": "_run_cases",
+              "qualname": "_run_cases",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1081
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 911,
+              "function": "run",
+              "qualname": "_case_sglang_cutedsl.<locals>.run",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 912
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_library/custom_ops.py",
+              "definition_line": 697,
+              "function": "__call__",
+              "qualname": "CustomOpDef.__call__",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_library/custom_ops.py",
+                "line": 698
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+              "definition_line": 864,
+              "function": "__call__",
+              "qualname": "OpOverload.__call__",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+                "line": 865
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_library/autograd.py",
+              "definition_line": 108,
+              "function": "autograd_impl",
+              "qualname": "make_autograd_impl.<locals>.autograd_impl",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_library/autograd.py",
+                "line": 112
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_library/autograd.py",
+              "definition_line": 34,
+              "function": "forward_no_grad",
+              "qualname": "make_autograd_impl.<locals>.forward_no_grad",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_library/autograd.py",
+                "line": 41
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+              "definition_line": 869,
+              "function": "redispatch",
+              "qualname": "OpOverload.redispatch",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+                "line": 872
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+              "definition_line": 42,
+              "function": "inner",
+              "qualname": "_disable_dynamo.<locals>.inner",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+                "line": 54
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+              "definition_line": 1240,
+              "function": "_fn",
+              "qualname": "DisableContext.__call__.<locals>._fn",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+                "line": 1263
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+              "definition_line": 864,
+              "function": "__call__",
+              "qualname": "OpOverload.__call__",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_ops.py",
+                "line": 865
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_library/custom_ops.py",
+              "definition_line": 346,
+              "function": "backend_impl",
+              "qualname": "CustomOpDef.register_kernel.<locals>.inner.<locals>.backend_impl",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_library/custom_ops.py",
+                "line": 347
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+              "definition_line": 42,
+              "function": "inner",
+              "qualname": "_disable_dynamo.<locals>.inner",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+                "line": 54
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+              "definition_line": 1240,
+              "function": "_fn",
+              "qualname": "DisableContext.__call__.<locals>._fn",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+                "line": 1263
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_library/custom_ops.py",
+              "definition_line": 377,
+              "function": "wrapped_fn",
+              "qualname": "CustomOpDef.register_kernel.<locals>.inner.<locals>.wrapped_fn",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_library/custom_ops.py",
+                "line": 382
+              }
+            },
+            {
+              "file": "/sgl-workspace/sglang/python/sglang/jit_kernel/diffusion/cutedsl/scale_residual_norm_scale_shift.py",
+              "definition_line": 278,
+              "function": "fused_norm_scale_shift",
+              "qualname": "fused_norm_scale_shift",
+              "call_site_to_next": {
+                "file": "/sgl-workspace/sglang/python/sglang/jit_kernel/diffusion/cutedsl/scale_residual_norm_scale_shift.py",
+                "line": 338
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 590,
+              "function": "wrapped",
+              "qualname": "_captured_callable.<locals>.wrapped",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 591
+              }
+            }
+          ],
+          "child_capture_ids": [],
+          "kernel_ids": [
+            "p315237144199168-c6936-k46"
+          ],
+          "inclusive_kernel_ids": [
+            "p315237144199168-c6936-k46"
+          ],
+          "metrics": {
+            "nvtx_cpu_duration_us": 64.102,
+            "direct_gpu_kernel_sum_us": 1.504,
+            "direct_share_of_high_gpu": 0.03127079174983367,
+            "inclusive_gpu_kernel_sum_us": 1.504,
+            "inclusive_share_of_high_gpu": 0.03127079174983367
+          },
+          "attribution_role": "kernel_owner",
+          "hotspot_rank": 8
+        },
+        {
+          "capture_id": "24",
+          "parent_capture_id": null,
+          "parent_call_id": "1",
+          "archetype": "python_binding",
+          "common_interface": "registered Python-visible extension/binding export callable",
+          "execution_interface": "deep_gemm.bf16_gemm_nt",
+          "provider_hint": "deepgemm",
+          "execution_leaf": {
+            "archetype": "python_binding",
+            "interface": "deep_gemm.bf16_gemm_nt",
+            "kind": "common_interface"
+          },
+          "implementation_hint": {
+            "export": "bf16_gemm_nt",
+            "module": "deep_gemm"
+          },
+          "python_stack": [
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1094,
+              "function": "high_level",
+              "qualname": "high_level",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1096
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1067,
+              "function": "_run_cases",
+              "qualname": "_run_cases",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1081
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 932,
+              "function": "run",
+              "qualname": "_case_deepgemm_binding.<locals>.run",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 933
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 590,
+              "function": "wrapped",
+              "qualname": "_captured_callable.<locals>.wrapped",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 591
+              }
+            }
+          ],
+          "child_capture_ids": [
+            "25",
+            "26",
+            "27"
+          ],
+          "kernel_ids": [
+            "p315237144199168-c6945-k47"
+          ],
+          "inclusive_kernel_ids": [
+            "p315237144199168-c6945-k47"
+          ],
+          "metrics": {
+            "nvtx_cpu_duration_us": 392.091,
+            "direct_gpu_kernel_sum_us": 2.176,
+            "direct_share_of_high_gpu": 0.04524284763805723,
+            "inclusive_gpu_kernel_sum_us": 2.176,
+            "inclusive_share_of_high_gpu": 0.04524284763805723
+          },
+          "attribution_role": "kernel_owner",
+          "hotspot_rank": 5
+        },
+        {
+          "capture_id": "35",
+          "parent_capture_id": null,
+          "parent_call_id": "1",
+          "archetype": "tilelang_launch",
+          "common_interface": "tilelang.JITKernel.__call__",
+          "execution_interface": "JITKernel",
+          "provider_hint": "sglang",
+          "execution_leaf": {
+            "archetype": "tilelang_launch",
+            "interface": "JITKernel",
+            "kind": "common_interface"
+          },
+          "implementation_hint": {
+            "file": "/usr/local/lib/python3.12/dist-packages/tilelang/jit/kernel.py"
+          },
+          "python_stack": [
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1094,
+              "function": "high_level",
+              "qualname": "high_level",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1096
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1067,
+              "function": "_run_cases",
+              "qualname": "_run_cases",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1081
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 946,
+              "function": "run",
+              "qualname": "_case_sglang_tilelang.<locals>.run",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 947
+              }
+            },
+            {
+              "file": "/sgl-workspace/sglang/python/sglang/srt/layers/mhc.py",
+              "definition_line": 94,
+              "function": "hc_split_sinkhorn",
+              "qualname": "hc_split_sinkhorn",
+              "call_site_to_next": {
+                "file": "/sgl-workspace/sglang/python/sglang/srt/layers/mhc.py",
+                "line": 107
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 671,
+              "function": "patched_call",
+              "qualname": "_install_tilelang_capture.<locals>.patched_call",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 674
+              }
+            }
+          ],
+          "child_capture_ids": [],
+          "kernel_ids": [
+            "p315237144199168-c6969-k48"
+          ],
+          "inclusive_kernel_ids": [
+            "p315237144199168-c6969-k48"
+          ],
+          "metrics": {
+            "nvtx_cpu_duration_us": 70.674,
+            "direct_gpu_kernel_sum_us": 1.92,
+            "direct_share_of_high_gpu": 0.03992015968063872,
+            "inclusive_gpu_kernel_sum_us": 1.92,
+            "inclusive_share_of_high_gpu": 0.03992015968063872
+          },
+          "attribution_role": "kernel_owner",
+          "hotspot_rank": 6
+        },
+        {
+          "capture_id": "36",
+          "parent_capture_id": null,
+          "parent_call_id": "1",
+          "archetype": "inductor_launch",
+          "common_interface": "torch._inductor.runtime.triton_heuristics.CachingAutotuner.run",
+          "execution_interface": "triton_poi_fused_copy__div_lt_mul_where_0",
+          "provider_hint": "sglang",
+          "execution_leaf": {
+            "archetype": "inductor_launch",
+            "interface": "triton_poi_fused_copy__div_lt_mul_where_0",
+            "kind": "common_interface"
+          },
+          "implementation_hint": {
+            "file": "/usr/local/lib/python3.12/dist-packages/triton/runtime/jit.py"
+          },
+          "python_stack": [
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1094,
+              "function": "high_level",
+              "qualname": "high_level",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1096
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 1067,
+              "function": "_run_cases",
+              "qualname": "_run_cases",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 1081
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 961,
+              "function": "run",
+              "qualname": "_case_sglang_inductor.<locals>.run",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 962
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+              "definition_line": 956,
+              "function": "compile_wrapper",
+              "qualname": "_TorchDynamoContext.__call__.<locals>.compile_wrapper",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+                "line": 1024
+              }
+            },
+            {
+              "file": "/sgl-workspace/sglang/python/sglang/srt/sampling/penaltylib/repetition_penalty.py",
+              "definition_line": 9,
+              "function": "apply_scaling_penalties",
+              "qualname": "apply_scaling_penalties",
+              "call_site_to_next": {
+                "file": "/sgl-workspace/sglang/python/sglang/srt/sampling/penaltylib/repetition_penalty.py",
+                "line": 9
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+              "definition_line": 1240,
+              "function": "_fn",
+              "qualname": "DisableContext.__call__.<locals>._fn",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/eval_frame.py",
+                "line": 1263
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_functorch/aot_autograd.py",
+              "definition_line": 1192,
+              "function": "forward",
+              "qualname": "aot_module_simplified.<locals>.forward",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_functorch/aot_autograd.py",
+                "line": 1200
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py",
+              "definition_line": 2297,
+              "function": "__call__",
+              "qualname": "SerializableCompiledFunction.__call__",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py",
+                "line": 2298
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py",
+              "definition_line": 534,
+              "function": "runtime_wrapper",
+              "qualname": "_create_runtime_wrapper.<locals>.runtime_wrapper",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py",
+                "line": 580
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/utils.py",
+              "definition_line": 124,
+              "function": "call_func_at_runtime_with_args",
+              "qualname": "call_func_at_runtime_with_args",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/utils.py",
+                "line": 138
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py",
+              "definition_line": 769,
+              "function": "wrapper",
+              "qualname": "FunctionalizedRngRuntimeWrapper.post_compile.<locals>.wrapper",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py",
+                "line": 783
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_inductor/output_code.py",
+              "definition_line": 628,
+              "function": "__call__",
+              "qualname": "CompiledFxGraph.__call__",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_inductor/output_code.py",
+                "line": 656
+              }
+            },
+            {
+              "file": "/usr/local/lib/python3.12/dist-packages/torch/_inductor/utils.py",
+              "definition_line": 3397,
+              "function": "run",
+              "qualname": "align_inputs_from_check_idxs.<locals>.run",
+              "call_site_to_next": {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_inductor/utils.py",
+                "line": 3401
+              }
+            },
+            {
+              "file": "/tmp/torchinductor_root/sy/csyaezd7ysvfppq3liurivosisokjonumqqmusiwipp6gdz2gkep.py",
+              "definition_line": 100,
+              "function": "call",
+              "qualname": "Runner.call",
+              "call_site_to_next": {
+                "file": "/tmp/torchinductor_root/sy/csyaezd7ysvfppq3liurivosisokjonumqqmusiwipp6gdz2gkep.py",
+                "line": 112
+              }
+            },
+            {
+              "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+              "definition_line": 763,
+              "function": "patched_run",
+              "qualname": "_install_inductor_capture.<locals>.patched_run",
+              "call_site_to_next": {
+                "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+                "line": 768
+              }
+            }
+          ],
+          "child_capture_ids": [],
+          "kernel_ids": [
+            "p315237144199168-c6976-k49"
+          ],
+          "inclusive_kernel_ids": [
+            "p315237144199168-c6976-k49"
+          ],
+          "metrics": {
+            "nvtx_cpu_duration_us": 50.228,
+            "direct_gpu_kernel_sum_us": 0.96,
+            "direct_share_of_high_gpu": 0.01996007984031936,
+            "inclusive_gpu_kernel_sum_us": 0.96,
+            "inclusive_share_of_high_gpu": 0.01996007984031936
+          },
+          "attribution_role": "kernel_owner",
+          "hotspot_rank": 10
+        }
+      ],
+      "raw_capture_event_count": 36,
+      "capture_without_kernel_count": 23,
+      "unattributed_kernel_ids": [],
+      "coverage": 1.0
+    }
+  ],
+  "kernels": [
+    {
+      "kernel_id": "p315237144199168-c6801-k38",
+      "correlation_id": 6801,
+      "name": "nvjet_sm90_hsh_128x128_64x6_1x2_h_bz_NNT",
+      "global_pid": 315237144199168,
+      "device_id": 0,
+      "stream_id": 7,
+      "gpu_start_ns": 14115253761,
+      "gpu_end_ns": 14115275297,
+      "duration_us": 21.536,
+      "launch_api": {
+        "name": "cuLaunchKernelEx",
+        "start_ns": 14115226879,
+        "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
+      },
+      "high_call_id": "1",
+      "owner_capture_id": "1"
+    },
+    {
+      "kernel_id": "p315237144199168-c6814-k39",
+      "correlation_id": 6814,
+      "name": "void flashinfer::activation::act_and_mul_kernel<__half, &silu<float>>(T1 *, const T1 *, int)",
+      "global_pid": 315237144199168,
+      "device_id": 0,
+      "stream_id": 7,
+      "gpu_start_ns": 14115722051,
+      "gpu_end_ns": 14115723363,
+      "duration_us": 1.312,
+      "launch_api": {
+        "name": "cudaLaunchKernel_v7000",
+        "start_ns": 14115701639,
+        "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
+      },
+      "high_call_id": "1",
+      "owner_capture_id": "3"
+    },
+    {
+      "kernel_id": "p315237144199168-c6845-k40",
+      "correlation_id": 6845,
+      "name": "void flash::prepare_varlen_num_blocks_kernel<(int)1, (bool)1>(int, int, int, const int *, const int *, const int *, const int *, const int *, const int *, int, int, int, int, int, cutlass::FastDivmod, cutlass::FastDivmod, int *, int *, int *, int *, int *, bool, bool, bool, int)",
+      "global_pid": 315237144199168,
+      "device_id": 0,
+      "stream_id": 7,
+      "gpu_start_ns": 14116000548,
+      "gpu_end_ns": 14116003108,
+      "duration_us": 2.56,
+      "launch_api": {
+        "name": "cudaLaunchKernel_v7000",
+        "start_ns": 14115980805,
+        "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
+      },
+      "high_call_id": "1",
+      "owner_capture_id": "4"
+    },
+    {
+      "kernel_id": "p315237144199168-c6859-k41",
+      "correlation_id": 6859,
+      "name": "void cutlass::device_kernel<flash::enable_sm90_or_later<flash::FlashAttnFwdSm90<flash::CollectiveMainloopFwdSm90<(int)2, cute::tuple<cute::C<(int)1>, cute::C<(int)1>, cute::C<(int)1>>, cute::tuple<cute::C<(int)64>, cute::C<(int)192>, cute::C<(int)64>>, (int)64, cutlass::bfloat16_t, float, cutlass::arch::Sm90, (bool)1, (bool)0, (bool)0, (bool)1, (bool)0, (bool)0, (bool)0, (bool)1, (bool)1, (bool)0, (bool)0, (bool)0, cutlass::bfloat16_t, (int)1>, flash::CollectiveEpilogueFwd<cute::tuple<cute::C<(int)64>, cute::C<(int)64>, cute::C<(int)192>>, cute::tuple<cute::C<(int)1>, cute::C<(int)1>, cute::C<(int)1>>, cutlass::bfloat16_t, cutlass::arch::Sm90, (int)128, (bool)1, (bool)0, (bool)0, (bool)0>, flash::VarlenDynamicPersistentTileScheduler<(int)64, (int)192, (int)128, (int)32, (bool)0, (bool)0, (bool)1, (bool)1, (bool)1, (bool)1>>>>(T1::Params)",
+      "global_pid": 315237144199168,
+      "device_id": 0,
+      "stream_id": 7,
+      "gpu_start_ns": 14116040772,
+      "gpu_end_ns": 14116047620,
+      "duration_us": 6.848,
+      "launch_api": {
+        "name": "cudaLaunchKernelExC_v11060",
+        "start_ns": 14116028758,
+        "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
+      },
+      "high_call_id": "1",
+      "owner_capture_id": "4"
+    },
+    {
+      "kernel_id": "p315237144199168-c6877-k42",
+      "correlation_id": 6877,
+      "name": "_rms_norm_tiled_onepass",
+      "global_pid": 315237144199168,
+      "device_id": 0,
+      "stream_id": 7,
+      "gpu_start_ns": 14116513734,
+      "gpu_end_ns": 14116516006,
+      "duration_us": 2.272,
+      "launch_api": {
+        "name": "cuLaunchKernelEx",
+        "start_ns": 14116501624,
+        "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
+      },
+      "high_call_id": "1",
+      "owner_capture_id": "6"
+    },
+    {
+      "kernel_id": "p315237144199168-c6884-k43",
+      "correlation_id": 6884,
+      "name": "rms_norm_kernel",
+      "global_pid": 315237144199168,
+      "device_id": 0,
+      "stream_id": 7,
+      "gpu_start_ns": 14116729351,
+      "gpu_end_ns": 14116730919,
+      "duration_us": 1.568,
+      "launch_api": {
+        "name": "cuLaunchKernelEx",
+        "start_ns": 14116719366,
+        "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
+      },
+      "high_call_id": "1",
+      "owner_capture_id": "7"
+    },
+    {
+      "kernel_id": "p315237144199168-c6892-k44",
+      "correlation_id": 6892,
+      "name": "void <unnamed>::add_constant_kernel<(int)5>(int *, const int *, unsigned long)",
+      "global_pid": 315237144199168,
+      "device_id": 0,
+      "stream_id": 7,
+      "gpu_start_ns": 14117004936,
+      "gpu_end_ns": 14117005800,
+      "duration_us": 0.864,
+      "launch_api": {
+        "name": "cudaLaunchKernelExC_v11060",
+        "start_ns": 14116992391,
+        "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
+      },
+      "high_call_id": "1",
+      "owner_capture_id": "9"
+    },
+    {
+      "kernel_id": "p315237144199168-c6924-k45",
+      "correlation_id": 6924,
+      "name": "void flashinfer::sampling::MinPSamplingFromProbKernel<(unsigned int)1024, (cub::_V_300302_SM_750_800_890_900_1000_1030_1200::BlockScanAlgorithm)2, (cub::_V_300302_SM_750_800_890_900_1000_1030_1200::BlockReduceAlgorithm)2, (unsigned int)4, (bool)1, float, int>(T6 *, float *, T7 *, bool *, T7 *, float, unsigned int, unsigned long *, unsigned long, unsigned long *, unsigned long)",
+      "global_pid": 315237144199168,
+      "device_id": 0,
+      "stream_id": 7,
+      "gpu_start_ns": 14118530221,
+      "gpu_end_ns": 14118534797,
+      "duration_us": 4.576,
+      "launch_api": {
+        "name": "cudaLaunchKernel_v7000",
+        "start_ns": 14118510526,
+        "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
+      },
+      "high_call_id": "1",
+      "owner_capture_id": "21"
+    },
+    {
+      "kernel_id": "p315237144199168-c6936-k46",
+      "correlation_id": 6936,
+      "name": "kernel_cutlass_kernel_sglangjit_kerneldiffusioncutedslscale_residual_norm_scale_shiftScaleResidualNormScaleShift_object_at__tensorptrbf16_gmem_align32_o_2048div2048div20481___tensorptrbf1_0",
+      "global_pid": 315237144199168,
+      "device_id": 0,
+      "stream_id": 7,
+      "gpu_start_ns": 14119050991,
+      "gpu_end_ns": 14119052495,
+      "duration_us": 1.504,
+      "launch_api": {
+        "name": "cudaLaunchKernelExC_v11060",
+        "start_ns": 14119031805,
+        "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
+      },
+      "high_call_id": "1",
+      "owner_capture_id": "23"
+    },
+    {
+      "kernel_id": "p315237144199168-c6945-k47",
+      "correlation_id": 6945,
+      "name": "void deep_gemm::sm90_bf16_gemm_impl<(cute::UMMA::Major)0, (cute::UMMA::Major)0, (unsigned int)0, (unsigned int)0, (unsigned int)0, (unsigned int)1, (unsigned int)64, (unsigned int)16, (unsigned int)64, (unsigned int)128, (unsigned int)128, (unsigned int)32, (unsigned int)16, (unsigned int)128, (unsigned int)128, (unsigned int)1, (bool)0, (unsigned int)78, (deep_gemm::GemmType)0, (bool)0, cutlass::bfloat16_t>(int *, unsigned int, unsigned int, unsigned int, CUtensorMap_st, CUtensorMap_st, CUtensorMap_st)",
+      "global_pid": 315237144199168,
+      "device_id": 0,
+      "stream_id": 7,
+      "gpu_start_ns": 14119572977,
+      "gpu_end_ns": 14119575153,
+      "duration_us": 2.176,
+      "launch_api": {
+        "name": "cuLaunchKernelEx",
+        "start_ns": 14119558726,
+        "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
+      },
+      "high_call_id": "1",
+      "owner_capture_id": "24"
+    },
+    {
+      "kernel_id": "p315237144199168-c6969-k48",
+      "correlation_id": 6969,
+      "name": "hc_split_sinkhorn_kernel__kernel",
+      "global_pid": 315237144199168,
+      "device_id": 0,
+      "stream_id": 7,
+      "gpu_start_ns": 14120477845,
+      "gpu_end_ns": 14120479765,
+      "duration_us": 1.92,
+      "launch_api": {
+        "name": "cuLaunchKernelEx",
+        "start_ns": 14120461806,
+        "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
+      },
+      "high_call_id": "1",
+      "owner_capture_id": "35"
+    },
+    {
+      "kernel_id": "p315237144199168-c6976-k49",
+      "correlation_id": 6976,
+      "name": "triton_poi_fused_copy__div_lt_mul_where_0",
+      "global_pid": 315237144199168,
+      "device_id": 0,
+      "stream_id": 7,
+      "gpu_start_ns": 14120843190,
+      "gpu_end_ns": 14120844150,
+      "duration_us": 0.96,
+      "launch_api": {
+        "name": "cuLaunchKernel",
+        "start_ns": 14120829963,
+        "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
+      },
+      "high_call_id": "1",
+      "owner_capture_id": "36"
+    }
+  ],
+  "diagnostics": {
+    "nvtx_tables": [
+      "NVTX_EVENTS"
+    ],
+    "cuda_api_tables": [
+      "CUPTI_ACTIVITY_KIND_RUNTIME"
+    ],
+    "kernel_tables": [
+      "CUPTI_ACTIVITY_KIND_KERNEL"
+    ],
+    "high_range_count": 1,
+    "execution_range_count": 36,
+    "capture_event_count": 36,
+    "capture_event_files": [
+      "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/cli_log/nsys_poc/capture_events/events_2012382.jsonl"
+    ],
+    "cuda_api_event_count": 2238,
+    "trace_kernel_count": 58,
+    "high_related_kernel_count": 12,
+    "materialized_execution_capture_count": 13,
+    "observed_invocation_count": 1,
+    "skipped_invocation_count": 0,
+    "eligible_invocation_count": 1,
+    "selected_invocation_count": 1,
+    "discarded_invocation_count": 0,
+    "observed_call_ids": [
+      "1"
+    ],
+    "eligible_call_ids": [
+      "1"
+    ],
+    "selected_call_ids": [
+      "1"
+    ],
+    "discarded_call_ids": []
+  },
+  "artifacts": {
+    "environment_probe": "environment_probe.json",
+    "capture_events": "capture_events/events_*.jsonl",
+    "sqlite": "trace/profile.sqlite",
+    "logs": {
+      "probe": "logs/probe.log",
+      "nsys": "logs/nsys.log",
+      "test": "logs/test.log",
+      "summary": "logs/summary.log"
+    }
+  },
+  "run": {
+    "run_id": "02ec1709c96d43718c3290aedc866458",
+    "created_at_unix": 1784371094.336763
+  }
+}

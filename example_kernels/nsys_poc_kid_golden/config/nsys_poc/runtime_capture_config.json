@@ -1,0 +1,30 @@
+{
+  "schema_version": "kid-runtime-config/v2",
+  "backend_name": "nsys_poc",
+  "workdir": "/Users/bytedance/Desktop/infra_agent",
+  "output_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/cli_log/nsys_poc",
+  "target": {
+    "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+    "line": 1095,
+    "qualified_name": "high_level"
+  },
+  "cmd": null,
+  "test_cmd": "python kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py --worker --cases pytorch_native,sgl_kernel_builtin,sgl_kernel_sgl_attn,sglang_triton,flashinfer_triton,sglang_jit,flashinfer_ffi,sglang_cutedsl,deepgemm_binding,sglang_tilelang,sglang_inductor",
+  "ready": null,
+  "stop": null,
+  "env": {},
+  "selection": {
+    "skip_invocations": 0,
+    "stages": [
+      "unknown"
+    ],
+    "sample_count_per_stage": 1,
+    "sampling": "single",
+    "aggregation": "single"
+  },
+  "profiling": {
+    "nsys_bin": "nsys",
+    "max_runtime_sec": 1800,
+    "disable_cuda_graph": true
+  }
+}

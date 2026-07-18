@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import importlib.metadata
+import importlib.util
 import json
 import os
+import platform
+import shlex
 import shutil
 import signal
 import subprocess
@@ -9,229 +13,499 @@ import sys
 import time
 import urllib.request
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import SCHEMA_VERSION
-from .config import DecomposerConfig
-from .source_resolver import SourceResolver
-from .trace_parser import TraceParser
+from .config import RuntimeCaptureConfig
+from .trace_parser import RuntimeTraceParser
 
 
-def _write_runtime_files(config: DecomposerConfig) -> Path:
-    config.output_dir.mkdir(parents=True, exist_ok=True)
-    (config.output_dir / "events").mkdir(exist_ok=True)
-    runtime_config = config.to_runtime_dict()
-    config.runtime_config_path().write_text(json.dumps(runtime_config, indent=2))
+ENVIRONMENT_VERSION = "kid-runtime-environment/v1"
 
-    inject_dir = config.output_dir / "_inject"
-    inject_dir.mkdir(exist_ok=True)
-    (inject_dir / "sitecustomize.py").write_text(
-        "from framework_engineer.kernel_interface_decomposer.runtime_instrumentation import install_from_env\n"
-        "install_from_env()\n"
+
+def _prepare_layout(root: Path) -> None:
+    (root / "capture_events").mkdir(parents=True, exist_ok=True)
+    (root / "trace").mkdir(parents=True, exist_ok=True)
+    (root / "logs").mkdir(parents=True, exist_ok=True)
+    (root / "_inject").mkdir(parents=True, exist_ok=True)
+
+
+def _write_injection(config: RuntimeCaptureConfig, root: Path) -> Path:
+    inject = root / "_inject"
+    runtime_config = config.runtime_config(events_dir=root / "capture_events")
+    runtime_config["output_dir"] = str(root)
+    runtime_path = inject / "runtime_config.json"
+    runtime_path.write_text(
+        json.dumps(runtime_config, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
     )
-    return inject_dir
+    (inject / "sitecustomize.py").write_text(
+        "from framework_engineer.kernel_interface_decomposer.runtime_instrumentation "
+        "import install_from_env\ninstall_from_env()\n",
+        encoding="utf-8",
+    )
+    return runtime_path
 
 
-def _env_with_injection(config: DecomposerConfig, inject_dir: Path) -> dict[str, str]:
+def _base_env(config: RuntimeCaptureConfig) -> dict[str, str]:
     env = os.environ.copy()
-    existing = env.get("PYTHONPATH", "")
-    paths = [str(inject_dir), str(config.workdir)]
-    if existing:
-        paths.append(existing)
-    env["PYTHONPATH"] = os.pathsep.join(paths)
-    env["KID_RUNTIME_CONFIG"] = str(config.runtime_config_path())
-    env["KID_ENABLE"] = "1"
+    env.update(config.env)
     return env
 
 
-def _nsys_command(config: DecomposerConfig, service_cmd: str) -> list[str]:
-    profiling = config.profiling
-    nsys = str(profiling.get("nsys_bin", "nsys"))
-    cmd = [
-        nsys,
+def _injected_env(
+    config: RuntimeCaptureConfig, root: Path, runtime_config_path: Path
+) -> dict[str, str]:
+    env = _base_env(config)
+    package_root = Path(__file__).resolve().parents[2]
+    paths = [str(root / "_inject"), str(package_root), str(config.workdir)]
+    if env.get("PYTHONPATH"):
+        paths.append(env["PYTHONPATH"])
+    env["PYTHONPATH"] = os.pathsep.join(paths)
+    env["KID_ENABLE"] = "1"
+    env["KID_RUNTIME_CONFIG"] = str(runtime_config_path)
+    return env
+
+
+def _package_probe(module: str, distribution: str | None = None) -> dict[str, Any]:
+    spec = importlib.util.find_spec(module)
+    version = None
+    try:
+        version = importlib.metadata.version(distribution or module)
+    except importlib.metadata.PackageNotFoundError:
+        pass
+    return {
+        "present": spec is not None,
+        "version": version,
+        "origin": getattr(spec, "origin", None) if spec else None,
+    }
+
+
+def probe_environment(config: RuntimeCaptureConfig, root: Path) -> dict[str, Any]:
+    nsys_requested = str(config.profiling["nsys_bin"])
+    nsys_resolved = shutil.which(nsys_requested)
+    if not nsys_resolved:
+        raise RuntimeError(f"nsys binary not found: {nsys_requested}")
+    version_result = subprocess.run(
+        [nsys_resolved, "--version"], text=True, capture_output=True, check=False
+    )
+    nsys_version = (version_result.stdout or version_result.stderr).strip()
+    gpu: dict[str, Any] = {"cuda_available": False}
+    torch_error = None
+    try:
+        import torch
+
+        available = bool(torch.cuda.is_available())
+        gpu = {
+            "cuda_available": available,
+            "torch_version": str(torch.__version__),
+            "cuda_runtime": str(torch.version.cuda),
+            "device_count": int(torch.cuda.device_count()) if available else 0,
+            "device_name": torch.cuda.get_device_name(0) if available else None,
+            "compute_capability": (
+                list(torch.cuda.get_device_capability(0)) if available else None
+            ),
+        }
+    except Exception as exc:
+        torch_error = f"{type(exc).__name__}: {exc}"
+    dependencies = {
+        "torch": _package_probe("torch"),
+        "triton": _package_probe("triton"),
+        "cutlass": _package_probe("cutlass", "nvidia-cutlass-dsl"),
+        "tilelang": _package_probe("tilelang"),
+        "tvm_ffi": _package_probe("tvm_ffi", "apache-tvm-ffi"),
+        "deep_gemm": _package_probe("deep_gemm", "sgl-deep-gemm"),
+    }
+    probe = {
+        "schema_version": ENVIRONMENT_VERSION,
+        "created_at_unix": time.time(),
+        "python": {
+            "version": sys.version,
+            "executable": sys.executable,
+            "platform": platform.platform(),
+        },
+        "gpu": gpu,
+        "nsight_systems": {
+            "requested": nsys_requested,
+            "resolved": nsys_resolved,
+            "version": nsys_version,
+        },
+        "capture_adapter_dependencies": dependencies,
+        "capture_adapters": {
+            "pytorch_dispatch": dependencies["torch"]["present"],
+            "triton_launch": dependencies["triton"]["present"],
+            "cute_dsl_launch": dependencies["cutlass"]["present"],
+            "tilelang_launch": dependencies["tilelang"]["present"],
+            "tvm_ffi_call": dependencies["tvm_ffi"]["present"],
+            "inductor_launch": dependencies["torch"]["present"],
+            "python_binding": dependencies["deep_gemm"]["present"],
+        },
+        "torch_probe_error": torch_error,
+    }
+    probe_path = root / "environment_probe.json"
+    probe_path.write_text(
+        json.dumps(probe, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    (root / "logs" / "probe.log").write_text(
+        json.dumps(probe, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    if not gpu.get("cuda_available"):
+        raise RuntimeError("PyTorch CUDA is unavailable; inspect logs/probe.log")
+    return probe
+
+
+def _eager_command(command: str) -> str:
+    if "sglang.launch_server" in command and "--disable-cuda-graph" not in command.split():
+        return command.rstrip() + " --disable-cuda-graph"
+    return command
+
+
+def _nsys_profile_command(
+    config: RuntimeCaptureConfig, root: Path, profiled_command: str
+) -> list[str]:
+    return [
+        str(config.profiling["nsys_bin"]),
         "profile",
         "--force-overwrite=true",
-        "--trace=cuda,nvtx,cublas,cudnn,osrt",
+        "--trace=cuda,nvtx,osrt",
         "--target-processes=all",
         "--trace-fork-before-exec=true",
-        f"--output={config.nsys_output_base()}",
+        f"--output={root / '_profile'}",
+        "bash",
+        "-lc",
+        profiled_command,
     ]
-    if profiling.get("include_python_backtrace", True):
-        cmd.extend(["--python-backtrace=cuda", "--cudabacktrace=all"])
-    if profiling.get("trace_cuda_graph_nodes", True):
-        cmd.append("--cuda-graph-trace=node")
-    cmd.append("--pytorch=functions-trace-shapes,autograd-nvtx")
-    cmd.extend(["bash", "-lc", service_cmd])
-    return cmd
 
 
-def _wait_ready(config: DecomposerConfig, proc: subprocess.Popen[Any]) -> None:
+def _wait_ready(config: RuntimeCaptureConfig, process: subprocess.Popen[Any]) -> None:
     ready = config.ready or {}
-    timeout = float(ready.get("timeout_sec", 300))
-    deadline = time.time() + timeout
-    ready_type = ready.get("type", "none")
-    if ready_type == "none" or not ready:
-        time.sleep(float(ready.get("sleep_sec", 5)))
+    if not ready:
         return
-    if ready_type == "http":
-        url = ready.get("url")
-        if not url:
-            raise RuntimeError("commands.ready.url is required for http readiness")
-        while time.time() < deadline:
-            if proc.poll() is not None:
-                raise RuntimeError(f"service exited before readiness with code {proc.returncode}")
-            try:
-                with urllib.request.urlopen(str(url), timeout=3) as resp:
-                    if 200 <= resp.status < 500:
-                        return
-            except Exception:
-                time.sleep(1)
-        raise TimeoutError(f"service did not become ready before {timeout}s: {url}")
+    ready_type = str(ready.get("type", "none"))
+    timeout = float(ready.get("timeout_sec", 300))
     if ready_type == "sleep":
         time.sleep(float(ready.get("seconds", ready.get("sleep_sec", 5))))
         return
-    raise RuntimeError(f"unsupported ready.type: {ready_type}")
-
-
-def _terminate_process_group(proc: subprocess.Popen[Any], config: DecomposerConfig) -> None:
-    stop = config.stop or {}
-    sig_name = str(stop.get("signal", "SIGINT"))
-    grace = float(stop.get("grace_sec", 30))
-    sig = getattr(signal, sig_name, signal.SIGINT)
-    if proc.poll() is not None:
+    if ready_type in {"none", "null"}:
         return
+    if ready_type != "http":
+        raise RuntimeError(f"unsupported ready.type: {ready_type}")
+    url = ready.get("url")
+    if not url:
+        raise RuntimeError("ready.url is required for HTTP readiness")
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(
+                f"profiled service exited before readiness with code {process.returncode}"
+            )
+        try:
+            with urllib.request.urlopen(str(url), timeout=3) as response:
+                if 200 <= response.status < 500:
+                    return
+        except Exception:
+            time.sleep(1)
+    raise TimeoutError(f"service did not become ready in {timeout}s: {url}")
+
+
+def _stop_process_group(
+    process: subprocess.Popen[Any], config: RuntimeCaptureConfig
+) -> None:
+    if process.poll() is not None:
+        return
+    stop = config.stop or {}
+    signal_name = str(stop.get("signal", "SIGINT"))
+    stop_signal = getattr(signal, signal_name, signal.SIGINT)
+    grace = float(stop.get("grace_sec", 30))
     try:
-        os.killpg(proc.pid, sig)
+        os.killpg(process.pid, stop_signal)
     except ProcessLookupError:
         return
     deadline = time.time() + grace
-    while time.time() < deadline:
-        if proc.poll() is not None:
-            return
-        time.sleep(0.5)
-    try:
-        os.killpg(proc.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+    while time.time() < deadline and process.poll() is None:
+        time.sleep(0.25)
+    if process.poll() is None:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
 
-def export_sqlite(config: DecomposerConfig, nsys_rep: Path, sqlite_path: Path | None = None) -> Path:
-    sqlite_path = sqlite_path or config.sqlite_path()
-    if sqlite_path.exists():
-        sqlite_path.unlink()
-    nsys = str(config.profiling.get("nsys_bin", "nsys"))
-    cmd = [
-        nsys,
+def _run_profile(config: RuntimeCaptureConfig, root: Path, env: dict[str, str]) -> Path:
+    nsys_log_path = root / "logs" / "nsys.log"
+    test_log_path = root / "logs" / "test.log"
+    timeout = float(config.profiling["max_runtime_sec"])
+    if config.command is None:
+        profiled = (
+            "{ "
+            + config.test_command
+            + "; } > "
+            + shlex.quote(str(test_log_path))
+            + " 2>&1"
+        )
+        command = _nsys_profile_command(config, root, profiled)
+        with nsys_log_path.open("w", encoding="utf-8") as nsys_log:
+            nsys_log.write("command: " + shlex.join(command) + "\n")
+            nsys_log.flush()
+            result = subprocess.run(
+                command,
+                cwd=config.workdir,
+                env=env,
+                stdout=nsys_log,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=timeout,
+            )
+        if result.returncode != 0:
+            raise RuntimeError(f"profiled test failed with exit code {result.returncode}")
+    else:
+        service_command = _eager_command(config.command)
+        command = _nsys_profile_command(config, root, service_command)
+        service_process: subprocess.Popen[Any] | None = None
+        with nsys_log_path.open("w", encoding="utf-8") as nsys_log:
+            nsys_log.write("command: " + shlex.join(command) + "\n")
+            nsys_log.flush()
+            try:
+                service_process = subprocess.Popen(
+                    command,
+                    cwd=config.workdir,
+                    env=env,
+                    stdout=nsys_log,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    start_new_session=True,
+                )
+                _wait_ready(config, service_process)
+                with test_log_path.open("w", encoding="utf-8") as test_log:
+                    test_result = subprocess.run(
+                        ["bash", "-lc", config.test_command],
+                        cwd=config.workdir,
+                        env=_base_env(config),
+                        stdout=test_log,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        timeout=timeout,
+                    )
+                if test_result.returncode != 0:
+                    raise RuntimeError(
+                        f"test command failed with exit code {test_result.returncode}"
+                    )
+            finally:
+                if service_process is not None:
+                    _stop_process_group(service_process, config)
+                    try:
+                        service_process.wait(timeout=60)
+                    except subprocess.TimeoutExpired:
+                        service_process.kill()
+    report = root / "_profile.nsys-rep"
+    if not report.exists():
+        alternatives = sorted(root.glob("_profile*.nsys-rep"))
+        if alternatives:
+            report = alternatives[0]
+    if not report.exists():
+        raise RuntimeError(f"nsys did not create a report under {root}")
+    if not test_log_path.exists() or test_log_path.stat().st_size == 0:
+        test_log_path.write_text("test command completed successfully\n", encoding="utf-8")
+    return report
+
+
+def export_sqlite(
+    config: RuntimeCaptureConfig, report: Path, sqlite_path: Path, log_path: Path
+) -> Path:
+    command = [
+        str(config.profiling["nsys_bin"]),
         "export",
         "--force-overwrite=true",
         "--type=sqlite",
         f"--output={sqlite_path}",
-        str(nsys_rep),
+        str(report),
     ]
-    result = subprocess.run(cmd, cwd=config.workdir, text=True, capture_output=True)
-    if result.returncode != 0:
-        raise RuntimeError(
-            "nsys export failed\n"
-            f"command: {' '.join(cmd)}\n"
-            f"stdout:\n{result.stdout}\n"
-            f"stderr:\n{result.stderr}"
+    with log_path.open("a", encoding="utf-8") as log:
+        log.write("export: " + shlex.join(command) + "\n")
+        log.flush()
+        result = subprocess.run(
+            command,
+            cwd=config.workdir,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            text=True,
         )
-    if not sqlite_path.exists():
-        alt = sqlite_path.with_suffix(sqlite_path.suffix + ".sqlite")
-        if alt.exists():
-            return alt
-        raise RuntimeError(f"nsys export did not create sqlite file: {sqlite_path}")
+    if result.returncode != 0 or not sqlite_path.exists():
+        raise RuntimeError(f"nsys export failed with exit code {result.returncode}")
     return sqlite_path
 
 
-def _build_schema(config: DecomposerConfig, nsys_rep: Path, sqlite_path: Path) -> dict[str, Any]:
-    resolver = SourceResolver(config)
-    parser = TraceParser(config, resolver)
-    invocations = parser.parse(sqlite_path)
-    schema = {
-        "schema_version": SCHEMA_VERSION,
-        "run": {
-            "run_id": uuid.uuid4().hex,
-            "workdir": str(config.workdir),
-            "nsys_rep": str(nsys_rep),
-            "nsys_sqlite": str(sqlite_path),
-            "created_at": datetime.now(timezone.utc).isoformat(),
+def _add_artifact_metadata(
+    result: dict[str, Any], *, created_at: float | None = None
+) -> dict[str, Any]:
+    result["artifacts"] = {
+        "environment_probe": "environment_probe.json",
+        "capture_events": "capture_events/events_*.jsonl",
+        "sqlite": "trace/profile.sqlite",
+        "logs": {
+            "probe": "logs/probe.log",
+            "nsys": "logs/nsys.log",
+            "test": "logs/test.log",
+            "summary": "logs/summary.log",
         },
-        "target": {
-            "file": str(config.target_file),
-            "line": config.target_line,
-            "qualified_name": resolver.target_qualified_name,
-        },
-        "selection": {
-            "per_invocation": bool(config.selection.get("per_invocation", True)),
-            "top_k": int(config.selection.get("top_k", 20)),
-            "min_duration_us": float(config.selection.get("min_duration_us", 0)),
-            "min_share_in_invocation": float(config.selection.get("min_share_in_invocation", 0.0)),
-        },
-        "invocations": invocations,
     }
-    config.schema_path().write_text(json.dumps(schema, indent=2, sort_keys=False))
-    return schema
+    result["run"] = {
+        "run_id": uuid.uuid4().hex,
+        "created_at_unix": created_at if created_at is not None else time.time(),
+    }
+    return result
+
+
+def format_summary(result: dict[str, Any]) -> str:
+    lines = [
+        "KID Runtime Capture",
+        "===================",
+        f"Backend: {result.get('backend_name')}",
+        "GPU metric: sum of correlated Nsight kernel activity durations.",
+        "",
+    ]
+    for index, invocation in enumerate(result.get("invocations", []), start=1):
+        high = invocation["high_level"]
+        lines.append(
+            f"Invocation {index}: {high['interface']} call_id={high['call_id']} "
+            f"stage={high.get('stage', 'unknown')}"
+        )
+        lines.append(
+            f"  CPU NVTX={high['nvtx_cpu_duration_us']:.3f} us | "
+            f"GPU sum={high['gpu_kernel_sum_us']:.3f} us | "
+            f"coverage={invocation['coverage']:.2%}"
+        )
+        for capture in sorted(
+            invocation.get("execution_captures", []),
+            key=lambda item: int(item.get("hotspot_rank", 10**9)),
+        ):
+            metrics = capture["metrics"]
+            lines.append(
+                f"  #{capture['hotspot_rank']} {capture['archetype']} "
+                f"{capture['execution_interface']}: "
+                f"direct={metrics['direct_gpu_kernel_sum_us']:.3f} us "
+                f"inclusive={metrics['inclusive_gpu_kernel_sum_us']:.3f} us"
+            )
+        if invocation.get("unattributed_kernel_ids"):
+            lines.append(
+                "  unattributed: " + ", ".join(invocation["unattributed_kernel_ids"])
+            )
+        lines.append("")
+    diagnostics = result.get("diagnostics", {})
+    lines.append(
+        "Observed/eligible/selected invocations: "
+        f"{diagnostics.get('observed_invocation_count', 0)}/"
+        f"{diagnostics.get('eligible_invocation_count', 0)}/"
+        f"{diagnostics.get('selected_invocation_count', 0)}"
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _publish(staging: Path, destination: Path) -> None:
+    if destination.exists():
+        shutil.rmtree(destination)
+    staging.replace(destination)
 
 
 def analyze_existing_trace(
-    config: DecomposerConfig,
+    config: RuntimeCaptureConfig,
     *,
-    nsys_rep: Path,
-    sqlite_path: Path | None = None,
+    sqlite_path: Path,
+    events_dir: Path,
+    write_output: bool = True,
 ) -> dict[str, Any]:
-    config.output_dir.mkdir(parents=True, exist_ok=True)
-    if sqlite_path is None:
-        sqlite_path = export_sqlite(config, nsys_rep)
-    return _build_schema(config, nsys_rep, sqlite_path)
+    result = _add_artifact_metadata(
+        RuntimeTraceParser(config).parse(sqlite_path.resolve(), events_dir.resolve())
+    )
+    if write_output:
+        config.output_dir.mkdir(parents=True, exist_ok=True)
+        config.events_dir().mkdir(parents=True, exist_ok=True)
+        config.trace_dir().mkdir(parents=True, exist_ok=True)
+        config.logs_dir().mkdir(parents=True, exist_ok=True)
+        destination_sqlite = config.sqlite_path()
+        if sqlite_path.resolve() != destination_sqlite.resolve():
+            shutil.copy2(sqlite_path, destination_sqlite)
+        for source_event in sorted(events_dir.glob("events_*.jsonl")):
+            destination_event = config.events_dir() / source_event.name
+            if source_event.resolve() != destination_event.resolve():
+                shutil.copy2(source_event, destination_event)
+        environment_path = config.output_dir / "environment_probe.json"
+        if not environment_path.exists():
+            environment_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": ENVIRONMENT_VERSION,
+                        "created_at_unix": time.time(),
+                        "mode": "offline_analyze",
+                        "python": {
+                            "version": sys.version,
+                            "executable": sys.executable,
+                            "platform": platform.platform(),
+                        },
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+        for log_name in ("probe.log", "nsys.log", "test.log"):
+            log_path = config.logs_dir() / log_name
+            if not log_path.exists():
+                log_path.write_text("offline analyze: no command log\n", encoding="utf-8")
+        config.schema_path().write_text(
+            json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+        (config.logs_dir() / "summary.log").write_text(
+            format_summary(result), encoding="utf-8"
+        )
+    return result
 
 
-def run_workflow(config: DecomposerConfig) -> dict[str, Any]:
-    if not config.service_cmd:
-        raise RuntimeError("commands.service is required for run")
-    if not config.test_cmd:
-        raise RuntimeError("commands.test is required for run")
-    if not shutil.which(str(config.profiling.get("nsys_bin", "nsys"))):
-        raise RuntimeError("nsys binary not found; set profiling.nsys_bin")
-
-    inject_dir = _write_runtime_files(config)
-    env = _env_with_injection(config, inject_dir)
-    service_log = (config.output_dir / "service.log").open("w")
-    test_log = (config.output_dir / "test.log").open("w")
-    service_proc: subprocess.Popen[Any] | None = None
+def capture_runtime(config: RuntimeCaptureConfig) -> dict[str, Any]:
+    if not config.workdir.is_dir():
+        raise RuntimeError(f"workdir does not exist: {config.workdir}")
+    if not config.target_file.is_file():
+        raise RuntimeError(f"target.file does not exist: {config.target_file}")
+    staging = config.output_dir.parent / f".{config.output_dir.name}.kid-{uuid.uuid4().hex}"
+    _prepare_layout(staging)
+    created_at = time.time()
     try:
-        service_proc = subprocess.Popen(
-            _nsys_command(config, config.service_cmd),
-            cwd=config.workdir,
-            env=env,
-            stdout=service_log,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-            text=True,
+        probe_environment(config, staging)
+        runtime_config_path = _write_injection(config, staging)
+        env = _injected_env(config, staging, runtime_config_path)
+        report = _run_profile(config, staging, env)
+        try:
+            sqlite_path = export_sqlite(
+                config,
+                report,
+                staging / "trace" / "profile.sqlite",
+                staging / "logs" / "nsys.log",
+            )
+        finally:
+            report.unlink(missing_ok=True)
+        result = _add_artifact_metadata(
+            RuntimeTraceParser(config).parse(sqlite_path, staging / "capture_events"),
+            created_at=created_at,
         )
-        _wait_ready(config, service_proc)
-        test_result = subprocess.run(
-            ["bash", "-lc", config.test_cmd],
-            cwd=config.workdir,
-            env=env,
-            stdout=test_log,
-            stderr=subprocess.STDOUT,
-            text=True,
-            timeout=float(config.profiling.get("max_runtime_sec", 1800)),
+        (staging / "runtime_capture.schema.json").write_text(
+            json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
-        if test_result.returncode != 0:
-            raise RuntimeError(f"test command failed with exit code {test_result.returncode}")
-    finally:
-        if service_proc is not None:
-            _terminate_process_group(service_proc, config)
-            service_proc.wait(timeout=60)
-        service_log.close()
-        test_log.close()
+        (staging / "logs" / "summary.log").write_text(
+            format_summary(result), encoding="utf-8"
+        )
+        from .artifact_validator import RuntimeArtifactValidator
 
-    nsys_rep = config.nsys_rep_path()
-    if not nsys_rep.exists():
-        raise RuntimeError(f"nsys report not found: {nsys_rep}")
-    sqlite_path = export_sqlite(config, nsys_rep)
-    return _build_schema(config, nsys_rep, sqlite_path)
+        validator = RuntimeArtifactValidator(staging)
+        if not validator.validate():
+            raise RuntimeError(
+                "Runtime artifact validation failed: " + "; ".join(validator.errors)
+            )
+        shutil.rmtree(staging / "_inject", ignore_errors=True)
+    except Exception:
+        shutil.rmtree(staging / "_inject", ignore_errors=True)
+        for stale_report in staging.rglob("*.nsys-rep"):
+            stale_report.unlink(missing_ok=True)
+        _publish(staging, config.output_dir)
+        raise
+    _publish(staging, config.output_dir)
+    return result
