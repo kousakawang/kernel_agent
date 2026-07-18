@@ -26,6 +26,21 @@ MODULE = "framework_engineer.kernel_interface_decomposer"
 RUN_GPU_E2E = os.environ.get("KID_RUN_GPU_E2E") == "1"
 
 
+def _failure_logs(output_dir: Path) -> str:
+    sections: list[str] = []
+    for relative in ("logs/test.log", "logs/nsys.log", "logs/probe.log"):
+        path = output_dir / relative
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        # Keep unittest output readable while retaining the final traceback and
+        # Nsight error, which normally occur at the end of each log.
+        if len(text) > 20_000:
+            text = "...<last 20000 characters>...\n" + text[-20_000:]
+        sections.append(f"===== {relative} =====\n{text}")
+    return "\n".join(sections) or "<no Runtime Capture logs were published>"
+
+
 def _target_line(path: Path, function_name: str) -> int:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     matches = [
@@ -167,11 +182,13 @@ class TestCaptureCliGolden(unittest.TestCase):
                 capture_output=True,
                 check=False,
             )
-            self.assertEqual(
-                completed.returncode,
-                0,
-                msg=f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
-            )
+            if completed.returncode != 0:
+                self.fail(
+                    f"capture CLI exited with {completed.returncode}\n"
+                    f"stdout:\n{completed.stdout}\n"
+                    f"stderr:\n{completed.stderr}\n"
+                    f"{_failure_logs(output_dir)}"
+                )
 
             actual = json.loads(
                 (output_dir / "runtime_capture.schema.json").read_text(

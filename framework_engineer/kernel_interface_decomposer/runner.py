@@ -168,7 +168,6 @@ def _nsys_profile_command(
         "profile",
         "--force-overwrite=true",
         "--trace=cuda,nvtx,osrt",
-        "--target-processes=all",
         "--trace-fork-before-exec=true",
         f"--output={root / '_profile'}",
         "bash",
