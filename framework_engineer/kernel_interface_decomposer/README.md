@@ -114,7 +114,9 @@ KID_RUN_GPU_E2E=1 python -m unittest \
 
 It runs all 11 mandatory PoC cases through the formal `capture` command, runs
 the Runtime artifact validator, and compares stable capture/kernel structure
-with the golden. Runtime IDs and measured durations are intentionally not fixed.
+with the golden. Runtime IDs, measured durations, and optional `provider_hint`
+values are intentionally not fixed. If the GPU test fails, its complete Runtime
+artifact directory is retained under `/tmp/kid-capture-golden-*` for diagnosis.
 
 Capture categories and adapter boundaries are defined in
 [CAPTURE_MECHANISMS.md](CAPTURE_MECHANISMS.md) and `capture_registry.py`.

@@ -9,8 +9,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -39,6 +40,18 @@ def _failure_logs(output_dir: Path) -> str:
             text = "...<last 20000 characters>...\n" + text[-20_000:]
         sections.append(f"===== {relative} =====\n{text}")
     return "\n".join(sections) or "<no Runtime Capture logs were published>"
+
+
+@contextmanager
+def _capture_temp_root() -> Iterator[Path]:
+    root = Path(tempfile.mkdtemp(prefix="kid-capture-golden-"))
+    try:
+        yield root
+    except BaseException:
+        print(f"GPU E2E artifacts preserved after failure: {root}", file=sys.stderr)
+        raise
+    else:
+        shutil.rmtree(root)
 
 
 def _target_line(path: Path, function_name: str) -> int:
@@ -86,7 +99,6 @@ def _stable_capture_signature(payload: dict[str, Any]) -> dict[str, Any]:
             capture["archetype"],
             capture["common_interface"],
             capture["execution_interface"],
-            capture.get("provider_hint"),
             _capture_depth(capture_id, captures),
             len(capture.get("child_capture_ids", [])),
             len(capture.get("kernel_ids", [])),
@@ -149,8 +161,7 @@ class TestCaptureCliGolden(unittest.TestCase):
         )
         cases = base_config["test_cmd"].split("--cases", 1)[1].strip()
 
-        with tempfile.TemporaryDirectory(prefix="kid-capture-golden-") as tempdir:
-            temp_root = Path(tempdir)
+        with _capture_temp_root() as temp_root:
             output_dir = temp_root / "nsys_poc"
             config_path = temp_root / "runtime_capture_config.json"
             base_config["workdir"] = str(REPO_ROOT.parent)
