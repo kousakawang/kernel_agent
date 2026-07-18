@@ -5,29 +5,29 @@ import json
 import sys
 from pathlib import Path
 
-from .config import ConfigError, DecomposerConfig
-from .runner import analyze_existing_trace, run_workflow
+from .config import ConfigError, RuntimeCaptureConfig
+from .runner import analyze_existing_trace, capture_runtime
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m framework_engineer.kernel_interface_decomposer",
-        description="Profile a high-level Python API and resolve GPU kernels to wrappers/source.",
+        description="Capture execution-level GPU kernel evidence for one high-level Python target.",
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    capture = subparsers.add_parser(
+        "capture", help="Run one backend/test workflow under Nsight Systems"
+    )
+    capture.add_argument("config", help="kid-runtime-config/v2 JSON or YAML path")
 
-    run = sub.add_parser("run", help="Run service/test under nsys and analyze the trace")
-    run.add_argument("config", help="YAML/JSON config path")
-
-    analyze = sub.add_parser("analyze", help="Analyze an existing nsys report")
-    analyze.add_argument("config", help="YAML/JSON config path")
-    analyze.add_argument("--nsys-rep", required=True, help="Path to .nsys-rep")
+    analyze = subparsers.add_parser(
+        "analyze", help="Rebuild Runtime Capture output from existing SQLite/JSONL"
+    )
+    analyze.add_argument("config", help="kid-runtime-config/v2 JSON or YAML path")
+    analyze.add_argument("--sqlite", required=True, help="Nsight Systems SQLite path")
     analyze.add_argument(
-        "--sqlite",
-        default=None,
-        help="Optional pre-exported Nsight Systems SQLite file",
+        "--events-dir", required=True, help="Directory containing events_<pid>.jsonl"
     )
-
     return parser
 
 
@@ -35,20 +35,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     try:
-        config = DecomposerConfig.load(args.config)
-        if args.command == "run":
-            schema = run_workflow(config)
-        elif args.command == "analyze":
-            schema = analyze_existing_trace(
-                config,
-                nsys_rep=Path(args.nsys_rep).expanduser().resolve(),
-                sqlite_path=Path(args.sqlite).expanduser().resolve()
-                if args.sqlite
-                else None,
-            )
+        config = RuntimeCaptureConfig.load(args.config)
+        if args.command == "capture":
+            result = capture_runtime(config)
         else:
-            parser.error(f"unknown command: {args.command}")
-            return 2
+            result = analyze_existing_trace(
+                config,
+                sqlite_path=Path(args.sqlite).expanduser().resolve(),
+                events_dir=Path(args.events_dir).expanduser().resolve(),
+            )
     except ConfigError as exc:
         print(f"config error: {exc}", file=sys.stderr)
         return 2
@@ -56,9 +51,20 @@ def main(argv: list[str] | None = None) -> int:
         print("interrupted", file=sys.stderr)
         return 130
     except Exception as exc:
-        print(f"kernel_interface_decomposer failed: {exc}", file=sys.stderr)
+        print(f"KID Runtime Capture failed: {exc}", file=sys.stderr)
         return 1
 
-    print(json.dumps({"schema": str(config.schema_path()), "invocations": len(schema.get("invocations", []))}, indent=2))
+    diagnostics = result.get("diagnostics", {})
+    print(
+        json.dumps(
+            {
+                "runtime_capture": str(config.schema_path()),
+                "backend_name": config.backend_name,
+                "selected_invocations": len(result.get("invocations", [])),
+                "kernels": len(result.get("kernels", [])),
+                "raw_capture_events": diagnostics.get("capture_event_count", 0),
+            },
+            indent=2,
+        )
+    )
     return 0
-

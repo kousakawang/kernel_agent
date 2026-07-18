@@ -21,6 +21,7 @@
       "interface": "torch.nn.functional.scaled_dot_product_attention",
       "archetype": "pytorch_native",
       "archetype_code": "F0",
+      "binding_provider": null,
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
@@ -79,6 +80,7 @@
       "interface": "recompute_w_u_fwd_kernel",
       "archetype": "sglang_triton",
       "archetype_code": "F1",
+      "binding_provider": null,
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
@@ -152,6 +154,7 @@
       "interface": "torch.ops.sgl_kernel.silu_and_mul",
       "archetype": "sgl_kernel_builtin",
       "archetype_code": "F2",
+      "binding_provider": "sgl_kernel",
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
@@ -234,6 +237,7 @@
       "interface": "torch.ops.sgl_kernel.fwd",
       "archetype": "sgl_kernel_thirdparty",
       "archetype_code": "F3",
+      "binding_provider": "sgl_kernel",
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
@@ -320,6 +324,7 @@
       "interface": "sglang.jit_kernel.add_constant",
       "archetype": "sglang_jit",
       "archetype_code": "F4",
+      "binding_provider": "sglang_jit",
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
@@ -397,6 +402,7 @@
       "interface": "torch.ops.flashinfer.top_k_top_p_sampling_from_probs",
       "archetype": "thirdparty_aot",
       "archetype_code": "F5",
+      "binding_provider": "flashinfer",
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
@@ -482,6 +488,7 @@
       "interface": "rms_norm_kernel",
       "archetype": "thirdparty_triton_dsl",
       "archetype_code": "F6",
+      "binding_provider": null,
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
@@ -559,6 +566,7 @@
       "interface": "BatchPrefillWithPagedKVCacheWrapper.run",
       "archetype": "thirdparty_cpp_jit",
       "archetype_code": "F7",
+      "binding_provider": "flashinfer",
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
@@ -644,6 +652,7 @@
       "interface": "torch.ops.sglang.fused_norm_scale_shift",
       "archetype": "sglang_jit",
       "archetype_code": "F4",
+      "binding_provider": "sglang_jit",
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
@@ -721,6 +730,7 @@
       "interface": "deep_gemm.fp8_paged_mqa_logits",
       "archetype": "thirdparty_cpp_jit",
       "archetype_code": "F7",
+      "binding_provider": "deepgemm",
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",

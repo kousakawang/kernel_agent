@@ -1,0 +1,93 @@
+KID Nsight Systems PoC
+========================
+GPU hotspot metric: sum of Nsight GPU kernel activity durations.
+NVTX durations below are CPU-side ranges and are not GPU execution time.
+
+Artifacts:
+  summary: /mnt/infra_agent/nsys_poc_output/summary.log (0.00 MiB)
+  decomposition: /mnt/infra_agent/nsys_poc_output/decomposition.json (0.07 MiB)
+  workload_log: /mnt/infra_agent/nsys_poc_output/workload.log (0.00 MiB)
+  capture_events: /mnt/infra_agent/nsys_poc_output/capture_events.jsonl (0.09 MiB)
+  nsys_log: /mnt/infra_agent/nsys_poc_output/nsys.log (0.01 MiB)
+  probe_log: /mnt/infra_agent/nsys_poc_output/probe.log (0.00 MiB)
+  environment_probe: /mnt/infra_agent/nsys_poc_output/environment_probe.json (0.01 MiB)
+  nsys_report: /mnt/infra_agent/nsys_poc_output/profile.nsys-rep (11.84 MiB)
+  nsys_sqlite: /mnt/infra_agent/nsys_poc_output/profile.sqlite (67.13 MiB)
+
+High invocation 1: high_level (call_id=1)
+  CPU NVTX=6133.820 us | GPU kernel sum=48.320 us | coverage=100.00%
+  Raw common-interface captures without a GPU kernel: 23 (retained in capture_events.jsonl)
+  Execution captures (semantic target unresolved):
+  ├── #1 [pytorch_dispatch] aten.mm.default GPU_direct=21.632 us share=44.77% CPU_NVTX=197.407 us
+  │   case=pytorch_native | semantic_hint=torch.matmul | provider=pytorch
+  │   path: high_level -> _run_cases -> _case_pytorch_native.<locals>.run -> _disable_dynamo.<locals>.inner -> DisableContext.__call__.<locals>._fn
+  │   └── p314112114425856-c6801-k38 21.632 us  nvjet_sm90_hsh_128x128_64x6_1x2_h_bz_NNT
+  ├── #2 [pytorch_dispatch] sgl_kernel.fwd.default GPU_direct=9.440 us share=19.54% CPU_NVTX=123.962 us
+  │   case=sgl_kernel_sgl_attn | semantic_hint=sgl_kernel.flash_attn.flash_attn_varlen_func | provider=sgl-attn
+  │   path: high_level -> _run_cases -> _case_sgl_kernel_sgl_attn.<locals>.run -> flash_attn_varlen_func -> OpOverload.__call__ -> _disable_dynamo.<locals>.inner -> DisableContext.__call__.<locals>._fn
+  │   └── p314112114425856-c6845-k40 2.592 us  void flash::prepare_varlen_num_blocks_kernel<(int)1, (bool)1>(int, int, int, const int *, const int *, const int *, const int *, const int *, const int *, in...
+  │   └── p314112114425856-c6859-k41 6.848 us  void cutlass::device_kernel<flash::enable_sm90_or_later<flash::FlashAttnFwdSm90<flash::CollectiveMainloopFwdSm90<(int)2, cute::tuple<cute::C<(int)1>, cute::C...
+  ├── #3 [tvm_ffi_call] flashinfer_jit.sampling.min_p_sampling_from_probs GPU_direct=4.576 us share=9.47% CPU_NVTX=59.956 us
+  │   case=flashinfer_ffi | semantic_hint=flashinfer.sampling.min_p_sampling_from_probs | provider=flashinfer
+  │   path: high_level -> _run_cases -> _case_flashinfer_ffi.<locals>.run -> _attach_fi_trace.<locals>._auto_dump_wrapper -> min_p_sampling_from_probs -> get_sampling_module.<locals>.min_p_sampling_from_probs -> _captured_callable.<locals>.wrapped
+  │   └── p314112114425856-c6924-k45 4.576 us  void flashinfer::sampling::MinPSamplingFromProbKernel<(unsigned int)1024, (cub::_V_300302_SM_750_800_890_900_1000_1030_1200::BlockScanAlgorithm)2, (cub::_V_3...
+  ├── #4 [triton_launch] _rms_norm_tiled_onepass GPU_direct=2.272 us share=4.70% CPU_NVTX=100.467 us
+  │   case=sglang_triton | semantic_hint=sglang.jit_kernel.diffusion.triton.rmsnorm_onepass.triton_one_pass_rms_norm | provider=sglang
+  │   path: high_level -> _run_cases -> _case_sglang_triton.<locals>.run -> triton_one_pass_rms_norm -> OpOverloadPacket.__call__ -> _disable_dynamo.<locals>.inner -> DisableContext.__call__.<locals>._fn -> OpOverload.__call__ -> _triton_one_pass_rms_norm_cuda
+  │   └── p314112114425856-c6877-k42 2.272 us  _rms_norm_tiled_onepass
+  ├── #5 [python_binding] deep_gemm.bf16_gemm_nt GPU_direct=2.176 us share=4.50% CPU_NVTX=402.469 us
+  │   case=deepgemm_binding | semantic_hint=deep_gemm.bf16_gemm_nt | provider=deepgemm
+  │   nested children=['25', '26', '27'] | GPU_inclusive=2.176 us
+  │   path: high_level -> _run_cases -> _case_deepgemm_binding.<locals>.run -> _captured_callable.<locals>.wrapped
+  │   └── p314112114425856-c6945-k47 2.176 us  void deep_gemm::sm90_bf16_gemm_impl<(cute::UMMA::Major)0, (cute::UMMA::Major)0, (unsigned int)0, (unsigned int)0, (unsigned int)0, (unsigned int)1, (unsigned...
+  ├── #6 [tilelang_launch] JITKernel GPU_direct=1.920 us share=3.97% CPU_NVTX=58.165 us
+  │   case=sglang_tilelang | semantic_hint=sglang.srt.layers.mhc.hc_split_sinkhorn | provider=sglang
+  │   path: high_level -> _run_cases -> _case_sglang_tilelang.<locals>.run -> hc_split_sinkhorn -> _install_tilelang_capture.<locals>.patched_call
+  │   └── p314112114425856-c6969-k48 1.920 us  hc_split_sinkhorn_kernel__kernel
+  ├── #7 [triton_launch] rms_norm_kernel GPU_direct=1.600 us share=3.31% CPU_NVTX=69.015 us
+  │   case=flashinfer_triton | semantic_hint=flashinfer.triton.norm.rms_norm | provider=flashinfer
+  │   path: high_level -> _run_cases -> _case_flashinfer_triton.<locals>.run -> rms_norm
+  │   └── p314112114425856-c6884-k43 1.600 us  rms_norm_kernel
+  ├── #8 [cute_dsl_launch] ScaleResidualNormScaleShift GPU_direct=1.504 us share=3.11% CPU_NVTX=76.619 us
+  │   case=sglang_cutedsl | semantic_hint=sglang.jit_kernel.diffusion.cutedsl.scale_residual_norm_scale_shift.fused_norm_scale_shift | provider=sglang
+  │   path: high_level -> _run_cases -> _case_sglang_cutedsl.<locals>.run -> CustomOpDef.__call__ -> OpOverload.__call__ -> make_autograd_impl.<locals>.autograd_impl -> make_autograd_impl.<locals>.forward_no_grad -> OpOverload.redispatch -> _disable_dynamo.<locals>.inner -> DisableContext.__call__.<locals>._fn -> OpOverload.__call__ -> CustomOpDef.register_kernel.<locals>.inner.<locals>.backend_impl -> _disable_dynamo.<locals>.inner -> DisableContext.__call__.<locals>._fn -> CustomOpDef.register_kernel.<locals>.inner.<locals>.wrapped_fn -> fused_norm_scale_shift -> _captured_callable.<locals>.wrapped
+  │   └── p314112114425856-c6936-k46 1.504 us  kernel_cutlass_kernel_sglangjit_kerneldiffusioncutedslscale_residual_norm_scale_shiftScaleResidualNormScaleShift_object_at__tensorptrbf16_gmem_align32_o_2048...
+  ├── #9 [pytorch_dispatch] sgl_kernel.silu_and_mul.default GPU_direct=1.344 us share=2.78% CPU_NVTX=44.805 us
+  │   case=sgl_kernel_builtin | semantic_hint=sgl_kernel.silu_and_mul | provider=sgl-kernel
+  │   path: high_level -> _run_cases -> _case_sgl_kernel_builtin.<locals>.run -> silu_and_mul -> OpOverload.__call__ -> _disable_dynamo.<locals>.inner -> DisableContext.__call__.<locals>._fn
+  │   └── p314112114425856-c6814-k39 1.344 us  void flashinfer::activation::act_and_mul_kernel<__half, &silu<float>>(T1 *, const T1 *, int)
+  ├── #10 [inductor_launch] triton_poi_fused_copy__div_lt_mul_where_0 GPU_direct=0.960 us share=1.99% CPU_NVTX=48.187 us
+  │   case=sglang_inductor | semantic_hint=sglang.srt.sampling.penaltylib.repetition_penalty.apply_scaling_penalties | provider=sglang
+  │   path: high_level -> _run_cases -> _case_sglang_inductor.<locals>.run -> _TorchDynamoContext.__call__.<locals>.compile_wrapper -> apply_scaling_penalties -> DisableContext.__call__.<locals>._fn -> aot_module_simplified.<locals>.forward -> SerializableCompiledFunction.__call__ -> _create_runtime_wrapper.<locals>.runtime_wrapper -> call_func_at_runtime_with_args -> FunctionalizedRngRuntimeWrapper.post_compile.<locals>.wrapper -> CompiledFxGraph.__call__ -> align_inputs_from_check_idxs.<locals>.run -> Runner.call -> _install_inductor_capture.<locals>.patched_run
+  │   └── p314112114425856-c6976-k49 0.960 us  triton_poi_fused_copy__div_lt_mul_where_0
+  ├── #11 [tvm_ffi_call] sglang_jit.add_constant.add_constant GPU_direct=0.896 us share=1.85% CPU_NVTX=39.381 us
+  │   case=sglang_jit | semantic_hint=sglang.jit_kernel.add_constant.add_constant | provider=sglang
+  │   path: high_level -> _run_cases -> _case_sglang_jit.<locals>.run -> add_constant -> _captured_callable.<locals>.wrapped
+  │   └── p314112114425856-c6892-k44 0.896 us  void <unnamed>::add_constant_kernel<(int)5>(int *, const int *, unsigned long)
+  ├── #12 [pytorch_dispatch] sglang.triton_one_pass_rms_norm_cuda.default GPU_direct=0.000 us share=0.00% CPU_NVTX=328.769 us
+  │   case=sglang_triton | semantic_hint=sglang.jit_kernel.diffusion.triton.rmsnorm_onepass.triton_one_pass_rms_norm | provider=sglang
+  │   nested children=['6'] | GPU_inclusive=2.272 us
+  │   path: high_level -> _run_cases -> _case_sglang_triton.<locals>.run -> triton_one_pass_rms_norm -> OpOverloadPacket.__call__ -> _disable_dynamo.<locals>.inner -> DisableContext.__call__.<locals>._fn
+  └── #13 [pytorch_dispatch] sglang.fused_norm_scale_shift.default GPU_direct=0.000 us share=0.00% CPU_NVTX=358.262 us
+      case=sglang_cutedsl | semantic_hint=sglang.jit_kernel.diffusion.cutedsl.scale_residual_norm_scale_shift.fused_norm_scale_shift | provider=sglang
+      nested children=['23'] | GPU_inclusive=1.504 us
+      path: high_level -> _run_cases -> _case_sglang_cutedsl.<locals>.run -> CustomOpDef.__call__ -> OpOverload.__call__ -> make_autograd_impl.<locals>.autograd_impl -> make_autograd_impl.<locals>.forward_no_grad -> OpOverload.redispatch -> _disable_dynamo.<locals>.inner -> DisableContext.__call__.<locals>._fn
+
+Case validation:
+  PASS pytorch_native: expected=pytorch_dispatch observed=['pytorch_dispatch'] kernels=1
+  PASS sgl_kernel_builtin: expected=pytorch_dispatch observed=['pytorch_dispatch'] kernels=1
+  PASS sgl_kernel_sgl_attn: expected=pytorch_dispatch observed=['pytorch_dispatch'] kernels=2
+  PASS sglang_triton: expected=triton_launch observed=['triton_launch'] kernels=1
+  PASS flashinfer_triton: expected=triton_launch observed=['triton_launch'] kernels=1
+  PASS sglang_jit: expected=tvm_ffi_call observed=['tvm_ffi_call'] kernels=1
+  PASS flashinfer_ffi: expected=tvm_ffi_call observed=['tvm_ffi_call'] kernels=1
+  PASS sglang_cutedsl: expected=cute_dsl_launch observed=['cute_dsl_launch'] kernels=1
+  PASS deepgemm_binding: expected=python_binding observed=['python_binding'] kernels=1
+  PASS sglang_tilelang: expected=tilelang_launch observed=['tilelang_launch'] kernels=1
+  PASS sglang_inductor: expected=inductor_launch observed=['inductor_launch'] kernels=1
+
+Trace diagnostics:
+  NVTX tables: ['NVTX_EVENTS']
+  CUDA API tables: ['CUPTI_ACTIVITY_KIND_RUNTIME']
+  Kernel tables: ['CUPTI_ACTIVITY_KIND_KERNEL']
+  Trace kernels / high-related kernels: 58 / 12

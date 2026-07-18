@@ -1,0 +1,382 @@
+{
+  "schema_version": "kid-runtime-environment/v1",
+  "created_at_unix": 1784281379.3212752,
+  "python": {
+    "version": "3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]",
+    "executable": "/usr/bin/python3",
+    "platform": "Linux-5.15.0-91-generic-x86_64-with-glibc2.39"
+  },
+  "gpu": {
+    "cuda_available": true,
+    "torch_version": "2.11.0+cu130",
+    "cuda_runtime": "13.0",
+    "device_name": "NVIDIA H20",
+    "compute_capability": [
+      9,
+      0
+    ],
+    "device_count": 8
+  },
+  "nsight_systems": {
+    "requested": "nsys",
+    "resolved": "/usr/local/bin/nsys",
+    "version": "NVIDIA Nsight Systems version 2026.3.1.157-263138048394v0"
+  },
+  "packages": {
+    "torch": {
+      "distribution": "torch",
+      "version": "2.11.0+cu130",
+      "present": true,
+      "origin": "/usr/local/lib/python3.12/dist-packages/torch/__init__.py",
+      "required_attributes": [
+        "compile"
+      ],
+      "attributes": {
+        "compile": true
+      },
+      "import_error": null
+    },
+    "triton": {
+      "distribution": "triton",
+      "version": "3.6.0",
+      "present": true,
+      "origin": "/usr/local/lib/python3.12/dist-packages/triton/__init__.py",
+      "required_attributes": [
+        "jit"
+      ],
+      "attributes": {
+        "jit": true
+      },
+      "import_error": null
+    },
+    "sglang": {
+      "distribution": "sglang",
+      "version": "0.0.0.dev1+ge3cf9c5a2",
+      "present": true,
+      "origin": "/sgl-workspace/sglang/python/sglang/__init__.py",
+      "required_attributes": [],
+      "attributes": {},
+      "import_error": null
+    },
+    "sgl_kernel": {
+      "distribution": "sglang-kernel",
+      "version": "0.4.3",
+      "present": true,
+      "origin": "/usr/local/lib/python3.12/dist-packages/sgl_kernel/__init__.py",
+      "required_attributes": [
+        "silu_and_mul"
+      ],
+      "attributes": {
+        "silu_and_mul": true
+      },
+      "import_error": null
+    },
+    "flashinfer": {
+      "distribution": "flashinfer_python",
+      "version": "0.6.12",
+      "present": true,
+      "origin": "/usr/local/lib/python3.12/dist-packages/flashinfer/__init__.py",
+      "required_attributes": [],
+      "attributes": {},
+      "import_error": null
+    },
+    "deep_gemm": {
+      "distribution": "sgl-deep-gemm",
+      "version": "0.1.2",
+      "present": true,
+      "origin": "/usr/local/lib/python3.12/dist-packages/deep_gemm/__init__.py",
+      "required_attributes": [
+        "bf16_gemm_nt"
+      ],
+      "attributes": {
+        "bf16_gemm_nt": true
+      },
+      "import_error": null
+    },
+    "cutlass": {
+      "distribution": "nvidia-cutlass-dsl",
+      "version": "4.5.2",
+      "present": true,
+      "origin": "/usr/local/lib/python3.12/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/__init__.py",
+      "required_attributes": [],
+      "attributes": {},
+      "import_error": null
+    },
+    "tilelang": {
+      "distribution": "tilelang",
+      "version": "0.1.8",
+      "present": true,
+      "origin": "/usr/local/lib/python3.12/dist-packages/tilelang/__init__.py",
+      "required_attributes": [
+        "jit",
+        "JITKernel"
+      ],
+      "attributes": {
+        "jit": true,
+        "JITKernel": true
+      },
+      "import_error": null
+    },
+    "quack": {
+      "distribution": "quack-kernels",
+      "version": "0.5.0",
+      "present": true,
+      "origin": "/usr/local/lib/python3.12/dist-packages/quack/__init__.py",
+      "required_attributes": [],
+      "attributes": {},
+      "import_error": null
+    },
+    "tokenspeed_mla": {
+      "distribution": "tokenspeed_mla",
+      "version": "0.1.6",
+      "present": true,
+      "origin": "/usr/local/lib/python3.12/dist-packages/tokenspeed_mla/__init__.py",
+      "required_attributes": [
+        "tokenspeed_mla_decode"
+      ],
+      "attributes": {
+        "tokenspeed_mla_decode": true
+      },
+      "import_error": null
+    },
+    "flash_attn": {
+      "distribution": "flash-attn-4",
+      "version": "4.0.0b17",
+      "present": true,
+      "origin": null,
+      "required_attributes": [],
+      "attributes": {},
+      "import_error": null
+    },
+    "tvm_ffi": {
+      "distribution": "apache-tvm-ffi",
+      "version": "0.1.9",
+      "present": true,
+      "origin": "/usr/local/lib/python3.12/dist-packages/tvm_ffi/__init__.py",
+      "required_attributes": [
+        "Module",
+        "load_module"
+      ],
+      "attributes": {
+        "Module": true,
+        "load_module": true
+      },
+      "import_error": null
+    }
+  },
+  "selected_workloads": [
+    "pytorch_native",
+    "sgl_kernel_builtin",
+    "sgl_kernel_sgl_attn",
+    "sglang_triton",
+    "flashinfer_triton",
+    "sglang_jit",
+    "flashinfer_ffi",
+    "sglang_cutedsl",
+    "deepgemm_binding",
+    "sglang_tilelang",
+    "sglang_inductor"
+  ],
+  "workload_smoke": {
+    "pytorch_native": {
+      "optional": false,
+      "minimum_compute_capability": null,
+      "static_supported": true,
+      "static_reasons": [],
+      "smoke": {
+        "status": "passed",
+        "elapsed_s": 0.15771297365427017,
+        "output_shape": [
+          1024,
+          1024
+        ],
+        "output_dtype": "torch.float16"
+      }
+    },
+    "sgl_kernel_builtin": {
+      "optional": false,
+      "minimum_compute_capability": null,
+      "static_supported": true,
+      "static_reasons": [],
+      "smoke": {
+        "status": "passed",
+        "elapsed_s": 0.0012274160981178284,
+        "output_shape": [
+          64,
+          2048
+        ],
+        "output_dtype": "torch.float16"
+      }
+    },
+    "sgl_kernel_sgl_attn": {
+      "optional": false,
+      "minimum_compute_capability": null,
+      "static_supported": true,
+      "static_reasons": [],
+      "smoke": {
+        "status": "passed",
+        "elapsed_s": 0.01071876659989357,
+        "output_shape": [
+          4,
+          2,
+          64
+        ],
+        "output_dtype": "torch.bfloat16"
+      }
+    },
+    "sglang_triton": {
+      "optional": false,
+      "minimum_compute_capability": null,
+      "static_supported": true,
+      "static_reasons": [],
+      "smoke": {
+        "status": "passed",
+        "elapsed_s": 4.281469505280256,
+        "output_shape": [
+          512,
+          2048
+        ],
+        "output_dtype": "torch.float16"
+      }
+    },
+    "flashinfer_triton": {
+      "optional": false,
+      "minimum_compute_capability": null,
+      "static_supported": true,
+      "static_reasons": [],
+      "smoke": {
+        "status": "passed",
+        "elapsed_s": 0.004534527659416199,
+        "output_shape": [
+          64,
+          2048
+        ],
+        "output_dtype": "torch.float16"
+      }
+    },
+    "sglang_jit": {
+      "optional": false,
+      "minimum_compute_capability": null,
+      "static_supported": true,
+      "static_reasons": [],
+      "smoke": {
+        "status": "passed",
+        "elapsed_s": 0.008153319358825684,
+        "output_shape": [
+          4096
+        ],
+        "output_dtype": "torch.int32"
+      }
+    },
+    "flashinfer_ffi": {
+      "optional": false,
+      "minimum_compute_capability": null,
+      "static_supported": true,
+      "static_reasons": [],
+      "smoke": {
+        "status": "passed",
+        "elapsed_s": 0.029883649200201035,
+        "output_shape": [
+          4
+        ],
+        "output_dtype": "torch.int32"
+      }
+    },
+    "sglang_cutedsl": {
+      "optional": false,
+      "minimum_compute_capability": null,
+      "static_supported": true,
+      "static_reasons": [],
+      "smoke": {
+        "status": "passed",
+        "elapsed_s": 0.5109208077192307,
+        "output_shape": [
+          1,
+          4,
+          2048
+        ],
+        "output_dtype": "torch.bfloat16"
+      }
+    },
+    "deepgemm_binding": {
+      "optional": false,
+      "minimum_compute_capability": null,
+      "static_supported": true,
+      "static_reasons": [],
+      "smoke": {
+        "status": "passed",
+        "elapsed_s": 0.05910627916455269,
+        "output_shape": [
+          128,
+          128
+        ],
+        "output_dtype": "torch.bfloat16"
+      }
+    },
+    "sglang_tilelang": {
+      "optional": false,
+      "minimum_compute_capability": null,
+      "static_supported": true,
+      "static_reasons": [],
+      "smoke": {
+        "status": "passed",
+        "elapsed_s": 1.4355993419885635,
+        "output_shape": [
+          2,
+          16,
+          4
+        ],
+        "output_dtype": "torch.float32"
+      }
+    },
+    "sglang_inductor": {
+      "optional": false,
+      "minimum_compute_capability": null,
+      "static_supported": true,
+      "static_reasons": [],
+      "smoke": {
+        "status": "passed",
+        "elapsed_s": 0.31176042929291725,
+        "output_shape": [
+          8,
+          4096
+        ],
+        "output_dtype": "torch.float32"
+      }
+    },
+    "flash_attn4_cutedsl": {
+      "optional": true,
+      "minimum_compute_capability": [
+        10,
+        0
+      ],
+      "static_supported": false,
+      "static_reasons": [
+        "requires compute capability 10.0 or newer"
+      ],
+      "smoke": null
+    },
+    "tokenspeed_mla_cutedsl": {
+      "optional": true,
+      "minimum_compute_capability": [
+        10,
+        0
+      ],
+      "static_supported": false,
+      "static_reasons": [
+        "requires compute capability 10.0 or newer"
+      ],
+      "smoke": null
+    }
+  },
+  "capture_adapters": {
+    "pytorch_dispatch": true,
+    "triton_launch": true,
+    "cute_dsl_launch": true,
+    "tilelang_launch": true,
+    "tvm_ffi_call:sglang": true,
+    "tvm_ffi_call:flashinfer": true,
+    "inductor_launch": true,
+    "python_binding": true
+  }
+}

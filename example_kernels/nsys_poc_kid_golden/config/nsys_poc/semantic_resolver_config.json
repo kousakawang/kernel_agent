@@ -1,0 +1,39 @@
+{
+  "schema_version": "kid-semantic-resolver-config/v1",
+  "backend_name": "nsys_poc",
+  "runtime_capture": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/cli_log/nsys_poc/runtime_capture.schema.json",
+  "source_context": {
+    "sglang_repo_root": "/Users/bytedance/Desktop/infra_agent/sglang",
+    "third_party_manifest": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/source_location/example/third_party_manifest.json",
+    "source_roots": [
+      "/Users/bytedance/Desktop/infra_agent/sglang",
+      "/Users/bytedance/Desktop/infra_agent/sgl-attn",
+      "/Users/bytedance/Desktop/infra_agent/flashinfer",
+      "/Users/bytedance/Desktop/infra_agent/DeepGEMM"
+    ],
+    "runtime_to_local_path_mappings": [
+      {
+        "runtime_prefix": "/mnt/infra_agent",
+        "local_prefix": "/Users/bytedance/Desktop/infra_agent"
+      },
+      {
+        "runtime_prefix": "/sgl-workspace/sglang",
+        "local_prefix": "/Users/bytedance/Desktop/infra_agent/sglang"
+      },
+      {
+        "runtime_prefix": "/usr/local/lib/python3.12/dist-packages/sgl_kernel",
+        "local_prefix": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/python/sgl_kernel"
+      },
+      {
+        "runtime_prefix": "/usr/local/lib/python3.12/dist-packages/flashinfer",
+        "local_prefix": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer"
+      },
+      {
+        "runtime_prefix": "/usr/local/lib/python3.12/dist-packages/deep_gemm",
+        "local_prefix": "/Users/bytedance/Desktop/infra_agent/DeepGEMM/deep_gemm"
+      }
+    ]
+  },
+  "output": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/output/nsys_poc/decomposition.schema.json",
+  "notes_output": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/ref/nsys_poc/kid_semantic_resolver_notes.md"
+}
