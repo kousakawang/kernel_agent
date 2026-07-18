@@ -1,12 +1,12 @@
-[submodule "kernel_agent/backup/reference_repos/ref/kernel-design-agents"]
-	path = kernel_agent/backup/reference_repos/ref/kernel-design-agents
+[submodule "kernel_agent_old_files/backup/reference_repos/ref/kernel-design-agents"]
+	path = kernel_agent_old_files/backup/reference_repos/ref/kernel-design-agents
 	url = https://github.com/mit-han-lab/kernel-design-agents
-[submodule "kernel_agent/backup/reference_repos/ref/autokernel"]
-	path = kernel_agent/backup/reference_repos/ref/autokernel
+[submodule "kernel_agent_old_files/backup/reference_repos/ref/autokernel"]
+	path = kernel_agent_old_files/backup/reference_repos/ref/autokernel
 	url = https://github.com/RightNow-AI/autokernel
-[submodule "kernel_agent/backup/reference_repos/ref/KernelAgent"]
-	path = kernel_agent/backup/reference_repos/ref/KernelAgent
+[submodule "kernel_agent_old_files/backup/reference_repos/ref/KernelAgent"]
+	path = kernel_agent_old_files/backup/reference_repos/ref/KernelAgent
 	url = https://github.com/meta-pytorch/KernelAgent
-[submodule "kernel_agent/backup/reference_repos/ref/AKO4ALL"]
-	path = kernel_agent/backup/reference_repos/ref/AKO4ALL
+[submodule "kernel_agent_old_files/backup/reference_repos/ref/AKO4ALL"]
+	path = kernel_agent_old_files/backup/reference_repos/ref/AKO4ALL
 	url = https://github.com/TongmingLAIC/AKO4ALL
