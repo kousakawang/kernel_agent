@@ -18,8 +18,10 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import textwrap
 import time
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -34,6 +36,7 @@ from .snapshot.validation import run_smoke, validate_files, validate_structure
 PACKAGE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_ROOT.parent
 TEMPLATE_DIR = PACKAGE_ROOT / "templates"
+OUTPUT_FORMATS = ("auto", "human", "json")
 
 
 @dataclass(frozen=True)
@@ -110,21 +113,21 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="framework-engineer")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("validate-config")
+    p = _add_command_parser(sub, "validate-config")
     p.add_argument("--config", type=Path, required=True)
     p.set_defaults(func=cmd_validate_config)
 
-    p = sub.add_parser("run-phase1")
+    p = _add_command_parser(sub, "run-phase1")
     p.add_argument("--config", type=Path, required=True)
     p.set_defaults(func=cmd_run_phase1)
 
-    p = sub.add_parser("scaffold-task-pack")
+    p = _add_command_parser(sub, "scaffold-task-pack")
     p.add_argument("--task-id", required=True)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_scaffold_task_pack)
 
-    p = sub.add_parser("run-baseline")
+    p = _add_command_parser(sub, "run-baseline")
     p.add_argument("--task-pack", type=Path, required=True)
     p.add_argument("--service-cmd", required=True)
     p.add_argument("--workload-cmd", required=True)
@@ -133,16 +136,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--workload-timeout", type=int, default=600)
     p.set_defaults(func=cmd_run_baseline)
 
-    p = sub.add_parser("resolve-interface")
+    p = _add_command_parser(sub, "resolve-interface")
     p.add_argument("--file", type=Path, required=True)
     p.add_argument("--line", type=int, required=True)
     p.set_defaults(func=cmd_resolve_interface)
 
-    p = sub.add_parser("probe-target-calls")
+    p = _add_command_parser(sub, "probe-target-calls")
     _add_run_and_instrument_args(p)
     p.set_defaults(func=cmd_probe_target_calls)
 
-    p = sub.add_parser("capture-snapshots")
+    p = _add_command_parser(sub, "capture-snapshots")
     _add_run_and_instrument_args(p)
     p.add_argument("--signature", default="candidate(*args, **kwargs)")
     p.add_argument("--mutable-arg-path", action="append", default=[], help=argparse.SUPPRESS)
@@ -156,23 +159,23 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--max-raw-cases", type=int, default=None, help="Deprecated alias for --max-capture-groups.")
     p.set_defaults(func=cmd_capture_snapshots)
 
-    p = sub.add_parser("select-snapshots")
+    p = _add_command_parser(sub, "select-snapshots")
     p.add_argument("--task-pack", type=Path, required=True)
     p.add_argument("--max-groups", type=int, default=None)
     p.add_argument("--max-selected-samples-per-group", type=int, default=8)
     p.add_argument("--max-cases", type=int, default=None, help="Deprecated alias for --max-groups.")
     p.set_defaults(func=cmd_select_snapshots)
 
-    p = sub.add_parser("generate-harness")
+    p = _add_command_parser(sub, "generate-harness")
     p.add_argument("--task-pack", type=Path, required=True)
     p.add_argument("--candidate-function", default="candidate")
     p.set_defaults(func=cmd_generate_harness)
 
-    p = sub.add_parser("probe-env")
+    p = _add_command_parser(sub, "probe-env")
     p.add_argument("--task-pack", type=Path, required=True)
     p.set_defaults(func=cmd_probe_env)
 
-    p = sub.add_parser("validate-task-pack")
+    p = _add_command_parser(sub, "validate-task-pack")
     p.add_argument("--task-pack", type=Path, required=True)
     p.add_argument("--run-correctness", action="store_true")
     p.add_argument("--run-benchmark", action="store_true")
@@ -181,7 +184,41 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_validate_task_pack)
 
     args = parser.parse_args(argv)
-    return int(args.func(args))
+    if _use_human_output(args):
+        _terminal_log(f"command={args.command}")
+    try:
+        return int(args.func(args))
+    except SystemExit as exc:
+        returncode = int(exc.code) if isinstance(exc.code, int) else 1
+        _emit_result(
+            args,
+            {"status": "failed", "command": args.command, "error": str(exc)},
+            title=f"{args.command} failed",
+        )
+        return returncode
+    except Exception as exc:
+        _emit_result(
+            args,
+            {
+                "status": "failed",
+                "command": args.command,
+                "error": repr(exc),
+                "traceback_tail": traceback.format_exc()[-8000:],
+            },
+            title=f"{args.command} failed",
+        )
+        return 1
+
+
+def _add_command_parser(subparsers: Any, name: str) -> argparse.ArgumentParser:
+    parser = subparsers.add_parser(name)
+    parser.add_argument(
+        "--output-format",
+        choices=OUTPUT_FORMATS,
+        default="auto",
+        help="Terminal output mode: auto uses human output on a TTY and one-line JSON otherwise.",
+    )
+    return parser
 
 
 def _add_run_and_instrument_args(parser: argparse.ArgumentParser) -> None:
@@ -203,6 +240,206 @@ def _add_run_and_instrument_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--workload-timeout", type=int, default=600)
 
 
+def _use_human_output(args: argparse.Namespace) -> bool:
+    output_format = getattr(args, "output_format", "auto")
+    if output_format == "human":
+        return True
+    if output_format == "json":
+        return False
+    return bool(getattr(sys.stdout, "isatty", lambda: False)())
+
+
+def _emit_result(
+    args: argparse.Namespace,
+    payload: dict[str, Any],
+    *,
+    title: str,
+    formatter: Any | None = None,
+) -> None:
+    if not _use_human_output(args):
+        print(json.dumps(payload, sort_keys=True))
+        return
+    render = formatter or _format_human_payload
+    print(render(payload, title=title))
+
+
+def _format_human_payload(payload: dict[str, Any], *, title: str) -> str:
+    lines = [title]
+    failed = _payload_failed(payload)
+    for key, value in payload.items():
+        if not failed and (_is_log_field(key) or key == "smoke"):
+            continue
+        if value in (None, "", [], {}):
+            continue
+        _append_human_value(lines, key, value, indent=0)
+    return "\n".join(lines)
+
+
+def _format_phase1_report(payload: dict[str, Any], *, title: str) -> str:
+    targets = payload.get("targets", [])
+    succeeded = bool(targets) and all(item.get("status") == "ok" for item in targets)
+    lines = [title, f"status: {'ok' if succeeded else 'failed'}"]
+    for key in ("config", "task_group_id", "output_root"):
+        if payload.get(key):
+            lines.append(f"{key}: {payload[key]}")
+
+    baseline = payload.get("baseline") or {}
+    if baseline.get("status") == "skipped":
+        lines.append("baseline: skipped")
+    elif baseline:
+        lines.append(f"baseline: {'ok' if baseline.get('returncode') == 0 else 'failed'}")
+
+    lines.append("targets:")
+    for item in targets:
+        target = item.get("target", {})
+        task_id = target.get("task_id", "unknown")
+        status = item.get("status", "unknown")
+        lines.append(f"  - {task_id}: {status}")
+        if target.get("task_pack"):
+            lines.append(f"    task_pack: {target['task_pack']}")
+        failed_step = next(
+            (step for step in item.get("steps", []) if step.get("returncode") != 0),
+            None,
+        )
+        if failed_step:
+            lines.append(f"    failed_step: {failed_step.get('step', 'unknown')}")
+            if failed_step.get("error"):
+                _append_human_value(lines, "error", failed_step["error"], indent=4)
+
+    output_root = payload.get("output_root")
+    if output_root:
+        lines.extend(
+            [
+                "reports:",
+                f"  json: {Path(output_root) / 'multi_target_report.json'}",
+                f"  markdown: {Path(output_root) / 'multi_target_report.md'}",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _append_human_value(lines: list[str], key: str, value: Any, *, indent: int) -> None:
+    prefix = " " * indent
+    if isinstance(value, dict):
+        lines.append(f"{prefix}{key}:")
+        for child_key, child_value in value.items():
+            if child_value in (None, "", [], {}):
+                continue
+            _append_human_value(lines, str(child_key), child_value, indent=indent + 2)
+        return
+    if isinstance(value, list):
+        lines.append(f"{prefix}{key}:")
+        for item in value:
+            if isinstance(item, dict):
+                lines.append(f"{' ' * (indent + 2)}-")
+                for child_key, child_value in item.items():
+                    if child_value in (None, "", [], {}):
+                        continue
+                    _append_human_value(lines, str(child_key), child_value, indent=indent + 4)
+            else:
+                item_text = _human_scalar(item)
+                if "\n" in item_text:
+                    lines.append(f"{' ' * (indent + 2)}-")
+                    lines.extend(f"{' ' * (indent + 4)}| {line}" for line in item_text.splitlines())
+                else:
+                    lines.append(f"{' ' * (indent + 2)}- {item_text}")
+        return
+
+    text = _human_scalar(value)
+    if "\n" in text:
+        lines.append(f"{prefix}{key}:")
+        lines.extend(f"{' ' * (indent + 2)}| {line}" for line in text.splitlines())
+    else:
+        lines.append(f"{prefix}{key}: {text}")
+
+
+def _human_scalar(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _payload_failed(payload: dict[str, Any]) -> bool:
+    if payload.get("valid") is False:
+        return True
+    if payload.get("status") in ("failed", "blocked"):
+        return True
+    if payload.get("errors"):
+        return True
+    workload_returncode = payload.get("workload_returncode")
+    return workload_returncode is not None and workload_returncode != 0
+
+
+def _is_log_field(key: str) -> bool:
+    return key.endswith(("_stdout_tail", "_stderr_tail")) or key in (
+        "stdout_tail",
+        "stderr_tail",
+        "traceback_tail",
+    )
+
+
+def _terminal_log(message: str, *, enabled: bool = True) -> None:
+    if enabled:
+        print(f"[framework-engineer] {message}", file=sys.stderr, flush=True)
+
+
+def _terminal_detail(label: str, value: Any, *, enabled: bool) -> None:
+    if not enabled or value in (None, "", [], {}):
+        return
+    if isinstance(value, (dict, list)):
+        text = json.dumps(value, indent=2, sort_keys=True)
+    else:
+        text = str(value)
+    _terminal_log(f"  {label}:", enabled=True)
+    for line in text.rstrip().splitlines():
+        print(f"[framework-engineer]    | {line}", file=sys.stderr, flush=True)
+
+
+def _print_step_failure_details(step: dict[str, Any], *, enabled: bool) -> None:
+    if not enabled:
+        return
+    summary = step.get("summary") if isinstance(step.get("summary"), dict) else {}
+    _terminal_detail("error", step.get("error"), enabled=True)
+    _terminal_detail("errors", summary.get("errors"), enabled=True)
+    if summary.get("workload_returncode") is not None:
+        _terminal_detail("workload_returncode", summary["workload_returncode"], enabled=True)
+    if summary.get("health") and not summary["health"].get("ready", True):
+        _terminal_detail("health", summary["health"], enabled=True)
+    for key in (
+        "service_stderr_tail",
+        "service_stdout_tail",
+        "workload_stderr_tail",
+        "workload_stdout_tail",
+    ):
+        _terminal_detail(key, summary.get(key), enabled=True)
+    for smoke in summary.get("smoke", []):
+        if smoke.get("returncode") == 0:
+            continue
+        _terminal_detail("failed_command", smoke.get("command"), enabled=True)
+        _terminal_detail("command_stderr", smoke.get("stderr"), enabled=True)
+        _terminal_detail("command_stdout", smoke.get("stdout"), enabled=True)
+    _terminal_detail("captured_stderr", step.get("stderr_tail"), enabled=True)
+    _terminal_detail("captured_stdout", step.get("stdout_tail"), enabled=True)
+    _terminal_detail("traceback", step.get("traceback_tail"), enabled=True)
+
+
+def _execution_result_summary(result: dict[str, Any]) -> dict[str, Any]:
+    workload = result.get("workload", {})
+    service = result.get("service", {})
+    return {
+        "health": result.get("health"),
+        "startup_elapsed_sec": result.get("startup_elapsed_sec"),
+        "service_returncode": service.get("returncode_before_termination"),
+        "service_stdout_tail": service.get("stdout", "")[-2000:],
+        "service_stderr_tail": service.get("stderr", "")[-2000:],
+        "workload_returncode": workload.get("returncode"),
+        "workload_elapsed_sec": workload.get("elapsed_sec"),
+        "workload_timed_out": workload.get("timed_out", False),
+        "workload_stdout_tail": workload.get("stdout", "")[-2000:],
+        "workload_stderr_tail": workload.get("stderr", "")[-2000:],
+    }
+
+
 def cmd_validate_config(args: argparse.Namespace) -> int:
     cfg, errors = _load_phase1_config(args.config)
     report = {
@@ -213,15 +450,25 @@ def cmd_validate_config(args: argparse.Namespace) -> int:
         "output_root": str(cfg.output_root) if cfg else None,
         "targets": [_target_report(target) for target in cfg.targets] if cfg else [],
     }
-    print(json.dumps(report, sort_keys=True))
+    _emit_result(args, report, title="Configuration validation")
     return 0 if not errors else 1
 
 
 def cmd_run_phase1(args: argparse.Namespace) -> int:
     cfg, errors = _load_phase1_config(args.config)
     if cfg is None or errors:
-        print(json.dumps({"valid": False, "config": str(args.config), "errors": errors}, sort_keys=True))
+        _emit_result(
+            args,
+            {"valid": False, "config": str(args.config), "errors": errors},
+            title="Phase 1.2 configuration error",
+        )
         return 1
+
+    progress = _use_human_output(args)
+    _terminal_log(
+        f"config={cfg.config_path} targets={len(cfg.targets)} output_root={cfg.output_root}",
+        enabled=progress,
+    )
 
     cfg.output_root.mkdir(parents=True, exist_ok=True)
     report: dict[str, Any] = {
@@ -240,6 +487,8 @@ def cmd_run_phase1(args: argparse.Namespace) -> int:
                 "scaffold-task-pack",
                 cmd_scaffold_task_pack,
                 argparse.Namespace(task_id=target.task_id, out=target.task_pack, force=cfg.force),
+                context=target.task_id,
+                progress=progress,
             )
             target_report = {"target": _target_report(target), "steps": [step], "status": "running"}
             report["targets"].append(target_report)
@@ -261,6 +510,8 @@ def cmd_run_phase1(args: argparse.Namespace) -> int:
                     startup_timeout=cfg.startup_timeout,
                     workload_timeout=cfg.workload_timeout,
                 ),
+                context="group",
+                progress=progress,
             )
             report["baseline"] = baseline_step
             _copy_baseline_to_targets(first_pack, [target.task_pack for target in cfg.targets])
@@ -269,16 +520,21 @@ def cmd_run_phase1(args: argparse.Namespace) -> int:
                     if item["status"] != "failed":
                         item["status"] = "blocked"
                 _write_phase1_reports(cfg.output_root, report)
-                print(json.dumps(report, sort_keys=True))
+                _emit_result(args, report, title="Phase 1.2 summary", formatter=_format_phase1_report)
                 return 1
 
         for target, target_report in zip(cfg.targets, report["targets"]):
             if target_report["status"] in ("failed", "blocked"):
                 continue
-            target_report["status"] = _run_phase1_target(cfg, target, target_report["steps"])
+            target_report["status"] = _run_phase1_target(
+                cfg,
+                target,
+                target_report["steps"],
+                progress=progress,
+            )
 
     _write_phase1_reports(cfg.output_root, report)
-    print(json.dumps(report, sort_keys=True))
+    _emit_result(args, report, title="Phase 1.2 summary", formatter=_format_phase1_report)
     return 0 if all(item["status"] == "ok" for item in report["targets"]) else 1
 
 
@@ -340,7 +596,7 @@ def cmd_scaffold_task_pack(args: argparse.Namespace) -> int:
     )
     copy_probe_templates(TEMPLATE_DIR, out)
     _write_json(out / "docs" / "scaffold_result.json", {"task_id": args.task_id, "task_pack": str(out)})
-    print(json.dumps({"status": "ok", "task_pack": str(out)}, sort_keys=True))
+    _emit_result(args, {"status": "ok", "task_pack": str(out)}, title="Task pack scaffold")
     return 0
 
 
@@ -356,8 +612,14 @@ def cmd_run_baseline(args: argparse.Namespace) -> int:
     docs.mkdir(parents=True, exist_ok=True)
     _write_json(docs / "baseline_result.json", result)
     _write_baseline_report(docs / "baseline_run_report.md", args, result)
-    print(json.dumps({"status": "ok" if result["workload"]["returncode"] == 0 else "failed", "report": str(docs / "baseline_run_report.md")}, sort_keys=True))
-    return 0 if result["workload"]["returncode"] == 0 else 1
+    succeeded = result["workload"]["returncode"] == 0
+    payload = {
+        "status": "ok" if succeeded else "failed",
+        "report": str(docs / "baseline_run_report.md"),
+        **_execution_result_summary(result),
+    }
+    _emit_result(args, payload, title="Baseline result")
+    return 0 if succeeded else 1
 
 
 def cmd_resolve_interface(args: argparse.Namespace) -> int:
@@ -374,7 +636,7 @@ def cmd_resolve_interface(args: argparse.Namespace) -> int:
         "function_name": interface.function_name,
         "target_name": interface.qualified_name,
     }
-    print(json.dumps(payload, sort_keys=True))
+    _emit_result(args, payload, title="Resolved interface")
     return 0
 
 
@@ -399,12 +661,21 @@ def cmd_probe_target_calls(args: argparse.Namespace) -> int:
             workload_timeout=args.workload_timeout,
         )
     calls = _read_jsonl(log_path)
+    succeeded = result["workload"]["returncode"] == 0 and bool(calls)
     report = {
+        "status": "ok" if succeeded else "failed",
         "target_name": target.qualified_name,
         "target_interface": target.to_dict(),
         "forward_boundary_interface": boundary.to_dict() if boundary else None,
         "call_count": len(calls),
         "workload_returncode": result["workload"]["returncode"],
+        "health": result["health"],
+        "service_returncode": result["service"].get("returncode_before_termination"),
+        "service_stdout_tail": result["service"].get("stdout", "")[-2000:],
+        "service_stderr_tail": result["service"].get("stderr", "")[-2000:],
+        "workload_timed_out": result["workload"].get("timed_out", False),
+        "workload_stdout_tail": result["workload"].get("stdout", "")[-2000:],
+        "workload_stderr_tail": result["workload"].get("stderr", "")[-2000:],
         "log_path": str(log_path),
         "service_cmd": service_cmd,
         "workload_cmd": args.workload_cmd,
@@ -414,8 +685,8 @@ def cmd_probe_target_calls(args: argparse.Namespace) -> int:
         f"# Target Call Probe Report\n\n- target: `{target.qualified_name}`\n- call_count: {len(calls)}\n- workload_returncode: {result['workload']['returncode']}\n- log: `{log_path}`\n",
         encoding="utf-8",
     )
-    print(json.dumps(report, sort_keys=True))
-    return 0 if result["workload"]["returncode"] == 0 and calls else 1
+    _emit_result(args, report, title="Target call probe")
+    return 0 if succeeded else 1
 
 
 def cmd_capture_snapshots(args: argparse.Namespace) -> int:
@@ -446,7 +717,9 @@ def cmd_capture_snapshots(args: argparse.Namespace) -> int:
         )
     raw_index = SnapshotStore(snapshot_root).read_raw_index()
     raw_timing_summary = _original_capture_timing_summary_from_raw_index(raw_index)
+    succeeded = result["workload"]["returncode"] == 0 and bool(raw_index.get("raw_sample_count", 0))
     report = {
+        "status": "ok" if succeeded else "failed",
         "target_name": target.qualified_name,
         "target_interface": target.to_dict(),
         "forward_boundary_interface": boundary.to_dict() if boundary else None,
@@ -459,6 +732,11 @@ def cmd_capture_snapshots(args: argparse.Namespace) -> int:
         "original_capture_timing": raw_timing_summary.get("overall", {}),
         "mutation_warning_count": _mutation_warning_count(raw_index),
         "workload_returncode": result["workload"]["returncode"],
+        "health": result["health"],
+        "service_returncode": result["service"].get("returncode_before_termination"),
+        "service_stdout_tail": result["service"].get("stdout", "")[-2000:],
+        "service_stderr_tail": result["service"].get("stderr", "")[-2000:],
+        "workload_timed_out": result["workload"].get("timed_out", False),
         "service_cmd": service_cmd,
         "workload_cmd": args.workload_cmd,
         "max_raw_cases_deprecated_alias_used": args.max_raw_cases is not None,
@@ -469,8 +747,8 @@ def cmd_capture_snapshots(args: argparse.Namespace) -> int:
     docs.mkdir(parents=True, exist_ok=True)
     _write_json(docs / "snapshot_capture_report.json", report)
     _write_json(docs / "original_capture_timing_raw_summary.json", raw_timing_summary)
-    print(json.dumps(report, sort_keys=True))
-    return 0 if result["workload"]["returncode"] == 0 and raw_index.get("raw_sample_count", 0) else 1
+    _emit_result(args, report, title="Snapshot capture")
+    return 0 if succeeded else 1
 
 
 def cmd_select_snapshots(args: argparse.Namespace) -> int:
@@ -496,24 +774,23 @@ def cmd_select_snapshots(args: argparse.Namespace) -> int:
         f"- policy: `{manifest['selection_policy']}`\n",
         encoding="utf-8",
     )
-    print(
-        json.dumps(
-            {
-                "selected_group_count": manifest["selected_group_count"],
-                "selected_sample_count": manifest["selected_sample_count"],
-                "selected_case_count": manifest["selected_group_count"],
-                "manifest": str(store.manifest_path),
-                "original_capture_benchmark_summary": str(docs / "original_capture_benchmark_summary.json"),
-            },
-            sort_keys=True,
-        )
+    _emit_result(
+        args,
+        {
+            "selected_group_count": manifest["selected_group_count"],
+            "selected_sample_count": manifest["selected_sample_count"],
+            "selected_case_count": manifest["selected_group_count"],
+            "manifest": str(store.manifest_path),
+            "original_capture_benchmark_summary": str(docs / "original_capture_benchmark_summary.json"),
+        },
+        title="Snapshot selection",
     )
     return 0
 
 
 def cmd_generate_harness(args: argparse.Namespace) -> int:
     SnapshotHarnessBuilder(args.task_pack).generate(candidate_function=args.candidate_function)
-    print(json.dumps({"status": "ok", "task_pack": str(args.task_pack)}, sort_keys=True))
+    _emit_result(args, {"status": "ok", "task_pack": str(args.task_pack)}, title="Harness generation")
     return 0
 
 
@@ -521,7 +798,11 @@ def cmd_probe_env(args: argparse.Namespace) -> int:
     result = probe_environment(args.task_pack)
     (args.task_pack / "env_manifest.yaml").write_text(_env_to_yaml(result), encoding="utf-8")
     _write_json(args.task_pack / "docs" / "env_probe_result.json", result)
-    print(json.dumps({"status": "ok", "env_manifest": str(args.task_pack / "env_manifest.yaml")}, sort_keys=True))
+    _emit_result(
+        args,
+        {"status": "ok", "env_manifest": str(args.task_pack / "env_manifest.yaml")},
+        title="Environment probe",
+    )
     return 0
 
 
@@ -571,11 +852,17 @@ def cmd_validate_task_pack(args: argparse.Namespace) -> int:
     docs = args.task_pack / "docs"
     docs.mkdir(parents=True, exist_ok=True)
     _write_json(docs / "task_pack_validation_report.json", report)
-    print(json.dumps(report, sort_keys=True))
+    _emit_result(args, report, title="Task pack validation")
     return 0 if not errors else 1
 
 
-def _run_phase1_target(cfg: Phase1Config, target: TargetConfig, steps: list[dict[str, Any]]) -> str:
+def _run_phase1_target(
+    cfg: Phase1Config,
+    target: TargetConfig,
+    steps: list[dict[str, Any]],
+    *,
+    progress: bool = False,
+) -> str:
     common = {
         "task_pack": target.task_pack,
         "service_cmd": cfg.service_cmd,
@@ -641,7 +928,7 @@ def _run_phase1_target(cfg: Phase1Config, target: TargetConfig, steps: list[dict
         "PYTHON": sys.executable,
     }
     for name, func, namespace in step_specs:
-        step = _run_step(name, func, namespace)
+        step = _run_step(name, func, namespace, context=target.task_id, progress=progress)
         steps.append(step)
         if step["returncode"] != 0:
             return "failed"
@@ -656,34 +943,59 @@ def _run_phase1_target(cfg: Phase1Config, target: TargetConfig, steps: list[dict
                 skip_env_check=cfg.skip_env_check,
                 timeout=300,
             ),
+            context=target.task_id,
+            progress=progress,
         )
     steps.append(validate_step)
     return "ok" if validate_step["returncode"] == 0 else "failed"
 
 
-def _run_step(name: str, func: Any, namespace: argparse.Namespace) -> dict[str, Any]:
+def _run_step(
+    name: str,
+    func: Any,
+    namespace: argparse.Namespace,
+    *,
+    context: str | None = None,
+    progress: bool = False,
+) -> dict[str, Any]:
     stdout = io.StringIO()
+    stderr = io.StringIO()
     started = time.time()
+    label = f" target={context}" if context else ""
+    _terminal_log(f"START {name}{label}", enabled=progress)
     try:
-        with contextlib.redirect_stdout(stdout):
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             returncode = int(func(namespace))
         error = None
+        traceback_text = None
     except SystemExit as exc:
         returncode = int(exc.code) if isinstance(exc.code, int) else 1
         error = str(exc)
+        traceback_text = None
     except Exception as exc:
         returncode = 1
         error = repr(exc)
+        traceback_text = traceback.format_exc()
     text = stdout.getvalue()
+    stderr_text = stderr.getvalue()
     payload = _last_json_line(text)
-    return {
+    elapsed = time.time() - started
+    step = {
         "step": name,
         "returncode": returncode,
-        "elapsed_sec": time.time() - started,
-        "stdout_tail": text[-4000:],
+        "elapsed_sec": elapsed,
+        "stdout_tail": _non_result_stdout(text)[-4000:],
+        "stderr_tail": stderr_text[-4000:],
         "summary": payload,
         "error": error,
+        "traceback_tail": traceback_text[-8000:] if traceback_text else None,
     }
+    if returncode == 0:
+        _terminal_log(f"OK    {name}{label} ({elapsed:.2f}s)", enabled=progress)
+    else:
+        _terminal_log(f"FAIL  {name}{label} ({elapsed:.2f}s, rc={returncode})", enabled=progress)
+        _print_step_failure_details(step, enabled=progress)
+    return step
 
 
 def _last_json_line(text: str) -> Any:
@@ -693,6 +1005,21 @@ def _last_json_line(text: str) -> Any:
         except json.JSONDecodeError:
             continue
     return None
+
+
+def _non_result_stdout(text: str) -> str:
+    """Remove the final structured JSON line from captured command output."""
+    lines = text.splitlines()
+    for idx in range(len(lines) - 1, -1, -1):
+        if not lines[idx].strip():
+            continue
+        try:
+            json.loads(lines[idx])
+        except json.JSONDecodeError:
+            break
+        del lines[idx]
+        break
+    return "\n".join(lines).strip()
 
 
 def _load_phase1_config(path: Path) -> tuple[Phase1Config | None, list[str]]:
@@ -1044,43 +1371,85 @@ def _run_service_and_workload(
 ) -> dict[str, Any]:
     started = time.time()
     env = _subprocess_env()
-    service = subprocess.Popen(
-        service_cmd,
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=env,
-        preexec_fn=os.setsid if hasattr(os, "setsid") else None,
-    )
-    try:
-        health = _wait_for_service(service, health_url=health_url, timeout=startup_timeout)
-        workload_start = time.time()
-        workload = subprocess.run(
-            workload_cmd,
+    result: dict[str, Any] | None = None
+    with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as service_stdout, tempfile.TemporaryFile(
+        mode="w+t", encoding="utf-8"
+    ) as service_stderr:
+        service = subprocess.Popen(
+            service_cmd,
             shell=True,
+            stdout=service_stdout,
+            stderr=service_stderr,
             text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
             env=env,
-            timeout=workload_timeout,
-            check=False,
+            preexec_fn=os.setsid if hasattr(os, "setsid") else None,
         )
-        workload_elapsed = time.time() - workload_start
-        return {
-            "service_cmd": service_cmd,
-            "workload_cmd": workload_cmd,
-            "health": health,
-            "startup_elapsed_sec": time.time() - started,
-            "workload": {
-                "returncode": workload.returncode,
-                "elapsed_sec": workload_elapsed,
-                "stdout": workload.stdout[-8000:],
-                "stderr": workload.stderr[-8000:],
-            },
-        }
-    finally:
-        _terminate_process(service)
+        service_returncode_before_termination: int | None = None
+        try:
+            health = _wait_for_service(service, health_url=health_url, timeout=startup_timeout)
+            startup_elapsed = time.time() - started
+            workload_start = time.time()
+            try:
+                workload = subprocess.run(
+                    workload_cmd,
+                    shell=True,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=env,
+                    timeout=workload_timeout,
+                    check=False,
+                )
+                workload_returncode = workload.returncode
+                workload_stdout = workload.stdout
+                workload_stderr = workload.stderr
+                workload_timed_out = False
+            except subprocess.TimeoutExpired as exc:
+                workload_returncode = 124
+                workload_stdout = _subprocess_text(exc.stdout)
+                workload_stderr = _subprocess_text(exc.stderr)
+                timeout_message = f"workload timed out after {workload_timeout}s"
+                workload_stderr = f"{workload_stderr.rstrip()}\n{timeout_message}".lstrip()
+                workload_timed_out = True
+            workload_elapsed = time.time() - workload_start
+            result = {
+                "service_cmd": service_cmd,
+                "workload_cmd": workload_cmd,
+                "health": health,
+                "startup_elapsed_sec": startup_elapsed,
+                "workload": {
+                    "returncode": workload_returncode,
+                    "elapsed_sec": workload_elapsed,
+                    "timed_out": workload_timed_out,
+                    "stdout": workload_stdout[-8000:],
+                    "stderr": workload_stderr[-8000:],
+                },
+            }
+        finally:
+            service_returncode_before_termination = service.poll()
+            _terminate_process(service)
+            service_stdout.flush()
+            service_stderr.flush()
+            service_stdout.seek(0)
+            service_stderr.seek(0)
+            if result is not None:
+                result["service"] = {
+                    "returncode_before_termination": service_returncode_before_termination,
+                    "returncode_after_termination": service.returncode,
+                    "stdout": service_stdout.read()[-8000:],
+                    "stderr": service_stderr.read()[-8000:],
+                }
+    if result is None:  # pragma: no cover - unexpected exceptions propagate through the finally block.
+        raise RuntimeError("service/workload execution did not produce a result")
+    return result
+
+
+def _subprocess_text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
 
 
 def _wait_for_service(proc: subprocess.Popen, *, health_url: str | None, timeout: int) -> dict[str, Any]:
@@ -1116,6 +1485,7 @@ def _terminate_process(proc: subprocess.Popen) -> None:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             else:
                 proc.kill()
+            proc.wait(timeout=10)
         except Exception:
             pass
 
@@ -1593,6 +1963,7 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def _write_baseline_report(path: Path, args: argparse.Namespace, result: dict[str, Any]) -> None:
+    service = result.get("service", {})
     path.write_text(
         textwrap.dedent(
             f"""\
@@ -1601,8 +1972,23 @@ def _write_baseline_report(path: Path, args: argparse.Namespace, result: dict[st
             - service_cmd: `{args.service_cmd}`
             - workload_cmd: `{args.workload_cmd}`
             - health_url: `{args.health_url}`
+            - health: `{json.dumps(result.get('health'), sort_keys=True)}`
+            - service_returncode_before_termination: `{service.get('returncode_before_termination')}`
             - workload_returncode: `{result['workload']['returncode']}`
+            - workload_timed_out: `{result['workload'].get('timed_out', False)}`
             - workload_elapsed_sec: `{result['workload']['elapsed_sec']:.3f}`
+
+            ## Service Stdout Tail
+
+            ```text
+            {service.get('stdout', '')}
+            ```
+
+            ## Service Stderr Tail
+
+            ```text
+            {service.get('stderr', '')}
+            ```
 
             ## Workload Stdout Tail
 

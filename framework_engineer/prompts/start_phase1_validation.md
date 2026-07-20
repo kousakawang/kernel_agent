@@ -107,6 +107,25 @@ python3 -m framework_engineer.cli run-phase1 --config /absolute/path/to/phase1_c
 `run-phase1` 内部会再次加载并验证配置；单独先运行 `validate-config` 的目的是在启动服务前
 看到结构化的配置、路径和接口解析错误。
 
+CLI 输出默认使用 `--output-format auto`：直接在交互终端运行时显示人类可读的多行输出；
+stdout 被重定向或由脚本捕获时继续输出向后兼容的单行 JSON。也可以显式指定：
+
+```bash
+# 强制显示分步 START/OK/FAIL 和未转义的多行错误日志
+python3 -m framework_engineer.cli run-phase1 \
+  --config /absolute/path/to/phase1_config.py \
+  --output-format human
+
+# 强制只在 stdout 输出单行 machine-readable JSON
+python3 -m framework_engineer.cli run-phase1 \
+  --config /absolute/path/to/phase1_config.py \
+  --output-format json
+```
+
+human 模式下，进度写到 stderr，最终摘要写到 stdout；失败步骤会直接展开 service/workload
+日志尾部、结构化 errors 和 Python traceback。完整结构化结果仍写入 task pack 和
+`multi_target_report.json`。
+
 对于一个已经确认好的 target，要跑当前实现定义的完整标准链路，优先使用上面的
 `run-phase1`。它是当前唯一会自动完成以下配置化工作的公开 CLI：
 
@@ -135,7 +154,7 @@ python3 -m framework_engineer.cli run-phase1 --config /absolute/path/to/phase1_c
      `service_cmd + workload_cmd`。
    - 把 `baseline_result.json` 和 `baseline_run_report.md` 复制到各 target。
    - 当前 baseline 的成功条件只看 workload return code 是否为 0；health 结果会记录，
-     但不会单独决定返回码。报告包含 workload stdout/stderr，不包含 service stdout/stderr。
+     但不会单独决定返回码。报告包含 service 和 workload 的 stdout/stderr 尾部。
 4. **对当前 target 解析接口**
    - 依次执行内部步骤 `resolve-target` 和 `resolve-forward-boundary`。
    - 最终使用包含 module/class/function 的 qualified name。
