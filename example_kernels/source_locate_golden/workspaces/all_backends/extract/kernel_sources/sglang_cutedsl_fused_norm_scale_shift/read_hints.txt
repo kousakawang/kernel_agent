@@ -1,0 +1,5 @@
+interface_definition.py: read lines 279-341  (from /Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/diffusion/cutedsl/scale_residual_norm_scale_shift.py)
+kernel_impl/1_scale_residual_norm_scale_shift.py: read lines 87-132  (from /Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/diffusion/cutedsl/scale_residual_norm_scale_shift.py)
+kernel_impl/2_scale_residual_norm_scale_shift.py: read lines 134-225  (from /Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/diffusion/cutedsl/scale_residual_norm_scale_shift.py)
+py_cpp_binding/1_scale_residual_norm_scale_shift.py: read lines 333-334  (from /Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/diffusion/cutedsl/scale_residual_norm_scale_shift.py)
+kernel_header/: N/A (not applicable)

@@ -493,15 +493,11 @@ class TestFinalizeAndEvaluate(AgentHelperFixture):
 class TestRealAgentGolden(unittest.TestCase):
     def test_finalize_and_evaluate_current_ten_target_golden(self) -> None:
         repo = Path(__file__).resolve().parents[2]
-        candidates_path = repo / "example_kernels" / "to_fill_locate_candidates.json"
-        golden_path = repo / "example_kernels" / "to_fill_locate.json"
-        manifest = (
-            repo
-            / "framework_engineer"
-            / "source_location"
-            / "example"
-            / "third_party_manifest.json"
-        )
+        case = repo / "example_kernels" / "source_locate_golden"
+        workspace = case / "workspaces" / "all_backends"
+        candidates_path = workspace / "locate" / "locate_candidates.schema.json"
+        golden_path = workspace / "agent" / "located.schema.json"
+        manifest = case / "config" / "all_backends" / "third_party_manifest.json"
         golden = json.loads(golden_path.read_text())
         decisions = {
             "schema_version": DECISIONS_SCHEMA_VERSION,

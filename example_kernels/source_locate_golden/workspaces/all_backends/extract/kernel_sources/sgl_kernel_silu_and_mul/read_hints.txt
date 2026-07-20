@@ -1,0 +1,5 @@
+interface_definition.py: read lines 258-270  (from /Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/python/sgl_kernel/elementwise.py)
+kernel_impl/1_activation.cu: read lines 85-105  (from /Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/csrc/elementwise/activation.cu)
+kernel_impl/2_activation.cuh: read lines 28-64  (from /Users/bytedance/Desktop/infra_agent/flashinfer/include/flashinfer/activation.cuh)
+py_cpp_binding/1_common_extension.cc: read lines 76-76  (from /Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/csrc/common_extension.cc)
+kernel_header/sgl_kernel_ops.h: read lines 139-139  (from /Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/include/sgl_kernel_ops.h)

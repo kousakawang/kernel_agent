@@ -39,7 +39,8 @@ framework_engineer/prompts/start_source_locate.md
 ```
 
 真实十 target Golden 测试会在本机已有 SGLang/third-party 源码根上验证 decisions finalize 能
-精确生成 `to_fill_locate.json`，并验证 Golden 核心调用链 evaluator。
+精确生成 `example_kernels/source_locate_golden/workspaces/all_backends/agent/located.schema.json`，
+并验证 Golden 核心调用链 evaluator。
 
 ## GPU 服务器主路径
 

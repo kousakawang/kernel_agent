@@ -45,12 +45,13 @@ schema文件里
           "line": 111
         },
 这个字段我们不再需要，我们只需要写这个接口是在哪个文件哪一行被调用的。wrapper已经被移除了。所有和low_level_target有关的信息都收敛到自身及其以下的code里。dry-run需要修改。
-执行完后的文件可以参考to_fill_kid.json（你也要同步改这个）
+执行完后的文件可以参考
+`example_kernels/source_locate_golden/input/all_backends/decomposition.kid.schema.json`（你也要同步改这个）
 
 2. locate:
    1. layer-1 （CLI）:只做最基本的处理，把确定后的逻辑做了，比如interface_definition.py 这一层，以及根据类别，bind文件确定的层。原则上不碰header和kernel_implement(哪怕是triton)。你觉得或者layer1要怎么划分职责
-   2. layer-2 (agent)： 参考当前填好的的to_fill_locate.json。对算子实现做定位。按照自己的理解尽量复现算子调用链路上的核心逻辑。把我们说的四层算子相关文件填好。
-   【需要你改的是：】binding允许多文件，多格式，做成一个目录。约束kernel_header只放和kernel_impl一一对应的文件。这个dry-run可能没有要修改的，主要修改to_fill_locate.json
+   2. layer-2 (agent)：参考当前填好的
+   `example_kernels/source_locate_golden/workspaces/all_backends/agent/located.schema.json`。对算子实现做定位。按照自己的理解尽量复现算子调用链路上的核心逻辑。把我们说的四层算子相关文件填好。
+   【需要你改的是：】binding允许多文件，多格式，做成一个目录。约束kernel_header只放和kernel_impl一一对应的文件。这个dry-run可能没有要修改的，主要修改上述 located schema。
    3. layer-3 (extract): 职责不变，补全end line, 拷贝文件。bug你已经修复。
-   【需要你改的是：】extract需要支持bind层是目录且可以存放多文件，同步更新read_hints.txt。需要根据更新后的to_fill_locate.json重新生成本地文件
-
+   【需要你改的是：】extract需要支持bind层是目录且可以存放多文件，同步更新read_hints.txt。需要根据更新后的 located schema 重新生成本地文件

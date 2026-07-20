@@ -1,0 +1,5 @@
+interface_definition.py: read lines 9-46  (from /Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/triton/norm.py)
+kernel_impl/1_norm.py: read lines 7-77  (from /Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/triton/kernels/norm.py)
+kernel_impl/2_quant.py: read lines 5-27  (from /Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/triton/kernels/quant.py)
+py_cpp_binding/: N/A (not applicable)
+kernel_header/: N/A (not applicable)

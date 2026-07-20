@@ -1,0 +1,21 @@
+{
+  "kernel_agent/framework_engineer/tests/test_source_location_locate.py::LocateFixture": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_locate.py::TestResolution": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_locate.py::TestContractsAndCli": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_locate.py::TestRealGolden": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_extract.py::ExtractFixture": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_extract.py::TestRangeCompletion": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_extract.py::TestExtraction": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_extract.py::TestContractAndCli": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_extract.py::TestRealGolden": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_agent_helper.py::AgentHelperFixture": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_agent_helper.py::TestInspectAndSearch": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_agent_helper.py::TestDecisionContract": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_agent_helper.py::TestFinalizeAndEvaluate": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_agent_helper.py::TestRealAgentGolden": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_locate.py::TestRealGolden::test_to_fill_locate_candidates_golden": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_extract.py::TestRealGolden::test_agent_and_extract_goldens": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_agent_helper.py::TestInspectAndSearch::test_search_limit_reports_truncation": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_agent_helper.py::TestInspectAndSearch::test_search_modes_are_raw_scoped_candidates": true,
+  "kernel_agent/framework_engineer/tests/test_source_location_agent_helper.py::TestRealAgentGolden::test_finalize_and_evaluate_current_ten_target_golden": true
+}

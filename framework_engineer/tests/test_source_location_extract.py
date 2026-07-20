@@ -347,27 +347,34 @@ class TestContractAndCli(ExtractFixture):
 class TestRealGolden(unittest.TestCase):
     def test_agent_and_extract_goldens(self) -> None:
         repo = Path(__file__).resolve().parents[2]
-        kid_path = repo / "example_kernels" / "to_fill_kid.json"
-        agent_path = repo / "example_kernels" / "to_fill_locate.json"
-        extract_path = repo / "example_kernels" / "to_fill_extract.json"
-        golden_tree = (
+        workspace = (
             repo
             / "example_kernels"
-            / "kid_dry_run_out"
+            / "source_locate_golden"
             / "workspaces"
             / "all_backends"
-            / "kernel_sources"
         )
+        kid_path = (
+            repo
+            / "example_kernels"
+            / "source_locate_golden"
+            / "input"
+            / "all_backends"
+            / "decomposition.kid.schema.json"
+        )
+        agent_path = workspace / "agent" / "located.schema.json"
+        extract_path = workspace / "extract" / "decomposition.extracted.schema.json"
+        golden_tree = workspace / "extract" / "kernel_sources"
         kid = json.loads(kid_path.read_text())
         agent = json.loads(agent_path.read_text())
         validate_agent_schema(agent)
         self.assertEqual(kid_projection(agent), kid)
 
         with tempfile.TemporaryDirectory(prefix="source_extract_golden_") as tmp:
-            workspace = Path(tmp)
-            schema_path = workspace / "located.json"
+            temp_workspace = Path(tmp)
+            schema_path = temp_workspace / "located.json"
             schema_path.write_text(json.dumps(agent, indent=2))
-            extract_workspace(schema_path, workspace)
+            extract_workspace(schema_path, temp_workspace)
 
             actual_schema = json.loads(schema_path.read_text())
             expected_schema = json.loads(extract_path.read_text())
@@ -379,7 +386,7 @@ class TestRealGolden(unittest.TestCase):
                 entry["kernel_sources_dir"] = expected_dirs[entry["low_level_id"]]
             self.assertEqual(actual_schema, expected_schema)
 
-            actual_tree = workspace / "kernel_sources"
+            actual_tree = temp_workspace / "kernel_sources"
             expected_files = sorted(
                 path.relative_to(golden_tree)
                 for path in golden_tree.rglob("*")
