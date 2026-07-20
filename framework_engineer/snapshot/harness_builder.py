@@ -94,7 +94,7 @@ class SnapshotHarnessBuilder:
         function_name = target_info.get("function_name")
         class_path = target_info.get("class_path") or []
         if source_file:
-            _ensure_python_root(Path(source_file))
+            _ensure_python_root(Path(source_file), module_name=module_name)
         try:
             if module_name:
                 module = importlib.import_module(module_name)
@@ -216,17 +216,22 @@ def _sha256_file(path: Path) -> str:
     return hasher.hexdigest()
 
 
-def _ensure_python_root(path: Path) -> None:
+def _ensure_python_root(path: Path, *, module_name: str | None = None) -> None:
     try:
         resolved = path.resolve()
     except Exception:
         resolved = path
-    parts = list(resolved.parts)
-    if "python" in parts:
-        idx = len(parts) - 1 - list(reversed(parts)).index("python")
-        root = Path(*parts[: idx + 1])
-    else:
+    if module_name:
         root = resolved.parent
+        for _ in module_name.split(".")[:-1]:
+            root = root.parent
+    else:
+        parts = list(resolved.parts)
+        if "python" in parts:
+            idx = len(parts) - 1 - list(reversed(parts)).index("python")
+            root = Path(*parts[: idx + 1])
+        else:
+            root = resolved.parent
     root_str = str(root)
     if root_str and root_str not in sys.path:
         sys.path.insert(0, root_str)
@@ -522,7 +527,12 @@ def _target_callable():
     global _CACHED_TARGET
     if _CACHED_TARGET is not None:
         return _CACHED_TARGET
-    module = _load_module()
+    try:
+        module = _load_module()
+    except OriginalUnavailableError:
+        raise
+    except Exception as exc:
+        raise OriginalUnavailableError(f"Cannot load original target module from {TARGET_INFO!r}") from exc
     qualified = TARGET_INFO.get("qualified_name")
     function_name = TARGET_INFO.get("function_name")
     class_path = TARGET_INFO.get("class_path") or []
@@ -546,12 +556,13 @@ def _load_module():
     module_name = TARGET_INFO.get("module_name")
     source_file = TARGET_INFO.get("file")
     if source_file:
-        _ensure_python_root(Path(source_file))
+        _ensure_python_root(Path(source_file), module_name=module_name)
+    module_import_error = None
     if module_name:
         try:
             return importlib.import_module(module_name)
-        except Exception:
-            pass
+        except Exception as exc:
+            module_import_error = exc
     if not source_file:
         raise OriginalUnavailableError(f"No module_name or source file in target info: {TARGET_INFO!r}")
     path = Path(source_file)
@@ -563,17 +574,30 @@ def _load_module():
         raise OriginalUnavailableError(f"Cannot create import spec for {path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        raise OriginalUnavailableError(
+            f"Cannot import module {module_name!r} or load source file {source_file!r}; "
+            f"module import error: {module_import_error!r}"
+        ) from exc
     return module
 
 
-def _ensure_python_root(path: Path) -> None:
-    parts = list(path.resolve().parts)
-    if "python" not in parts:
-        parent = str(path.parent)
+def _ensure_python_root(path: Path, *, module_name: str | None = None) -> None:
+    resolved = path.resolve()
+    if module_name:
+        root = resolved.parent
+        for _ in module_name.split(".")[:-1]:
+            root = root.parent
+        parent = str(root)
     else:
-        idx = len(parts) - 1 - list(reversed(parts)).index("python")
-        parent = str(Path(*parts[: idx + 1]))
+        parts = list(resolved.parts)
+        if "python" not in parts:
+            parent = str(path.parent)
+        else:
+            idx = len(parts) - 1 - list(reversed(parts)).index("python")
+            parent = str(Path(*parts[: idx + 1]))
     if parent and parent not in sys.path:
         sys.path.insert(0, parent)
 '''

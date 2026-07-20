@@ -373,6 +373,71 @@ class Phase1CliEndToEndTests(unittest.TestCase):
             self.assertIn("| workload stderr line 2", phase1.stderr)
             self.assertNotIn(r"\n", phase1.stderr)
 
+    def test_run_phase1_uses_runtime_identity_for_external_namespace_package(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            package_root = tmp_path / "third_party"
+            package_dir = package_root / "external_ns"
+            package_dir.mkdir(parents=True)
+            (package_dir / "constants.py").write_text("OFFSET = 7\n", encoding="utf-8")
+            target_file = package_dir / "ops.py"
+            target_file.write_text(
+                "from .constants import OFFSET\n\n"
+                "def external_target(value):\n"
+                "    return value + OFFSET\n\n"
+                "def forward(value):\n"
+                "    return external_target(value)\n",
+                encoding="utf-8",
+            )
+            workload_file = tmp_path / "workload.py"
+            workload_file.write_text(
+                "from external_ns.ops import forward\n"
+                "assert forward(5) == 12\n",
+                encoding="utf-8",
+            )
+            service_file = tmp_path / "service.py"
+            service_file.write_text("import time\ntime.sleep(60)\n", encoding="utf-8")
+
+            output_root = tmp_path / "output"
+            config_file = tmp_path / "phase1_config.py"
+            config_file.write_text(
+                textwrap.dedent(
+                    f"""
+                    output_root = {str(output_root)!r}
+                    service_cmd = {f"{sys.executable} {service_file}"!r}
+                    workload_cmd = {f"{sys.executable} {workload_file}"!r}
+                    forward_boundary_file = {str(target_file)!r}
+                    forward_boundary_line = 6
+                    startup_timeout = 1
+                    force = True
+                    validate_device = "cpu"
+                    extra_env = {{"PYTHONPATH": {str(package_root)!r}}}
+                    targets = [
+                        {{"task_id": "external", "target_file": {str(target_file)!r}, "target_line": 3}},
+                    ]
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            run = self._run_cli("run-phase1", "--config", str(config_file), timeout=240)
+            self.assertEqual(run["targets"][0]["status"], "ok", run)
+
+            task_pack = output_root / "external"
+            capture_report = json.loads(
+                (task_pack / "docs" / "snapshot_capture_report.json").read_text(encoding="utf-8")
+            )
+            target_info = capture_report["target_interface"]
+            self.assertEqual(target_info["module_name"], "external_ns.ops")
+            self.assertEqual(target_info["qualified_name"], "external_ns.ops.external_target")
+            self.assertEqual(target_info["identity_source"], "runtime_decorated_callable")
+
+            original_manifest = json.loads(
+                (task_pack / "original_source" / "manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue(original_manifest["executable"], original_manifest)
+            self.assertEqual(original_manifest["target_info"]["module_name"], "external_ns.ops")
+
     def _run_cli(self, *args: str, extra_env: dict[str, str] | None = None, timeout: int = 120) -> dict:
         env = os.environ.copy()
         env["PYTHONPATH"] = os.pathsep.join([str(PROJECT_ROOT), env.get("PYTHONPATH", "")]).rstrip(os.pathsep)

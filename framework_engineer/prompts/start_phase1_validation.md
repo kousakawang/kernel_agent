@@ -31,6 +31,13 @@ Kernel Engineer 的 `task_pack/`。
 - target 文件和 forward boundary 文件必须存在、是可由 `ast.parse` 解析的 Python
   文件，并且所给行号位于某个 `def`/`async def` 的定义范围内。行号可以是函数定义行，
   也可以是函数体内的一行。
+- target 定义在 third-party/site-packages 时，`target_file` 和 `target_line` 直接指向运行时
+  实际导入的那份外部实现；不要改填框架中的 import 语句或调用点。框架侧包围这次调用的
+  函数仍通过 `forward_boundary_file` 和 `forward_boundary_line` 指定。如果环境里存在多份
+  同名安装，路径填到未被服务加载的副本时，probe 会因 `call_count == 0` 失败。
+- 不需要提供额外的 import hint。静态路径解析只用于插入 instrumentation；decorator 执行时
+  会以 callable 的 `fn.__module__` 和 `fn.__qualname__` 覆盖模块身份，并将其写入 probe/capture
+  report 和生成的 harness。这样外部模块里的相对 import 会按真实包名加载。
 - `probe-target-calls` 和 `capture-snapshots` 会临时向上述源文件插入 decorator，
   instrumentation context 正常退出时会恢复原文件。因此源文件必须可写，也不要在运行
   期间并发修改或同时对同一文件启动另一轮 instrument；进程被强杀后还应检查源文件是否
@@ -157,7 +164,9 @@ human 模式下，进度写到 stderr，最终摘要写到 stdout；失败步骤
      但不会单独决定返回码。报告包含 service 和 workload 的 stdout/stderr 尾部。
 4. **对当前 target 解析接口**
    - 依次执行内部步骤 `resolve-target` 和 `resolve-forward-boundary`。
-   - 最终使用包含 module/class/function 的 qualified name。
+   - 先按文件路径和 AST 得到用于插桩的静态接口；probe/capture 的 decorator 真正运行后，
+     再以 callable 的 `__module__`/`__qualname__` 确定最终 qualified name。无需用户填写 import
+     hint。
 5. **`probe-target-calls`**
    - 用 non-cudagraph 服务再跑一次 workload。
    - 临时 instrument target 和 forward boundary，确认 workload return code 为 0 且
@@ -174,6 +183,9 @@ human 模式下，进度写到 stderr，最终摘要写到 stdout；失败步骤
      report。
 8. **`generate-harness`**
    - 生成 snapshot runtime、original/reference/candidate、correctness、benchmark 和脚本。
+   - linked original 优先按 capture 得到的真实 module/qualname 导入；如果原实现或其运行依赖
+     在验证环境不可用，初始 candidate 会退回 snapshot-golden，而不是让默认 correctness
+     smoke 因 import 异常直接退出。
 9. **可选 `probe-env`**
    - 仅当 `run_probe_env=True` 时执行，写入环境探测结果。
    - 单项工具不可用只会记录 `available=false`，不会让 `probe-env` 命令失败。
