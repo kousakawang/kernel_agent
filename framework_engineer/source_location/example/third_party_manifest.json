@@ -4,7 +4,6 @@
   "repos": [
     {
       "name": "flashinfer",
-      "archetype": "F7",
       "version": "0.6.12",
       "version_source": "importlib",
       "clone_source": "official",
@@ -21,11 +20,10 @@
       "status": "ok",
       "clone_command": null,
       "error": null,
-      "evidence": "local source path for Layer-1 example"
+      "evidence": "local source path for source-locate example"
     },
     {
       "name": "deep_gemm",
-      "archetype": "F7",
       "version": "0.1.2",
       "version_source": "importlib",
       "clone_source": "sgl_fork",
@@ -41,11 +39,10 @@
       "status": "ok",
       "clone_command": null,
       "error": null,
-      "evidence": "local source path for Layer-1 example"
+      "evidence": "local source path for source-locate example"
     },
     {
       "name": "flash_attn",
-      "archetype": "F3",
       "version": "bcf72ccc6816",
       "version_source": "cmake_pin",
       "clone_source": "sgl_fork",
@@ -63,7 +60,7 @@
       "status": "ok",
       "clone_command": null,
       "error": null,
-      "evidence": "local source path for Layer-1 example"
+      "evidence": "local source path for source-locate example"
     }
   ],
   "failed": []

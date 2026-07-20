@@ -103,11 +103,19 @@ OPTIONAL_CASE_NAMES = (
     "flash_attn4_cutedsl",
     "tokenspeed_mla_cutedsl",
 )
-ALL_CASE_NAMES = MANDATORY_CASE_NAMES + OPTIONAL_CASE_NAMES
+VARIANT_ONLY_CASE_NAMES = ("pytorch_softmax",)
+ALL_CASE_NAMES = MANDATORY_CASE_NAMES + OPTIONAL_CASE_NAMES + VARIANT_ONLY_CASE_NAMES
+INVOCATION_VARIANTS = ("old", "softmax")
 
 CASE_CONTRACTS: dict[str, dict[str, Any]] = {
     "pytorch_native": {
         "semantic_target": "torch.matmul",
+        "expected_archetype": "pytorch_dispatch",
+        "provider": "pytorch",
+        "optional": False,
+    },
+    "pytorch_softmax": {
+        "semantic_target": "torch.softmax",
         "expected_archetype": "pytorch_dispatch",
         "provider": "pytorch",
         "optional": False,
@@ -811,6 +819,17 @@ if _GPU_MODE:
 
         return run
 
+    def _case_pytorch_softmax(size: int) -> Callable[[], Any]:
+        matrix_size = max(128, min(size, 1024))
+        value = torch.randn(
+            matrix_size, matrix_size, device="cuda", dtype=torch.float16
+        )
+
+        def run() -> Any:
+            return torch.softmax(value, dim=-1)
+
+        return run
+
     def _case_sgl_kernel_builtin() -> Callable[[], Any]:
         from sgl_kernel import silu_and_mul
 
@@ -1033,6 +1052,7 @@ if _GPU_MODE:
 
     CASE_BUILDERS: dict[str, Callable[..., Callable[[], Any]]] = {
         "pytorch_native": _case_pytorch_native,
+        "pytorch_softmax": _case_pytorch_softmax,
         "sgl_kernel_builtin": _case_sgl_kernel_builtin,
         "sgl_kernel_sgl_attn": _case_sgl_kernel_sgl_attn,
         "sglang_triton": _case_sglang_triton,
@@ -1052,7 +1072,11 @@ if _GPU_MODE:
         for name in names:
             contract = CASE_CONTRACTS[name]
             builder = CASE_BUILDERS[name]
-            run = builder(size) if name == "pytorch_native" else builder()
+            run = (
+                builder(size)
+                if name in {"pytorch_native", "pytorch_softmax"}
+                else builder()
+            )
             cases.append(
                 WorkloadCase(
                     name=name,
@@ -1818,6 +1842,7 @@ def _run_worker(
     case_names: Sequence[str],
     worker_log: Path | None,
     capture_events_path: Path | None,
+    invocation_variants: Sequence[str] | None = None,
 ) -> int:
     global _CAPTURE_EVENTS_PATH
     if not _WORKER_MODE:
@@ -1838,26 +1863,39 @@ def _run_worker(
         raise RuntimeError(f"capture adapter installation failed: {hook_status}")
 
     torch.manual_seed(0)
-    cases = _build_workload_cases(case_names, size)
+    variant_sequence = list(invocation_variants or ["old"])
+    cases_by_variant: dict[str, list[WorkloadCase]] = {}
+    for variant in dict.fromkeys(variant_sequence):
+        names = (
+            list(case_names)
+            if invocation_variants is None
+            else _variant_case_names(variant)
+        )
+        cases_by_variant[variant] = _build_workload_cases(names, size)
 
     # Warmup is outside any high-level context.  It compiles and initializes
-    # every selected backend but emits no KID range or capture event.
-    with _high_capture_mode():
-        warm_outputs = _run_cases(cases)
-    torch.cuda.synchronize()
-    del warm_outputs
+    # every unique variant but emits no KID range or capture event.
+    for variant in dict.fromkeys(variant_sequence):
+        with _high_capture_mode():
+            warm_outputs = _run_cases(cases_by_variant[variant])
+        torch.cuda.synchronize()
+        del warm_outputs
 
-    results = high_level(cases)
-    # Synchronize after high_level's NVTX pop.  This demonstrates why GPU
-    # execution timestamps need correlation ids instead of range overlap.
-    torch.cuda.synchronize()
+    all_results: list[Any] = []
+    for variant in variant_sequence:
+        results = high_level(cases_by_variant[variant])
+        # Synchronize after high_level's NVTX pop.  This demonstrates why GPU
+        # execution timestamps need correlation ids instead of range overlap.
+        torch.cuda.synchronize()
+        all_results.extend(results)
     checksum = 0.0
-    for result in results:
+    for result in all_results:
         tensor = _first_tensor(result)
         if tensor is not None and tensor.numel():
             checksum += float(tensor.reshape(-1)[0].float().item())
     message = (
-        f"worker_ok cases={','.join(case_names)} size={size} "
+        f"worker_ok cases={','.join(case_names)} "
+        f"invocation_variants={','.join(variant_sequence)} size={size} "
         f"device={torch.cuda.get_device_name(0)} "
         f"torch={torch.__version__} triton={triton.__version__} "
         f"checksum={checksum:.6f} hooks={json.dumps(hook_status, sort_keys=True)}\n"
@@ -1930,6 +1968,7 @@ PROBE_MODULES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 
 CASE_MODULE_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "pytorch_native": ("torch",),
+    "pytorch_softmax": ("torch",),
     "sgl_kernel_builtin": ("torch", "sgl_kernel"),
     "sgl_kernel_sgl_attn": ("torch", "sgl_kernel"),
     "sglang_triton": ("torch", "triton", "sglang"),
@@ -2052,6 +2091,47 @@ def _parse_requested_cases(value: str | None) -> list[str] | None:
     return list(dict.fromkeys(names))
 
 
+def _parse_invocation_variants(value: str | None) -> list[str] | None:
+    if value is None or not value.strip():
+        return None
+    variants = [item.strip() for item in value.split(",") if item.strip()]
+    unknown = sorted(set(variants) - set(INVOCATION_VARIANTS))
+    if unknown:
+        raise ValueError(
+            "unknown --invocation-variants values: "
+            f"{unknown}; allowed={list(INVOCATION_VARIANTS)}"
+        )
+    if not variants:
+        raise ValueError("--invocation-variants must contain at least one variant")
+    return variants
+
+
+def _variant_case_names(variant: str) -> list[str]:
+    if variant == "old":
+        return list(MANDATORY_CASE_NAMES)
+    if variant == "softmax":
+        return [
+            "pytorch_softmax" if name == "pytorch_native" else name
+            for name in MANDATORY_CASE_NAMES
+        ]
+    raise ValueError(f"unknown invocation variant: {variant}")
+
+
+def _requested_case_names(args: argparse.Namespace) -> list[str] | None:
+    variants = _parse_invocation_variants(args.invocation_variants)
+    if variants is None:
+        return _parse_requested_cases(args.cases)
+    if args.include_optional:
+        raise ValueError(
+            "--include-optional cannot be combined with --invocation-variants"
+        )
+    return list(
+        dict.fromkeys(
+            name for variant in variants for name in _variant_case_names(variant)
+        )
+    )
+
+
 def _select_cases(
     probe: dict[str, Any],
     requested: list[str] | None,
@@ -2127,7 +2207,7 @@ def _prepare_environment(
     probe_path = output_dir / "environment_probe.json"
     probe_log = output_dir / "probe.log"
     probe = _static_environment_probe(args.nsys_bin)
-    requested = _parse_requested_cases(args.cases)
+    requested = _requested_case_names(args)
     selected = _select_cases(probe, requested, args.include_optional)
     probe["selected_cases"] = selected
     probe_path.write_text(
@@ -2253,13 +2333,19 @@ def run_launcher(args: argparse.Namespace) -> int:
         "--worker",
         "--size",
         str(args.size),
-        "--cases",
-        ",".join(selected_cases),
+    ]
+    if args.invocation_variants:
+        profile_command.extend(
+            ["--invocation-variants", str(args.invocation_variants)]
+        )
+    else:
+        profile_command.extend(["--cases", ",".join(selected_cases)])
+    profile_command.extend([
         "--worker-log",
         str(worker_log),
         "--capture-events",
         str(capture_events_path),
-    ]
+    ])
     print("[1/3] profiling SGLang backend cases with Nsight Systems...", flush=True)
     _run_logged(profile_command, nsys_log)
     report_path = _find_report(output_dir)
@@ -2522,10 +2608,19 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="probe the remote GPU environment and smoke selected cases without nsys",
     )
-    parser.add_argument(
+    workload_group = parser.add_mutually_exclusive_group()
+    workload_group.add_argument(
         "--cases",
         default=None,
         help="comma-separated workload case names (default: all mandatory cases)",
+    )
+    workload_group.add_argument(
+        "--invocation-variants",
+        default=None,
+        help=(
+            "comma-separated high-level variants; supported values are old and "
+            "softmax"
+        ),
     )
     parser.add_argument(
         "--include-optional",
@@ -2551,12 +2646,18 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError("--probe-worker requires --probe-json")
             return _run_probe_worker(args.size, names, Path(args.probe_json).resolve())
         if args.worker:
-            names = _parse_requested_cases(args.cases) or list(MANDATORY_CASE_NAMES)
+            variants = _parse_invocation_variants(args.invocation_variants)
+            names = (
+                _requested_case_names(args)
+                if variants is not None
+                else _parse_requested_cases(args.cases)
+            ) or list(MANDATORY_CASE_NAMES)
             return _run_worker(
                 args.size,
                 names,
                 Path(args.worker_log).resolve() if args.worker_log else None,
                 Path(args.capture_events).resolve() if args.capture_events else None,
+                variants,
             )
         if args.probe_env:
             output_dir = Path(args.output_dir).expanduser().resolve()

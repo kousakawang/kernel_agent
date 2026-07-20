@@ -3,3 +3,6 @@
 RUNTIME_CONFIG_VERSION = "kid-runtime-config/v2"
 RUNTIME_CAPTURE_VERSION = "kid-runtime-capture/v1"
 ENVIRONMENT_VERSION = "kid-runtime-environment/v1"
+SEMANTIC_RESOLVER_CONFIG_VERSION = "kid-semantic-resolver-config/v2"
+SEMANTIC_CONTEXT_VERSION = "kid-semantic-context/v1"
+SEMANTIC_DECISIONS_VERSION = "kid-semantic-decisions/v1"

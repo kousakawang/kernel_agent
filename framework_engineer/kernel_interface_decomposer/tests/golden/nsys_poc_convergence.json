@@ -1,0 +1,156 @@
+{
+  "schema_version": "kid-runtime-convergence-golden/v1",
+  "variants": {
+    "old": {
+      "kernel_owner_captures": [
+        {
+          "archetype": "cute_dsl_launch",
+          "common_interface": "callable returned by cutlass.cute.compile",
+          "execution_interface": "ScaleResidualNormScaleShift",
+          "capture_depth": 1
+        },
+        {
+          "archetype": "inductor_launch",
+          "common_interface": "torch._inductor.runtime.triton_heuristics.CachingAutotuner.run",
+          "execution_interface": "triton_poi_fused_copy__div_lt_mul_where_0",
+          "capture_depth": 0
+        },
+        {
+          "archetype": "python_binding",
+          "common_interface": "registered Python-visible extension/binding export callable",
+          "execution_interface": "deep_gemm.bf16_gemm_nt",
+          "capture_depth": 0
+        },
+        {
+          "archetype": "pytorch_dispatch",
+          "common_interface": "torch.utils._python_dispatch.TorchDispatchMode.__torch_dispatch__",
+          "execution_interface": "aten.mm.default",
+          "capture_depth": 0
+        },
+        {
+          "archetype": "pytorch_dispatch",
+          "common_interface": "torch.utils._python_dispatch.TorchDispatchMode.__torch_dispatch__",
+          "execution_interface": "sgl_kernel.fwd.default",
+          "capture_depth": 0
+        },
+        {
+          "archetype": "pytorch_dispatch",
+          "common_interface": "torch.utils._python_dispatch.TorchDispatchMode.__torch_dispatch__",
+          "execution_interface": "sgl_kernel.silu_and_mul.default",
+          "capture_depth": 0
+        },
+        {
+          "archetype": "tilelang_launch",
+          "common_interface": "tilelang.JITKernel.__call__",
+          "execution_interface": "JITKernel",
+          "capture_depth": 0
+        },
+        {
+          "archetype": "triton_launch",
+          "common_interface": "triton.runtime.jit.JITFunction.__getitem__ launcher",
+          "execution_interface": "rms_norm_kernel",
+          "capture_depth": 0
+        },
+        {
+          "archetype": "triton_launch",
+          "common_interface": "triton.runtime.jit.JITFunction.__getitem__ launcher",
+          "execution_interface": "_rms_norm_tiled_onepass",
+          "capture_depth": 1
+        },
+        {
+          "archetype": "tvm_ffi_call",
+          "common_interface": "exported callable on a tvm_ffi.module.Module",
+          "execution_interface": "flashinfer_jit.sampling.min_p_sampling_from_probs",
+          "capture_depth": 0
+        },
+        {
+          "archetype": "tvm_ffi_call",
+          "common_interface": "exported callable on a tvm_ffi.module.Module",
+          "execution_interface": "sglang_jit.add_constant.add_constant",
+          "capture_depth": 0
+        }
+      ],
+      "unattributed_kernel_count": 0
+    },
+    "softmax": {
+      "kernel_owner_captures": [
+        {
+          "archetype": "cute_dsl_launch",
+          "common_interface": "callable returned by cutlass.cute.compile",
+          "execution_interface": "ScaleResidualNormScaleShift",
+          "capture_depth": 1
+        },
+        {
+          "archetype": "inductor_launch",
+          "common_interface": "torch._inductor.runtime.triton_heuristics.CachingAutotuner.run",
+          "execution_interface": "triton_poi_fused_copy__div_lt_mul_where_0",
+          "capture_depth": 0
+        },
+        {
+          "archetype": "python_binding",
+          "common_interface": "registered Python-visible extension/binding export callable",
+          "execution_interface": "deep_gemm.bf16_gemm_nt",
+          "capture_depth": 0
+        },
+        {
+          "archetype": "pytorch_dispatch",
+          "common_interface": "torch.utils._python_dispatch.TorchDispatchMode.__torch_dispatch__",
+          "execution_interface": "aten._softmax.default",
+          "capture_depth": 0
+        },
+        {
+          "archetype": "pytorch_dispatch",
+          "common_interface": "torch.utils._python_dispatch.TorchDispatchMode.__torch_dispatch__",
+          "execution_interface": "sgl_kernel.fwd.default",
+          "capture_depth": 0
+        },
+        {
+          "archetype": "pytorch_dispatch",
+          "common_interface": "torch.utils._python_dispatch.TorchDispatchMode.__torch_dispatch__",
+          "execution_interface": "sgl_kernel.silu_and_mul.default",
+          "capture_depth": 0
+        },
+        {
+          "archetype": "tilelang_launch",
+          "common_interface": "tilelang.JITKernel.__call__",
+          "execution_interface": "JITKernel",
+          "capture_depth": 0
+        },
+        {
+          "archetype": "triton_launch",
+          "common_interface": "triton.runtime.jit.JITFunction.__getitem__ launcher",
+          "execution_interface": "rms_norm_kernel",
+          "capture_depth": 0
+        },
+        {
+          "archetype": "triton_launch",
+          "common_interface": "triton.runtime.jit.JITFunction.__getitem__ launcher",
+          "execution_interface": "_rms_norm_tiled_onepass",
+          "capture_depth": 1
+        },
+        {
+          "archetype": "tvm_ffi_call",
+          "common_interface": "exported callable on a tvm_ffi.module.Module",
+          "execution_interface": "flashinfer_jit.sampling.min_p_sampling_from_probs",
+          "capture_depth": 0
+        },
+        {
+          "archetype": "tvm_ffi_call",
+          "common_interface": "exported callable on a tvm_ffi.module.Module",
+          "execution_interface": "sglang_jit.add_constant.add_constant",
+          "capture_depth": 0
+        }
+      ],
+      "unattributed_kernel_count": 0
+    }
+  },
+  "scenarios": {
+    "repeat": [
+      "old"
+    ],
+    "distinct": [
+      "old",
+      "softmax"
+    ]
+  }
+}

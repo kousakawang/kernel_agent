@@ -1,5 +1,5 @@
 {
-  "schema_version": "kid-semantic-resolver-config/v1",
+  "schema_version": "kid-semantic-resolver-config/v2",
   "backend_name": "nsys_poc",
   "runtime_capture": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/cli_log/nsys_poc/runtime_capture.schema.json",
   "source_context": {
@@ -34,6 +34,14 @@
       }
     ]
   },
+  "analysis_source_overrides": [
+    {
+      "published_path": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+      "analysis_path": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/ref/nsys_poc/source_snapshot/nsys_poc.trace_snapshot.json"
+    }
+  ],
+  "context_output": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/ref/nsys_poc/semantic_resolver_context.json",
+  "decisions_output": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/ref/nsys_poc/semantic_resolver_decisions.json",
   "output": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/output/nsys_poc/decomposition.schema.json",
   "notes_output": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/ref/nsys_poc/kid_semantic_resolver_notes.md"
 }

@@ -1,1 +1,1 @@
-// 该层形态不适用（archetype=thirdparty_cpp_jit）。
+// 该层不适用。

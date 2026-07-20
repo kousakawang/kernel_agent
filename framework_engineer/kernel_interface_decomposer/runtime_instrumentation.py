@@ -80,6 +80,25 @@ def _events_dir() -> Path:
     return Path(str(value)).expanduser().resolve()
 
 
+def _recording_enabled() -> bool:
+    gate = _CONFIG.get("recording_gate_file")
+    return gate in {None, ""} or Path(str(gate)).is_file()
+
+
+def _active_marker(call_id: str) -> Path | None:
+    state_dir = _CONFIG.get("active_ranges_dir")
+    if state_dir in {None, ""}:
+        return None
+    path = Path(str(state_dir)).expanduser().resolve()
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        marker = path / f"{call_id}.active"
+        marker.write_text(str(os.getpid()), encoding="utf-8")
+        return marker
+    except OSError:
+        return None
+
+
 def _next_id(kind: str) -> str:
     global _CALL_COUNTER, _CAPTURE_COUNTER
     with _COUNTER_LOCK:
@@ -224,6 +243,7 @@ def _high_capture_mode() -> ContextManager[Any]:
 @contextmanager
 def _high_scope(frame: FrameType, interface: str) -> Iterator[None]:
     call_id = _next_id("high")
+    active_marker = _active_marker(call_id)
     stage, forward_mode = _stage_from_frame(frame)
     high = {
         "call_id": call_id,
@@ -252,6 +272,8 @@ def _high_scope(frame: FrameType, interface: str) -> Iterator[None]:
     finally:
         _nvtx_pop()
         _CURRENT_HIGH.reset(token)
+        if active_marker is not None:
+            active_marker.unlink(missing_ok=True)
 
 
 def _install_target_profiler() -> None:
@@ -274,7 +296,7 @@ def _install_target_profiler() -> None:
                 frame.f_code.co_name == short_name
                 and (definition_line is None or frame.f_code.co_firstlineno == definition_line)
             )
-            if same_file and name_matches:
+            if same_file and name_matches and _recording_enabled():
                 scope = _high_scope(frame, qualname)
                 scope.__enter__()
                 _ACTIVE_TARGET_FRAMES[key] = scope

@@ -1,9 +1,10 @@
-# KID Runtime Capture CLI
+# KID Implementation Reference
 
-This package implements the deterministic first stage of Kernel Interface
-Decomposition. It captures execution-level events and correlates them with GPU
-kernels. Semantic interface selection is performed later by the Semantic
-Resolver Agent.
+The public entry point is the prompt-driven KID Agent documented in
+[`KID_README.md`](../../KID_README.md). This package implements its deterministic
+Runtime Capture CLI and Semantic Resolution helper commands. Users normally
+start `framework_engineer/prompts/start_kid.md` with one backend config
+directory instead of invoking the two stages as separate tasks.
 
 ## Configuration
 
@@ -33,7 +34,7 @@ Each `kid-runtime-config/v2` file describes one backend and one test command:
     "skip_invocations": 0,
     "stages": ["prefill", "decode", "unknown"],
     "sample_count_per_stage": 1,
-    "sampling": "last_n",
+    "sampling": "unique_decomposition",
     "aggregation": "single"
   },
   "profiling": {
@@ -45,12 +46,22 @@ Each `kid-runtime-config/v2` file describes one backend and one test command:
 }
 ```
 
-Set `cmd` to `null` to profile `test_cmd` directly. Warmup belongs inside the
+Set `cmd` to `null` to profile `test_cmd` directly. When `cmd` starts a service,
+KID launches it in a paused Nsight Systems session, waits for `ready`, then
+starts Nsight collection and enables Runtime event recording immediately before
+`test_cmd`. Collection stops after the test and any admitted high-level call has
+returned. Service startup and pre-ready warmup therefore remain outside both the
+SQLite trace window and Runtime JSONL. Warmup in direct mode belongs inside the
 test workload and should run outside the selected high-level invocation.
 
-Sampling supports `all`, `last_n`, and `single`. `last_n` selects the final N
-invocations independently per stage; `single` is the golden-compatible alias
-for `last_n` with N=1. Raw JSONL and SQLite always retain every invocation.
+Sampling supports `unique_decomposition`, `all`, `last_n`, and `single`.
+`unique_decomposition` is the default: it groups invocations by kernel-owner
+execution boundaries, nesting, high→execution call paths, and unattributed
+kernel count, then keeps the final invocation in each group. Stage, runtime
+IDs, timings, provider hints, kernel names/counts, and repeated identical
+execution calls do not split a group. `last_n` selects the final N invocations
+independently per stage; `single` is the golden-compatible alias for `last_n`
+with N=1. Raw JSONL and SQLite always retain every invocation.
 
 ## Commands
 
@@ -107,16 +118,54 @@ The full `capture` regression requires CUDA and Nsight Systems and is opt-in so
 normal local test discovery stays GPU-free. With the remote Python runner, use:
 
 ```bash
-cd kernel_agent
-KID_RUN_GPU_E2E=1 python -m unittest \
-  framework_engineer.kernel_interface_decomposer.tests.test_cli_capture_golden -v
+python kernel_agent/framework_engineer/kernel_interface_decomposer/tests/test_cli_capture_golden.py \
+  --gpu-e2e -v
+
+python kernel_agent/framework_engineer/kernel_interface_decomposer/tests/test_cli_capture_convergence.py \
+  --gpu-e2e -v
+
+python kernel_agent/framework_engineer/kernel_interface_decomposer/tests/test_cli_capture_window.py \
+  --gpu-e2e -v
 ```
 
-It runs all 11 mandatory PoC cases through the formal `capture` command, runs
-the Runtime artifact validator, and compares stable capture/kernel structure
-with the golden. Runtime IDs, measured durations, and optional `provider_hint`
-values are intentionally not fixed. If the GPU test fails, its complete Runtime
-artifact directory is retained under `/tmp/kid-capture-golden-*` for diagnosis.
+The first test runs all 11 mandatory PoC cases once. The convergence test runs
+`old,old` and `old,softmax`, verifies that raw traces retain both calls, and
+checks that Runtime output contains one and two unique decomposition groups,
+respectively. The capture-window test compares direct execution with a service
+that deliberately calls the target three times before readiness; only the one
+test-triggered call may appear in either trace. All three run the Runtime
+artifact validator and compare stable
+structure with golden data. Runtime IDs, durations, and optional
+`provider_hint` values are intentionally not fixed.
 
 Capture categories and adapter boundaries are defined in
 [CAPTURE_MECHANISMS.md](CAPTURE_MECHANISMS.md) and `capture_registry.py`.
+
+## KID Agent semantic phase
+
+The KID Agent performs the second stage after Runtime capture. Internally it
+uses one `kid-semantic-resolver-config/v2` and the following deterministic
+commands:
+
+```bash
+python3 -m framework_engineer.kernel_interface_decomposer.semantic_resolver_tools \
+  prepare semantic_resolver_config.json
+# Agent reads context and writes decisions + notes.
+python3 -m framework_engineer.kernel_interface_decomposer.semantic_resolver_tools \
+  finalize semantic_resolver_config.json
+python3 -m framework_engineer.kernel_interface_decomposer.semantic_resolver_tools \
+  validate semantic_resolver_config.json
+```
+
+`prepare` exposes only Runtime evidence and source snippets. Agent decisions
+must assign every direct kernel owner exactly once to a semantic interface.
+`finalize` computes all metrics and publishes `kernel-interface-decomposition/v2`
+atomically. Context, decisions, and notes are internal evidence; source_locate
+consumes only the final decomposition.
+
+Run its CPU-only regression with:
+
+```bash
+PYTHONPATH=kernel_agent python3 -m unittest \
+  framework_engineer.kernel_interface_decomposer.tests.test_semantic_resolver -v
+```

@@ -1,0 +1,455 @@
+{
+  "schema_version": "kernel-interface-decomposition/v2",
+  "backend_name": "all_backends",
+  "target": {
+    "interface": "all_backends_test",
+    "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+    "line": 669
+  },
+  "coverage_report": {
+    "per_invocation": [],
+    "min_coverage": null,
+    "semantic_target_count": 10,
+    "gpu_kernel_count": null,
+    "uncaptured_hint": "This is a manually curated multi-backend catalog rather than a single profiled high-level invocation; runtime coverage and GPU kernel counts still need to be collected."
+  },
+  "kernels": [
+    {
+      "rank": 1,
+      "low_level_id": "torch_sdpa",
+      "kernel": {
+        "raw_name": "aten::_scaled_dot_product_flash_attention",
+        "normalized_name": "sdpa_flash"
+      },
+      "interface": "torch.nn.functional.scaled_dot_product_attention",
+      "archetype": "pytorch_dispatch",
+      "provider": "pytorch",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 85
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "locate_candidates": {
+        "interface_definition": {
+          "status": "not_found",
+          "candidates": [],
+          "repo_hint": null,
+          "evidence": "not_found",
+          "diagnostics": [
+            "no interface definition found in the configured source roots; global leaf-name fallback is intentionally disabled"
+          ]
+        }
+      }
+    },
+    {
+      "rank": 2,
+      "low_level_id": "fla_recompute_w_u_fwd",
+      "kernel": {
+        "raw_name": "recompute_w_u_fwd_kernel",
+        "normalized_name": "recompute_w_u_fwd_kernel"
+      },
+      "interface": "sglang.srt.layers.attention.fla.wy_fast.recompute_w_u_fwd",
+      "archetype": "triton_launch",
+      "provider": "sglang",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 152
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "locate_candidates": {
+        "interface_definition": {
+          "status": "resolved",
+          "candidates": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/srt/layers/attention/fla/wy_fast.py",
+              "def_line": 111
+            }
+          ],
+          "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang",
+          "evidence": "call_site_import",
+          "diagnostics": []
+        }
+      }
+    },
+    {
+      "rank": 3,
+      "low_level_id": "sgl_kernel_silu_and_mul",
+      "kernel": {
+        "raw_name": "sgl_kernel::silu_and_mul",
+        "normalized_name": "silu_and_mul"
+      },
+      "interface": "sgl_kernel.silu_and_mul",
+      "archetype": "pytorch_dispatch",
+      "provider": "sgl-kernel",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 189
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "locate_candidates": {
+        "interface_definition": {
+          "status": "resolved",
+          "candidates": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/python/sgl_kernel/elementwise.py",
+              "def_line": 258
+            }
+          ],
+          "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel",
+          "evidence": "call_site_import",
+          "diagnostics": []
+        }
+      }
+    },
+    {
+      "rank": 4,
+      "low_level_id": "sgl_kernel_fa3_fwd",
+      "kernel": {
+        "raw_name": "flash_fwd_kernel_sm90",
+        "normalized_name": "fa3_fwd"
+      },
+      "interface": "sgl_kernel.flash_attn.flash_attn_varlen_func",
+      "archetype": "pytorch_dispatch",
+      "provider": "sgl-attn",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 258
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "locate_candidates": {
+        "interface_definition": {
+          "status": "resolved",
+          "candidates": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/python/sgl_kernel/flash_attn.py",
+              "def_line": 232
+            }
+          ],
+          "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel",
+          "evidence": "call_site_import",
+          "diagnostics": []
+        }
+      }
+    },
+    {
+      "rank": 5,
+      "low_level_id": "sglang_jit_add_constant",
+      "kernel": {
+        "raw_name": "add_constant_kernel",
+        "normalized_name": "add_constant"
+      },
+      "interface": "sglang.jit_kernel.add_constant.add_constant",
+      "archetype": "tvm_ffi_call",
+      "provider": "sglang",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 318
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "locate_candidates": {
+        "interface_definition": {
+          "status": "resolved",
+          "candidates": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/add_constant.py",
+              "def_line": 24
+            }
+          ],
+          "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang",
+          "evidence": "call_site_import",
+          "diagnostics": []
+        }
+      }
+    },
+    {
+      "rank": 6,
+      "low_level_id": "flashinfer_top_k_top_p_sampling",
+      "kernel": {
+        "raw_name": "TopKTopPSamplingFromProbKernel",
+        "normalized_name": "top_k_top_p_sampling"
+      },
+      "interface": "flashinfer.sampling.top_k_top_p_sampling_from_probs",
+      "archetype": "tvm_ffi_call",
+      "provider": "flashinfer",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 370
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "locate_candidates": {
+        "interface_definition": {
+          "status": "resolved",
+          "candidates": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/sampling.py",
+              "def_line": 1579
+            }
+          ],
+          "repo_hint": "/Users/bytedance/Desktop/infra_agent/flashinfer",
+          "evidence": "call_site_import",
+          "diagnostics": []
+        }
+      }
+    },
+    {
+      "rank": 7,
+      "low_level_id": "flashinfer_triton_rms_norm",
+      "kernel": {
+        "raw_name": "rms_norm_kernel",
+        "normalized_name": "rms_norm"
+      },
+      "interface": "flashinfer.triton.norm.rms_norm",
+      "archetype": "triton_launch",
+      "provider": "flashinfer",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 411
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "locate_candidates": {
+        "interface_definition": {
+          "status": "resolved",
+          "candidates": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/triton/norm.py",
+              "def_line": 9
+            }
+          ],
+          "repo_hint": "/Users/bytedance/Desktop/infra_agent/flashinfer",
+          "evidence": "call_site_import",
+          "diagnostics": []
+        }
+      }
+    },
+    {
+      "rank": 8,
+      "low_level_id": "flashinfer_batch_prefill_paged",
+      "kernel": {
+        "raw_name": "BatchPrefillWithPagedKVCacheKernel",
+        "normalized_name": "batch_prefill_paged"
+      },
+      "interface": "flashinfer.BatchPrefillWithPagedKVCacheWrapper.run",
+      "archetype": "tvm_ffi_call",
+      "provider": "flashinfer",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 500
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "locate_candidates": {
+        "interface_definition": {
+          "status": "resolved",
+          "candidates": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/prefill.py",
+              "def_line": 2198
+            }
+          ],
+          "repo_hint": "/Users/bytedance/Desktop/infra_agent/flashinfer",
+          "evidence": "interface_qualified_name",
+          "diagnostics": []
+        }
+      }
+    },
+    {
+      "rank": 9,
+      "low_level_id": "sglang_cutedsl_fused_norm_scale_shift",
+      "kernel": {
+        "raw_name": "scale_residual_norm_scale_shift_kernel",
+        "normalized_name": "fused_norm_scale_shift"
+      },
+      "interface": "sglang.jit_kernel.diffusion.cutedsl.scale_residual_norm_scale_shift.fused_norm_scale_shift",
+      "archetype": "cute_dsl_launch",
+      "provider": "sglang",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 567
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "locate_candidates": {
+        "interface_definition": {
+          "status": "resolved",
+          "candidates": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/diffusion/cutedsl/scale_residual_norm_scale_shift.py",
+              "def_line": 279
+            }
+          ],
+          "repo_hint": "/Users/bytedance/Desktop/infra_agent/sglang",
+          "evidence": "call_site_import",
+          "diagnostics": []
+        }
+      }
+    },
+    {
+      "rank": 10,
+      "low_level_id": "deepgemm_fp8_paged_mqa_logits",
+      "kernel": {
+        "raw_name": "sm90_fp8_paged_mqa_logits",
+        "normalized_name": "fp8_paged_mqa_logits"
+      },
+      "interface": "deep_gemm.fp8_paged_mqa_logits",
+      "archetype": "python_binding",
+      "provider": "deepgemm",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
+      "runtime_event": {
+        "call_site": {
+          "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
+          "line": 646
+        },
+        "attribution": {
+          "method": "cuda_correlation_id+nvtx",
+          "confidence": "high"
+        }
+      },
+      "locate_candidates": {
+        "interface_definition": {
+          "status": "resolved",
+          "candidates": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/DeepGEMM/deep_gemm/__init__.py",
+              "def_line": 68
+            }
+          ],
+          "repo_hint": "/Users/bytedance/Desktop/infra_agent/DeepGEMM",
+          "evidence": "call_site_import",
+          "diagnostics": []
+        }
+      }
+    }
+  ]
+}

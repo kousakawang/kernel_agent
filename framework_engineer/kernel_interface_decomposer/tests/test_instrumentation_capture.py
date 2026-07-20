@@ -180,6 +180,36 @@ class TestRuntimeInstrumentation(unittest.TestCase):
         self.assertEqual(events[0]["execution_interface"], "profiled_kernel")
         self.assertTrue(events[0]["parent_call_id"])
 
+    def test_recording_gate_excludes_startup_target_calls(self) -> None:
+        gate = Path(self.tempdir.name) / "recording.enabled"
+        active_dir = Path(self.tempdir.name) / "active_ranges"
+        function = type(self)._profile_target
+        ri._CONFIG.update(
+            {
+                "target": {
+                    "file": function.__code__.co_filename,
+                    "line": function.__code__.co_firstlineno,
+                    "qualified_name": function.__qualname__,
+                },
+                "recording_gate_file": str(gate),
+                "active_ranges_dir": str(active_dir),
+            }
+        )
+        ri._install_target_profiler()
+        copied_reference = self._profile_target
+
+        copied_reference()
+        self.assertEqual(self.events(), [])
+
+        gate.touch()
+        copied_reference()
+        self.assertEqual(len(self.events()), 1)
+        self.assertEqual(list(active_dir.glob("*.active")), [])
+
+        gate.unlink()
+        copied_reference()
+        self.assertEqual(len(self.events()), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

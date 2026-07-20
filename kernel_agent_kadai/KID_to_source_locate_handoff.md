@@ -6,24 +6,29 @@
 ## 1. 流水线与责任边界
 
 ```text
-KID Runtime Capture CLI
-  └─ execution captures + Python stacks + Nsight kernel correlation
-                         │
-                         ▼
-KID Semantic Resolver Agent
-  └─ semantic interface + call_site + runtime metrics
+KID Agent
+  ├─ Runtime Capture CLI
+  │    execution captures + Python stacks + Nsight kernel correlation
+  └─ Semantic Resolution
+       semantic interface + call_site + runtime metrics
                          │
                          ▼
 output/<backend>/decomposition.schema.json
+                         │
+                         ▼
+locate CLI → interface definition candidates
                          │
           third_party_manifest + source repositories
                          │
                          ▼
 source_locate Agent
-  └─ interface_definition / py_cpp_binding / kernel_header / kernel_impl
+  └─ interface_definition / py_cpp_binding / kernel_header / kernel_impl decisions
                          │
                          ▼
-enriched schema + locate notes → extract CLI → kernel_sources/
+finalize helper → enriched schema + locate notes
+                         │
+                         ▼
+outer extract CLI → kernel_sources/
 ```
 
 KID 负责确定 low-level target 的语义边界及运行时热点数据；`source_locate` 负责该
@@ -40,7 +45,7 @@ output/<backend>/decomposition.schema.json
 
 文件是 `kernel-interface-decomposition/v2` 的数据实例，不是 JSON Schema 元文件。
 `source_locate` 只把它作为正式 KID 输入；Runtime Capture 的 JSONL、SQLite、完整
-Python stack 和 Semantic Resolver notes 都不是稳定对接接口。
+Python stack、Semantic Resolver context/decisions/notes 都不是稳定对接接口。
 
 最新完整样例：
 
@@ -75,8 +80,8 @@ kernel_agent/example_kernels/nsys_poc_kid_golden/
 | `archetype` | 是 | execution capture 类别，固定枚举；只能作为背景提示。 |
 | `provider` | 否 | 可选源码仓库/包提示；允许 `null`，不能作为硬分派条件。 |
 | `metrics.duration_us` | 是 | 该 semantic target 下所有关联 GPU kernel duration 之和。 |
-| `metrics.share_in_invocation` | 是 | 在当前 high-level invocation 中的 GPU 时间占比。 |
-| `measurement` | 是 | 指标、聚合方式和样本数；不修改。 |
+| `metrics.share_in_invocation` | 是 | target 聚合耗时占全部被选代表 invocation GPU 总时间的比例；字段名为兼容保留。 |
+| `measurement` | 是 | 指标、聚合方式和包含该 target 的代表 invocation 数；不修改。 |
 | `runtime_event.call_site` | 是 | 推理调用链中调用 semantic interface 的源码位置。 |
 | `runtime_event.attribution` | 是 | KID semantic 归因方法和置信度。 |
 
@@ -153,8 +158,9 @@ kernel 自身的 duration。
 - `kernel_header`：与实现相关的声明/header；
 - `kernel_impl`：host dispatch/launcher 到 device kernel 的实现调用链。
 
-Agent 可以调用 `framework_engineer/source_location` 下的 locator、validator 和 extract CLI，
-也可以自主搜索与阅读源码。CLI 返回的是工具结果或候选，最终四层语义判断仍由 Agent 负责。
+Agent 可以调用 `framework_engineer/source_location` 下的 locator 和私有 inspect/search/finalize
+helper，也可以自主搜索与阅读源码。工具返回的是候选或机械校验结果，最终四层语义判断仍由
+Agent 负责。Agent 生成 located schema 和 notes 后结束，extract 由外层工作流调用。
 
 定位结果允许多文件和跨仓库。找不到或不能完整静态展开时应记录 `missed`/best-effort 状态及
 证据，不得改写 KID 的 `interface` 来掩盖定位失败。
@@ -176,7 +182,8 @@ Agent 可以调用 `framework_engineer/source_location` 下的 locator、validat
 
 输入：
 
-- KID `decomposition.schema.json`；
+- locate CLI 在 KID 副本上生成的 candidate schema（包含临时
+  `locate_candidates.interface_definition`）；
 - `third_party_manifest.json` 和缺失仓库说明；
 - SGLang、sgl-kernel 及 third-party 源码；
 - 可选的原仓库搜索、build metadata 和 runtime kernel 名证据。
@@ -185,8 +192,11 @@ Agent 可以调用 `framework_engineer/source_location` 下的 locator、validat
 
 - 保持 KID 字段不变的 enriched schema；
 - 每个 `low_level_id` 的四层 `source_locations`；
+- 非下游契约的 `source_locate_decisions.json`；
 - 自由格式 `ref/locate_agent_notes.md`；
-- 调用 extract 后生成的 `kernel_sources/` 与 `kernel_sources_dir`。
+
+随后由外层 extract CLI 生成 `kernel_sources/` 与 `kernel_sources_dir`；它们不属于 Agent 的直接
+输出。
 
 source_locate 不修改 `rank`、`interface`、`archetype`、`provider`、kernel 名称、metrics、
 measurement、call site、attribution 或 coverage。如果发现 semantic target 本身错误，应报告给
@@ -203,7 +213,8 @@ PYTHONPATH=kernel_agent python3 -m \
 ```
 
 validator 会检查固定字段、archetype、排序、coverage、代表 kernel、call site 和 Runtime
-Capture 的一致性，并禁止源码定位字段进入 KID 最终产物。
+Capture 的一致性，也会验证 retained context/decisions、direct-owner exact-once 和 deterministic
+finalization，并禁止源码定位字段进入 KID 最终产物。
 
 source_locate 的验收至少包括：
 

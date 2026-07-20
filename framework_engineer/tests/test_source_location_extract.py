@@ -1,15 +1,10 @@
-"""Unit tests for Layer 3 extraction (source_location.extractor). CPU-only.
-
-New schema shape (locate standard §1/§2): each hit is ``{file, def_line}`` (no
-line_start/line_end — the end is computed here by range-completion).
-``interface_definition`` is single-file; ``kernel_impl``/``kernel_header``/
-``py_cpp_binding`` are directory layers whose hits go into a ``<layer>/`` subdir
-(kernel_impl + py_cpp_binding numbered by order).
-"""
+"""CPU-only tests for Agent-result extraction and range completion."""
 
 from __future__ import annotations
 
 import contextlib
+import copy
+import filecmp
 import io
 import json
 import tempfile
@@ -17,524 +12,394 @@ import unittest
 from pathlib import Path
 
 from framework_engineer.source_location import cli as sl_cli
+from framework_engineer.source_location.contracts import (
+    ContractError,
+    kid_projection,
+    validate_agent_schema,
+)
 from framework_engineer.source_location.extractor import (
+    ExtractError,
     _end_line_c_family,
     _end_line_python,
     extract_workspace,
 )
 
 
-def _schema_with(kernels: list[dict]) -> dict:
-    return {"schema_version": "test/v1", "kernels": kernels}
-
-
-def _kernel(kid: str, archetype: str, layers: dict) -> dict:
+def _layer(
+    status: str,
+    hits: list[tuple[str, int]] | None = None,
+    repo_hint: str | None = None,
+) -> dict:
     return {
+        "status": status,
+        "hits": [
+            {"file": file, "def_line": def_line}
+            for file, def_line in (hits or [])
+        ],
+        "repo_hint": repo_hint,
+    }
+
+
+def _kernel(kid: str, layers: dict, *, rank: int = 1) -> dict:
+    return {
+        "rank": rank,
         "low_level_id": kid,
-        "interface": f"iface::{kid}",
-        "archetype": archetype,
-        "source_locations": {"archetype": archetype, "needs_agent": False, "layers": layers},
+        "kernel": {"raw_name": f"raw::{kid}", "normalized_name": kid},
+        "interface": f"test.api.{kid}",
+        "archetype": "python_binding",
+        "provider": "test",
+        "metrics": {"duration_us": None, "share_in_invocation": None},
+        "measurement": {
+            "metric": "gpu_kernel_duration_us",
+            "aggregation": "sum",
+            "sample_count": 0,
+        },
+        "runtime_event": {
+            "call_site": {"file": "/tmp/caller.py", "line": 1},
+            "attribution": {"method": "test", "confidence": "high"},
+        },
+        "source_locations": {"layers": layers},
     }
 
 
-def _resolved(file: str, def_line: int) -> dict:
-    """A resolved single-hit layer in the new {file, def_line} shape."""
-    return {"status": "resolved", "hits": [{"file": file, "def_line": def_line}], "repo_hint": None}
-
-
-def _resolved_multi(hits: list[tuple[str, int]]) -> dict:
-    """A resolved directory layer with multiple {file, def_line} hits."""
+def _schema(kernels: list[dict]) -> dict:
     return {
-        "status": "resolved",
-        "hits": [{"file": f, "def_line": d} for f, d in hits],
-        "repo_hint": None,
+        "schema_version": "kernel-interface-decomposition/v2",
+        "backend_name": "test",
+        "target": {"interface": "high", "file": "/tmp/high.py", "line": 1},
+        "coverage_report": {
+            "per_invocation": [],
+            "min_coverage": None,
+            "semantic_target_count": len(kernels),
+            "gpu_kernel_count": None,
+            "uncaptured_hint": "unit test",
+        },
+        "kernels": kernels,
     }
 
 
-class TestExtract(unittest.TestCase):
+class ExtractFixture(unittest.TestCase):
     def setUp(self) -> None:
-        self.tmp = Path(tempfile.mkdtemp(prefix="l3_ut_"))
-        # A real python file with a couple of functions to slice via AST.
+        self.tempdir = tempfile.TemporaryDirectory(prefix="source_extract_v2_")
+        self.tmp = Path(self.tempdir.name)
         self.py = self.tmp / "src_kernel.py"
         self.py.write_text(
-            "import torch\n"                       # 1
-            "\n"                                    # 2
-            "def alpha(x):\n"                       # 3
-            "    y = x + 1\n"                        # 4
-            "    return y\n"                         # 5
-            "\n"                                     # 6
-            "def beta(x):\n"                         # 7
-            "    return x * 2\n"                      # 8
+            "import torch\n"  # 1
+            "\n"  # 2
+            "def alpha(x):\n"  # 3
+            "    y = x + 1\n"  # 4
+            "    return y\n"  # 5
+            "\n"  # 6
+            "def beta(x):\n"  # 7
+            "    return x * 2\n"  # 8
         )
-        # A real C-family file with a function + a header-style prototype.
         self.cu = self.tmp / "impl.cu"
         self.cu.write_text(
-            "#include <foo>\n"                       # 1
-            "void launch(int d) {\n"                 # 2
-            "  int a = d;\n"                          # 3
-            "  kern<<<1,1>>>(a);\n"                   # 4
-            "}\n"                                     # 5
-            "void proto(int x);\n"                    # 6
+            "#include <foo>\n"  # 1
+            "void launch(int d) {\n"  # 2
+            "  int a = d;\n"  # 3
+            "  kern<<<1,1>>>(a);\n"  # 4
+            "}\n"  # 5
+            "void proto(int x);\n"  # 6
         )
 
-    def _write_schema(self, schema: dict) -> Path:
-        p = self.tmp / "decomposition_test.schema.json"
-        p.write_text(json.dumps(schema, indent=2))
-        return p
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
 
-    # --- range-completion helpers (py AST / c-family braces) -----------------
+    def _standard_layers(self) -> dict:
+        return {
+            "interface_definition": _layer("resolved", [(str(self.py), 3)]),
+            "kernel_impl": _layer("resolved", [(str(self.cu), 2)]),
+            "py_cpp_binding": _layer("not_applicable"),
+            "kernel_header": _layer("not_applicable"),
+        }
 
-    def test_range_completion_python_ast(self) -> None:
+    def _write_schema(self, payload: dict, *, name: str = "schema.json") -> Path:
+        path = self.tmp / name
+        path.write_text(json.dumps(payload, indent=2))
+        return path
+
+
+class TestRangeCompletion(ExtractFixture):
+    def test_python_ast_ranges(self) -> None:
         lines = self.py.read_text().splitlines(keepends=True)
-        self.assertEqual(_end_line_python(lines, 3), 5)  # def alpha -> lines 3-5
-        self.assertEqual(_end_line_python(lines, 7), 8)  # def beta  -> lines 7-8
+        self.assertEqual(_end_line_python(lines, 3), 5)
+        self.assertEqual(_end_line_python(lines, 7), 8)
 
-    def test_range_completion_c_family_braces_and_proto(self) -> None:
+    def test_c_family_braces_prototype_comments_and_strings(self) -> None:
         lines = self.cu.read_text().splitlines(keepends=True)
-        self.assertEqual(_end_line_c_family(lines, 2), 5)  # void launch { .. }
-        self.assertEqual(_end_line_c_family(lines, 6), 6)  # bare prototype ends at ;
+        self.assertEqual(_end_line_c_family(lines, 2), 5)
+        self.assertEqual(_end_line_c_family(lines, 6), 6)
 
-    def test_range_completion_c_family_ignores_commented_and_quoted_braces(self) -> None:
-        # Regression: braces inside //-comments, /* */ blocks, string/char
-        # literals, and raw strings must NOT unbalance the count. This is the
-        # real mha_fwd bug — a commented-out `{` in the body ran the range far
-        # past the true closing brace.
-        src = (
-            "void f(int d) {\n"                       # 1  <- def, depth 1
-            "  // if (d) {\n"                          # 2  line comment: brace ignored
-            "  const char* s = \"}{ \";\n"             # 3  string: braces ignored
-            "  char c = '}';\n"                        # 4  char literal: ignored
-            "  /* } } nested\n"                        # 5  block comment start
-            "     still } comment */\n"                # 6  block comment end
-            "  const char* r = R\"raw()}{)raw\";\n"     # 7  raw string: ignored
-            "  int x = 1'000;\n"                        # 8  C++14 digit sep, not char
-            "}\n"                                       # 9  <- true end
-            "void after();\n"                           # 10
+        tricky = self.tmp / "tricky.cu"
+        tricky.write_text(
+            "void f(int d) {\n"
+            "  // if (d) {\n"
+            "  const char* s = \"}{ \";\n"
+            "  char c = '}';\n"
+            "  /* } } nested\n"
+            "     still } comment */\n"
+            "  const char* r = R\"raw()}{)raw\";\n"
+            "  int x = 1'000;\n"
+            "}\n"
+            "void after();\n"
         )
-        p = self.tmp / "tricky.cu"
-        p.write_text(src)
-        lines = p.read_text().splitlines(keepends=True)
-        self.assertEqual(_end_line_c_family(lines, 1), 9)  # closes at line 9, not runaway
-        self.assertEqual(_end_line_c_family(lines, 10), 10)  # bare proto after still ok
+        tricky_lines = tricky.read_text().splitlines(keepends=True)
+        self.assertEqual(_end_line_c_family(tricky_lines, 1), 9)
+        self.assertEqual(_end_line_c_family(tricky_lines, 10), 10)
 
-    # --- single-file layers --------------------------------------------------
 
-    def test_triton_like_resolved_ab_and_na_cd(self) -> None:
-        # sglang_triton: a/b resolved, c/d not_applicable.
-        schema = _schema_with([
-            _kernel(
-                "k0",
-                "sglang_triton",
-                {
-                    "interface_definition": _resolved(str(self.py), 3),
-                    "kernel_impl": _resolved(str(self.py), 7),
-                    "py_cpp_binding": {"status": "not_applicable", "hits": []},
-                    "kernel_header": {"status": "not_applicable", "hits": []},
-                },
-            )
-        ])
-        schema_path = self._write_schema(schema)
+class TestExtraction(ExtractFixture):
+    def test_resolved_multi_hit_copies_whole_files_and_writes_ranges(self) -> None:
+        layers = self._standard_layers()
+        layers["kernel_impl"] = _layer(
+            "resolved", [(str(self.cu), 2), (str(self.py), 7)]
+        )
+        layers["py_cpp_binding"] = _layer(
+            "resolved", [(str(self.py), 7), (str(self.cu), 2)]
+        )
+        layers["kernel_header"] = _layer("resolved", [(str(self.cu), 6)])
+        schema_path = self._write_schema(_schema([_kernel("k1", layers)]))
+
         report = extract_workspace(schema_path, self.tmp)
-        self.assertFalse(report.stopped)
-
-        kdir = self.tmp / "kernel_sources" / "k0"
-        # interface_definition single-file: WHOLE file copied verbatim (no
-        # truncation — Layer 3 copies, the focus range lives in read_hints).
-        iface = (kdir / "interface_definition.py").read_text()
-        self.assertEqual(iface, self.py.read_text())
-        self.assertIn("def alpha", iface)
-        self.assertIn("def beta", iface)  # whole file, not just the alpha span
-        # kernel_impl is a DIRECTORY layer -> kernel_impl/<n>_<basename>
-        impl = (kdir / "kernel_impl" / "1_src_kernel.py").read_text()
-        self.assertEqual(impl, self.py.read_text())  # whole file
-        # c/d not_applicable -> placeholder in their subdir (both are directory layers)
-        cc = (kdir / "py_cpp_binding" / "py_cpp_binding.cc").read_text()
-        self.assertIn("不适用", cc)
-        self.assertTrue(cc.lstrip().startswith("//"))
-        self.assertIn("不适用", (kdir / "kernel_header" / "kernel_header.h").read_text())
-        # read_hints: focus range still points at the definition span (3-5 / 7-8)
-        hints = (kdir / "read_hints.txt").read_text()
-        self.assertIn("interface_definition.py: read lines 3-5", hints)
-        self.assertIn("kernel_impl/1_src_kernel.py: read lines 7-8", hints)
-        self.assertIn("N/A", hints)
-        # kernel_sources_dir backfilled
-        written = json.loads(schema_path.read_text())
+        self.assertEqual(report.summary()["written"], 4)
+        output = self.tmp / "kernel_sources" / "k1"
         self.assertEqual(
-            Path(written["kernels"][0]["kernel_sources_dir"]).resolve(), kdir.resolve()
+            (output / "interface_definition.py").read_bytes(), self.py.read_bytes()
         )
-
-    # --- directory layers: multiple ordered hits -----------------------------
-
-    def test_kernel_impl_directory_multi_hit_ordered(self) -> None:
-        schema = _schema_with([
-            _kernel(
-                "k1",
-                "sgl_kernel_builtin",
-                {
-                    "interface_definition": _resolved(str(self.py), 3),
-                    # call chain: launcher (.cu) -> real kernel (.py beta)
-                    "kernel_impl": _resolved_multi([(str(self.cu), 2), (str(self.py), 7)]),
-                    "py_cpp_binding": _resolved(str(self.cu), 2),
-                    "kernel_header": _resolved_multi([(str(self.cu), 6)]),
-                },
-            )
-        ])
-        schema_path = self._write_schema(schema)
-        report = extract_workspace(schema_path, self.tmp)
-        self.assertFalse(report.stopped)
-        kdir = self.tmp / "kernel_sources" / "k1"
-        # kernel_impl subdir, numbered by call order
-        self.assertTrue((kdir / "kernel_impl" / "1_impl.cu").exists())
-        self.assertTrue((kdir / "kernel_impl" / "2_src_kernel.py").exists())
-        self.assertIn("void launch", (kdir / "kernel_impl" / "1_impl.cu").read_text())
-        # kernel_header subdir, not numbered
-        self.assertTrue((kdir / "kernel_header" / "impl.cu").exists())
-        # binding is a DIRECTORY layer now; single hit still numbered 1_, keeps .cu suffix
-        self.assertTrue((kdir / "py_cpp_binding" / "1_impl.cu").exists())
-        hints = (kdir / "read_hints.txt").read_text()
+        self.assertEqual(
+            (output / "kernel_impl" / "1_impl.cu").read_bytes(),
+            self.cu.read_bytes(),
+        )
+        self.assertTrue((output / "kernel_impl" / "2_src_kernel.py").is_file())
+        self.assertTrue((output / "py_cpp_binding" / "1_src_kernel.py").is_file())
+        self.assertTrue((output / "py_cpp_binding" / "2_impl.cu").is_file())
+        self.assertTrue((output / "kernel_header" / "impl.cu").is_file())
+        hints = (output / "read_hints.txt").read_text()
+        self.assertIn("interface_definition.py: read lines 3-5", hints)
         self.assertIn("kernel_impl/1_impl.cu: read lines 2-5", hints)
         self.assertIn("kernel_impl/2_src_kernel.py: read lines 7-8", hints)
+        written = json.loads(schema_path.read_text())
+        self.assertEqual(
+            written["kernels"][0]["kernel_sources_dir"], str(output.resolve())
+        )
+        self.assertNotIn("end_line", schema_path.read_text())
 
-    def test_binding_directory_multi_file_multi_format(self) -> None:
-        # py_cpp_binding is a directory layer: a JIT op needs BOTH a .py bridge
-        # (build_and_load/load_jit) AND a C++ *_binding.cu FFI export. Both are
-        # copied into py_cpp_binding/, numbered by order, keeping their suffixes.
-        schema = _schema_with([
-            _kernel(
-                "k_jit",
-                "thirdparty_cpp_jit",
-                {
-                    "interface_definition": _resolved(str(self.py), 3),
-                    "kernel_impl": _resolved(str(self.cu), 2),
-                    # binding call order: py bridge (.py) -> cpp FFI export (.cu)
-                    "py_cpp_binding": _resolved_multi([(str(self.py), 7), (str(self.cu), 2)]),
-                    "kernel_header": {"status": "not_applicable", "hits": []},
-                },
-            )
-        ])
-        schema_path = self._write_schema(schema)
-        report = extract_workspace(schema_path, self.tmp)
-        self.assertFalse(report.stopped)
-        kdir = self.tmp / "kernel_sources" / "k_jit"
-        # two files in the binding subdir, numbered, different suffixes
-        self.assertTrue((kdir / "py_cpp_binding" / "1_src_kernel.py").exists())
-        self.assertTrue((kdir / "py_cpp_binding" / "2_impl.cu").exists())
-        # whole-file copies (no truncation)
-        self.assertEqual((kdir / "py_cpp_binding" / "2_impl.cu").read_text(), self.cu.read_text())
-        hints = (kdir / "read_hints.txt").read_text()
-        self.assertIn("py_cpp_binding/1_src_kernel.py: read lines 7-8", hints)
-        self.assertIn("py_cpp_binding/2_impl.cu: read lines 2-5", hints)
-
-    def test_copies_whole_file_not_truncated_span(self) -> None:
-        # def is a small span mid-file; the extracted file must be the WHOLE file
-        # (no truncation), while read_hints records only the definition span.
-        big = self.tmp / "big.py"
-        head = "".join(f"pre_{i} = {i}\n" for i in range(1, 11))   # lines 1-10
-        fn = "def target(x):\n    return x + 1\n"                   # lines 11-12
-        tail = "".join(f"post_{i} = {i}\n" for i in range(1, 11))  # lines 13-22
-        big.write_text(head + fn + tail)
-        schema = _schema_with([
-            _kernel("k13", "sglang_triton", {
-                "interface_definition": _resolved(str(big), 11),
-                "kernel_impl": _resolved(str(big), 11),
-                "py_cpp_binding": {"status": "not_applicable", "hits": []},
-                "kernel_header": {"status": "not_applicable", "hits": []},
-            })
-        ])
-        schema_path = self._write_schema(schema)
+    def test_best_effort_hits_are_copied_and_tagged(self) -> None:
+        layers = self._standard_layers()
+        layers["kernel_impl"] = _layer("best_effort", [(str(self.cu), 2)])
+        schema_path = self._write_schema(_schema([_kernel("best", layers)]))
         extract_workspace(schema_path, self.tmp)
-        kdir = self.tmp / "kernel_sources" / "k13"
-        iface = (kdir / "interface_definition.py").read_text()
-        self.assertEqual(iface, big.read_text())     # whole file, byte-for-byte
-        self.assertIn("pre_1 = 1", iface)            # content before the def kept
-        self.assertIn("post_10 = 10", iface)         # content after the def kept
-        # but the focus hint narrows to the def span (11-12)
-        self.assertIn("interface_definition.py: read lines 11-12", (kdir / "read_hints.txt").read_text())
+        output = self.tmp / "kernel_sources" / "best"
+        self.assertTrue((output / "kernel_impl" / "1_impl.cu").is_file())
+        self.assertIn("[best_effort]", (output / "read_hints.txt").read_text())
 
-    def test_single_file_layer_multi_hit_is_ambiguous(self) -> None:
-        # interface_definition is single-file: >1 hit must be treated as missing.
-        schema = _schema_with([
-            _kernel(
-                "k2",
-                "sgl_kernel_builtin",
-                {
-                    "interface_definition": _resolved_multi([(str(self.py), 3), (str(self.py), 7)]),
-                    "kernel_impl": _resolved(str(self.cu), 2),
-                    "py_cpp_binding": _resolved(str(self.cu), 2),
-                    "kernel_header": {"status": "not_applicable", "hits": []},
-                },
-            )
-        ])
-        schema_path = self._write_schema(schema)
+    def test_missed_and_not_applicable_are_normal_placeholders(self) -> None:
+        layers = {
+            "interface_definition": _layer("missed"),
+            "kernel_impl": _layer("missed"),
+            "py_cpp_binding": _layer("not_applicable"),
+            "kernel_header": _layer("not_applicable"),
+        }
+        schema_path = self._write_schema(_schema([_kernel("missing", layers)]))
         report = extract_workspace(schema_path, self.tmp)
-        self.assertTrue(report.stopped)
-        bad = [m for m in report.missing if m["layer"] == "interface_definition"]
-        self.assertTrue(bad)
-        self.assertIn("ambiguous", bad[0]["reason"])
+        self.assertEqual(report.summary()["placeholders"], 4)
+        output = self.tmp / "kernel_sources" / "missing"
+        self.assertIn("未定位", (output / "interface_definition.py").read_text())
+        self.assertIn(
+            "未定位", (output / "kernel_impl" / "kernel_impl.py").read_text()
+        )
+        self.assertIn(
+            "不适用",
+            (output / "py_cpp_binding" / "py_cpp_binding.cc").read_text(),
+        )
+        hints = (output / "read_hints.txt").read_text()
+        self.assertIn("MISSING (status=missed)", hints)
+        self.assertIn("N/A (not applicable)", hints)
+        self.assertNotIn("archetype", hints)
 
-    # --- hard-stop gate ------------------------------------------------------
-
-    def test_missed_required_layer_hard_stops(self) -> None:
-        schema = _schema_with([
-            _kernel(
-                "k3",
-                "sgl_kernel_builtin",
-                {
-                    "interface_definition": _resolved(str(self.py), 3),
-                    "kernel_impl": {"status": "missed", "hits": [], "repo_hint": "/some/repo"},
-                    "py_cpp_binding": {"status": "missed", "hits": []},
-                    "kernel_header": {"status": "missed", "hits": []},
-                },
-            )
-        ])
-        schema_path = self._write_schema(schema)
-        report = extract_workspace(schema_path, self.tmp)
-        self.assertTrue(report.stopped)
-        self.assertTrue(any(m["layer"] == "kernel_impl" for m in report.missing))
-        self.assertFalse((self.tmp / "kernel_sources").exists())
-
-    def test_allow_empty_emits_placeholder_for_missed(self) -> None:
-        schema = _schema_with([
-            _kernel(
-                "k4",
-                "sgl_kernel_builtin",
-                {
-                    "interface_definition": _resolved(str(self.py), 3),
-                    "kernel_impl": {"status": "missed", "hits": []},
-                    "py_cpp_binding": {"status": "missed", "hits": []},
-                    "kernel_header": {"status": "missed", "hits": []},
-                },
-            )
-        ])
-        schema_path = self._write_schema(schema)
-        report = extract_workspace(schema_path, self.tmp, allow_empty=True)
-        self.assertFalse(report.stopped)
-        kdir = self.tmp / "kernel_sources" / "k4"
-        # kernel_impl directory placeholder
-        impl = (kdir / "kernel_impl" / "kernel_impl.py").read_text()
-        self.assertIn("未定位", impl)
-        self.assertIn("MISSING", (kdir / "read_hints.txt").read_text())
-
-    def test_fill_placeholder_counts_as_missing(self) -> None:
-        schema = _schema_with([
-            _kernel(
-                "k5",
-                "sgl_kernel_builtin",
-                {
-                    "interface_definition": {
-                        "status": "resolved",
-                        "hits": [{"file": "<FILL: path>", "def_line": "<FILL>"}],
-                    },
-                    "kernel_impl": _resolved(str(self.cu), 2),
-                    "py_cpp_binding": {"status": "not_applicable", "hits": []},
-                    "kernel_header": {"status": "not_applicable", "hits": []},
-                },
-            )
-        ])
-        schema_path = self._write_schema(schema)
-        report = extract_workspace(schema_path, self.tmp)
-        self.assertTrue(report.stopped)
-        self.assertTrue(any(m["layer"] == "interface_definition" for m in report.missing))
-
-    def test_cli_extract_returns_2_on_hard_stop(self) -> None:
-        schema = _schema_with([
-            _kernel(
-                "k6",
-                "sgl_kernel_builtin",
-                {
-                    "interface_definition": {"status": "missed", "hits": []},
-                    "kernel_impl": {"status": "missed", "hits": []},
-                    "py_cpp_binding": {"status": "missed", "hits": []},
-                    "kernel_header": {"status": "missed", "hits": []},
-                },
-            )
-        ])
-        schema_path = self._write_schema(schema)
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            rc = sl_cli.main(["extract", "--schema", str(schema_path), "--workspace-out", str(self.tmp)])
-        self.assertEqual(rc, 2)
-
-    # --- filesystem validity: wrong paths / bad def_line ---------------------
-
-    def test_nonexistent_path_in_required_layer_hard_stops(self) -> None:
-        schema = _schema_with([
-            _kernel(
-                "k7",
-                "sgl_kernel_builtin",
-                {
-                    "interface_definition": _resolved("/no/such/file.py", 1),
-                    "kernel_impl": _resolved(str(self.cu), 2),
-                    "py_cpp_binding": {"status": "not_applicable", "hits": []},
-                    "kernel_header": {"status": "not_applicable", "hits": []},
-                },
-            )
-        ])
-        schema_path = self._write_schema(schema)
-        report = extract_workspace(schema_path, self.tmp)
-        self.assertTrue(report.stopped)
-        bad = [m for m in report.missing if m["layer"] == "interface_definition"]
-        self.assertTrue(bad)
-        self.assertIn("file not found", bad[0]["reason"])
-        self.assertFalse((self.tmp / "kernel_sources").exists())
-
-    def test_nonexistent_path_in_optional_layer_becomes_placeholder(self) -> None:
-        schema = _schema_with([
-            _kernel(
-                "k8",
-                "sgl_kernel_builtin",
-                {
-                    "interface_definition": _resolved(str(self.py), 3),
-                    "kernel_impl": _resolved(str(self.cu), 2),
-                    "py_cpp_binding": _resolved("/no/such/binding.cc", 1),
-                    "kernel_header": {"status": "not_applicable", "hits": []},
-                },
-            )
-        ])
-        schema_path = self._write_schema(schema)
-        report = extract_workspace(schema_path, self.tmp)
-        self.assertFalse(report.stopped)
-        kdir = self.tmp / "kernel_sources" / "k8"
-        # binding is a directory layer; a bad path -> directory placeholder file
-        binding = (kdir / "py_cpp_binding" / "py_cpp_binding.cc").read_text()
-        self.assertIn("未定位", binding)
-        hints = (kdir / "read_hints.txt").read_text()
-        self.assertIn("MISSING", hints)
-        self.assertIn("file not found", hints)
-
-    def test_out_of_range_def_line_treated_as_missing(self) -> None:
-        # def_line past EOF -> treated exactly like "not filled" (required -> stop).
-        schema = _schema_with([
-            _kernel(
-                "k9",
-                "sgl_kernel_builtin",
-                {
-                    "interface_definition": _resolved(str(self.py), 999),
-                    "kernel_impl": _resolved(str(self.cu), 2),
-                    "py_cpp_binding": {"status": "not_applicable", "hits": []},
-                    "kernel_header": {"status": "not_applicable", "hits": []},
-                },
-            )
-        ])
-        schema_path = self._write_schema(schema)
-        report = extract_workspace(schema_path, self.tmp)
-        self.assertTrue(report.stopped)
-        self.assertTrue(any("out of range" in m.get("reason", "") for m in report.missing))
-
-    def test_directory_layer_bad_hit_reports_index(self) -> None:
-        # 2nd hit of kernel_impl points nowhere -> reason names hit[1].
-        schema = _schema_with([
-            _kernel(
-                "k10",
-                "sgl_kernel_builtin",
-                {
-                    "interface_definition": _resolved(str(self.py), 3),
-                    "kernel_impl": _resolved_multi([(str(self.cu), 2), ("/no/such/k.cu", 1)]),
-                    "py_cpp_binding": {"status": "not_applicable", "hits": []},
-                    "kernel_header": {"status": "not_applicable", "hits": []},
-                },
-            )
-        ])
-        schema_path = self._write_schema(schema)
-        report = extract_workspace(schema_path, self.tmp)
-        self.assertTrue(report.stopped)
-        bad = [m for m in report.missing if m["layer"] == "kernel_impl"]
-        self.assertTrue(bad)
-        self.assertIn("hit[1]", bad[0]["reason"])
-
-    # --- re-run cleanliness --------------------------------------------------
-
-    def test_rerun_wipes_stale_files(self) -> None:
-        # First run: kernel_impl resolves to the .py (directory layer file).
-        schema_v1 = _schema_with([
-            _kernel(
-                "k11",
-                "sgl_kernel_builtin",
-                {
-                    "interface_definition": _resolved(str(self.py), 3),
-                    "kernel_impl": _resolved(str(self.py), 7),
-                    "py_cpp_binding": _resolved(str(self.cu), 2),
-                    "kernel_header": {"status": "not_applicable", "hits": []},
-                },
-            )
-        ])
-        schema_path = self._write_schema(schema_v1)
-        extract_workspace(schema_path, self.tmp)
-        kdir = self.tmp / "kernel_sources" / "k11"
-        self.assertTrue((kdir / "kernel_impl" / "1_src_kernel.py").exists())
-        stray = kdir / "kernel_impl" / "OLD.txt"
-        stray.write_text("stale")
-
-        # Second run: kernel_impl now the .cu.
-        schema_v2 = _schema_with([
-            _kernel(
-                "k11",
-                "sgl_kernel_builtin",
-                {
-                    "interface_definition": _resolved(str(self.py), 3),
-                    "kernel_impl": _resolved(str(self.cu), 2),
-                    "py_cpp_binding": _resolved(str(self.cu), 2),
-                    "kernel_header": {"status": "not_applicable", "hits": []},
-                },
-            )
-        ])
-        schema_path.write_text(json.dumps(schema_v2, indent=2))
-        extract_workspace(schema_path, self.tmp)
-        self.assertTrue((kdir / "kernel_impl" / "1_impl.cu").exists())
-        self.assertFalse((kdir / "kernel_impl" / "1_src_kernel.py").exists())
-        self.assertFalse(stray.exists())
-
-    def test_rerun_removes_orphaned_kernel_dir(self) -> None:
-        two = _schema_with([
-            _kernel("keep", "sglang_triton", {
-                "interface_definition": _resolved(str(self.py), 3),
-                "kernel_impl": _resolved(str(self.py), 7),
-                "py_cpp_binding": {"status": "not_applicable", "hits": []},
-                "kernel_header": {"status": "not_applicable", "hits": []},
-            }),
-            _kernel("drop_me", "sglang_triton", {
-                "interface_definition": _resolved(str(self.py), 3),
-                "kernel_impl": _resolved(str(self.py), 7),
-                "py_cpp_binding": {"status": "not_applicable", "hits": []},
-                "kernel_header": {"status": "not_applicable", "hits": []},
-            }),
-        ])
-        schema_path = self._write_schema(two)
-        extract_workspace(schema_path, self.tmp)
-        self.assertTrue((self.tmp / "kernel_sources" / "drop_me").exists())
-
-        one = _schema_with([two["kernels"][0]])
-        schema_path.write_text(json.dumps(one, indent=2))
-        extract_workspace(schema_path, self.tmp)
-        self.assertTrue((self.tmp / "kernel_sources" / "keep").exists())
-        self.assertFalse((self.tmp / "kernel_sources" / "drop_me").exists())
-
-    def test_hard_stop_rerun_preserves_previous_output(self) -> None:
-        good = _schema_with([
-            _kernel("k12", "sglang_triton", {
-                "interface_definition": _resolved(str(self.py), 3),
-                "kernel_impl": _resolved(str(self.py), 7),
-                "py_cpp_binding": {"status": "not_applicable", "hits": []},
-                "kernel_header": {"status": "not_applicable", "hits": []},
-            }),
-        ])
+    def test_invalid_hit_preserves_previous_output(self) -> None:
+        good = _schema([_kernel("stable", self._standard_layers())])
         schema_path = self._write_schema(good)
         extract_workspace(schema_path, self.tmp)
-        kdir = self.tmp / "kernel_sources" / "k12"
-        self.assertTrue((kdir / "kernel_impl" / "1_src_kernel.py").exists())
+        output_file = (
+            self.tmp / "kernel_sources" / "stable" / "kernel_impl" / "1_impl.cu"
+        )
+        self.assertTrue(output_file.is_file())
 
-        bad = _schema_with([
-            _kernel("k12", "sgl_kernel_builtin", {
-                "interface_definition": _resolved(str(self.py), 3),
-                "kernel_impl": {"status": "missed", "hits": []},
-                "py_cpp_binding": {"status": "missed", "hits": []},
-                "kernel_header": {"status": "missed", "hits": []},
-            }),
-        ])
-        schema_path.write_text(json.dumps(bad, indent=2))
-        report = extract_workspace(schema_path, self.tmp)
-        self.assertTrue(report.stopped)
-        # Previous good output survives (wipe happens only past the gate).
-        self.assertTrue((kdir / "kernel_impl" / "1_src_kernel.py").exists())
+        bad = copy.deepcopy(good)
+        bad["kernels"][0]["source_locations"]["layers"]["kernel_impl"] = _layer(
+            "resolved", [("/no/such/kernel.cu", 1)]
+        )
+        schema_path.write_text(json.dumps(bad))
+        with self.assertRaisesRegex(ExtractError, "file not found"):
+            extract_workspace(schema_path, self.tmp)
+        self.assertTrue(output_file.is_file())
+
+    def test_out_of_range_line_is_rejected(self) -> None:
+        layers = self._standard_layers()
+        layers["interface_definition"] = _layer("resolved", [(str(self.py), 999)])
+        schema_path = self._write_schema(_schema([_kernel("bad_line", layers)]))
+        with self.assertRaisesRegex(ExtractError, "out of range"):
+            extract_workspace(schema_path, self.tmp)
+        self.assertFalse((self.tmp / "kernel_sources").exists())
+
+    def test_rerun_wipes_stale_and_orphaned_files(self) -> None:
+        first = _schema(
+            [
+                _kernel("keep", self._standard_layers(), rank=1),
+                _kernel("drop", self._standard_layers(), rank=2),
+            ]
+        )
+        schema_path = self._write_schema(first)
+        extract_workspace(schema_path, self.tmp)
+        stray = self.tmp / "kernel_sources" / "keep" / "OLD.txt"
+        stray.write_text("stale")
+        self.assertTrue((self.tmp / "kernel_sources" / "drop").is_dir())
+
+        second = _schema([_kernel("keep", self._standard_layers())])
+        schema_path.write_text(json.dumps(second))
+        extract_workspace(schema_path, self.tmp)
+        self.assertFalse(stray.exists())
+        self.assertFalse((self.tmp / "kernel_sources" / "drop").exists())
+
+
+class TestContractAndCli(ExtractFixture):
+    def test_final_contract_rejects_old_fields_statuses_and_candidates(self) -> None:
+        valid = _schema([_kernel("strict", self._standard_layers())])
+        cases: list[dict] = []
+
+        old_source = copy.deepcopy(valid)
+        old_source["kernels"][0]["source_locations"]["source"] = "manual"
+        cases.append(old_source)
+
+        old_status = copy.deepcopy(valid)
+        old_status["kernels"][0]["source_locations"]["layers"][
+            "kernel_impl"
+        ] = _layer("not_found")
+        cases.append(old_status)
+
+        with_candidates = copy.deepcopy(valid)
+        with_candidates["kernels"][0]["locate_candidates"] = {}
+        cases.append(with_candidates)
+
+        missing_layer = copy.deepcopy(valid)
+        del missing_layer["kernels"][0]["source_locations"]["layers"][
+            "kernel_header"
+        ]
+        cases.append(missing_layer)
+
+        impossible_na = copy.deepcopy(valid)
+        impossible_na["kernels"][0]["source_locations"]["layers"][
+            "kernel_impl"
+        ] = _layer("not_applicable")
+        cases.append(impossible_na)
+
+        for payload in cases:
+            with self.subTest(payload=payload):
+                with self.assertRaises(ContractError):
+                    validate_agent_schema(payload)
+
+    def test_cli_success_and_invalid_path_return_codes(self) -> None:
+        valid_path = self._write_schema(
+            _schema([_kernel("ok", self._standard_layers())]), name="valid.json"
+        )
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+            io.StringIO()
+        ):
+            self.assertEqual(
+                sl_cli.main(
+                    [
+                        "extract",
+                        "--schema",
+                        str(valid_path),
+                        "--workspace-out",
+                        str(self.tmp / "valid_workspace"),
+                    ]
+                ),
+                0,
+            )
+
+        bad_layers = self._standard_layers()
+        bad_layers["kernel_impl"] = _layer(
+            "resolved", [("/no/such/file.cu", 1)]
+        )
+        bad_path = self._write_schema(
+            _schema([_kernel("bad", bad_layers)]), name="bad.json"
+        )
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+            io.StringIO()
+        ):
+            self.assertEqual(
+                sl_cli.main(
+                    [
+                        "extract",
+                        "--schema",
+                        str(bad_path),
+                        "--workspace-out",
+                        str(self.tmp / "bad_workspace"),
+                    ]
+                ),
+                2,
+            )
+
+
+class TestRealGolden(unittest.TestCase):
+    def test_agent_and_extract_goldens(self) -> None:
+        repo = Path(__file__).resolve().parents[2]
+        kid_path = repo / "example_kernels" / "to_fill_kid.json"
+        agent_path = repo / "example_kernels" / "to_fill_locate.json"
+        extract_path = repo / "example_kernels" / "to_fill_extract.json"
+        golden_tree = (
+            repo
+            / "example_kernels"
+            / "kid_dry_run_out"
+            / "workspaces"
+            / "all_backends"
+            / "kernel_sources"
+        )
+        kid = json.loads(kid_path.read_text())
+        agent = json.loads(agent_path.read_text())
+        validate_agent_schema(agent)
+        self.assertEqual(kid_projection(agent), kid)
+
+        with tempfile.TemporaryDirectory(prefix="source_extract_golden_") as tmp:
+            workspace = Path(tmp)
+            schema_path = workspace / "located.json"
+            schema_path.write_text(json.dumps(agent, indent=2))
+            extract_workspace(schema_path, workspace)
+
+            actual_schema = json.loads(schema_path.read_text())
+            expected_schema = json.loads(extract_path.read_text())
+            expected_dirs = {
+                entry["low_level_id"]: entry["kernel_sources_dir"]
+                for entry in expected_schema["kernels"]
+            }
+            for entry in actual_schema["kernels"]:
+                entry["kernel_sources_dir"] = expected_dirs[entry["low_level_id"]]
+            self.assertEqual(actual_schema, expected_schema)
+
+            actual_tree = workspace / "kernel_sources"
+            expected_files = sorted(
+                path.relative_to(golden_tree)
+                for path in golden_tree.rglob("*")
+                if path.is_file()
+            )
+            actual_files = sorted(
+                path.relative_to(actual_tree)
+                for path in actual_tree.rglob("*")
+                if path.is_file()
+            )
+            self.assertEqual(actual_files, expected_files)
+            for relative in expected_files:
+                self.assertTrue(
+                    filecmp.cmp(
+                        actual_tree / relative,
+                        golden_tree / relative,
+                        shallow=False,
+                    ),
+                    str(relative),
+                )
 
 
 if __name__ == "__main__":

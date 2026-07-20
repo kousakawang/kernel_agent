@@ -24,7 +24,10 @@ from framework_engineer.kernel_interface_decomposer.artifact_validator import ( 
 
 
 MODULE = "framework_engineer.kernel_interface_decomposer"
-RUN_GPU_E2E = os.environ.get("KID_RUN_GPU_E2E") == "1"
+FORCE_GPU_E2E = "--gpu-e2e" in sys.argv
+while "--gpu-e2e" in sys.argv:
+    sys.argv.remove("--gpu-e2e")
+RUN_GPU_E2E = os.environ.get("KID_RUN_GPU_E2E") == "1" or FORCE_GPU_E2E
 
 
 def _failure_logs(output_dir: Path) -> str:
@@ -135,7 +138,7 @@ def _stable_capture_signature(payload: dict[str, Any]) -> dict[str, Any]:
 
 @unittest.skipUnless(
     RUN_GPU_E2E,
-    "set KID_RUN_GPU_E2E=1 to run the Nsight/GPU capture regression",
+    "set KID_RUN_GPU_E2E=1 (or pass --gpu-e2e) for the Nsight/GPU regression",
 )
 class TestCaptureCliGolden(unittest.TestCase):
     def test_capture_cli_matches_runtime_golden_structure(self) -> None:

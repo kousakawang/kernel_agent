@@ -10,8 +10,8 @@
 |---|---|---|
 | `config/<backend>/` | 用户或上层编排器 | 单-backend 用户输入，不是 KID 运行产物。 |
 | `cli_log/<backend>/` | Runtime Capture CLI | 可复查的运行时事实、trace 和日志；不得包含 semantic oracle。 |
-| `output/<backend>/` | Semantic Resolver Agent | KID 对外发布的固定 schema，也是 `source_locate` 的唯一 KID 输入。 |
-| `ref/<backend>/` | Semantic Resolver Agent | 自由格式分析过程，供开发、审查和问题定位。 |
+| `output/<backend>/` | Semantic Resolver finalizer | KID 对外发布的固定 schema，也是 `source_locate` 的唯一 KID 输入。 |
+| `ref/<backend>/` | Helper、Agent、维护者 | Context、decisions、notes 和 trace-version source evidence，仅供解析复现。 |
 
 ## 配置输入
 
@@ -22,7 +22,8 @@
 - **如何填写**：`backend_name` 必须与四个区域的子目录名一致；`target` 是用户明确
   指定的 high-level Python 接口定义；`cmd` 是可选常驻服务命令，没有服务时填
   `null`；`test_cmd` 必须是唯一的触发命令；`selection` 定义 high-level invocation
-  的采样规则（`all`、每 stage 末尾 N 次的 `last_n`，或末尾一次的 `single`）；
+  的选择规则（默认按拆分去重并保留末次代表的 `unique_decomposition`，或 `all`、每 stage
+  末尾 N 次的 `last_n`、末尾一次的 `single`）；
   `profiling` 定义 Nsight 和 CUDA Graph 行为；`output_dir` 指向
   `cli_log/<backend>`。
 - **格式**：固定，`kid-runtime-config/v2`。
@@ -34,17 +35,18 @@
 
 - **谁填写**：用户或上层编排器；Agent 只读取，不修改输入合同。
 - **何时填写**：Semantic Resolver Agent 启动之前。
-- **如何填写**：引用同 backend 的 `runtime_capture.schema.json`、最终 output 和 notes
+- **如何填写**：引用同 backend 的 Runtime、context、decisions、最终 output 和 notes
   路径；`sglang_repo_root`、`source_roots` 指向本地源码；`third_party_manifest`
   只引用上游 `resolve-third-party` 的真实产物，本例为
   `kernel_agent/framework_engineer/source_location/example/third_party_manifest.json`，
   不复制进 KID；`runtime_to_local_path_mappings` 将容器、site-packages 路径映射到
-  Agent 可读的本地源码。这些源码仅用于判断 semantic interface 和 provider，
+  Agent 可读的本地源码。`analysis_source_overrides` 可在 trace 行号与当前源码漂移时，将规范
+  发布路径指向冻结的分析快照；它不会改变最终 call site 路径。这些源码仅用于判断 semantic interface 和 provider，
   Semantic Resolver 不输出接口定义、binding 或 kernel implementation 的源码位置。
-- **格式**：固定，`kid-semantic-resolver-config/v1`。
+- **格式**：固定，`kid-semantic-resolver-config/v2`。
 - **谁消费**：Semantic Resolver Agent。
-- **失败处理**：Runtime 产物、manifest 或源码根不存在时停止解析并报告缺失路径，
-  不生成看似完整的最终 schema。
+- **失败处理**：Runtime、manifest 或显式 source override 不存在时停止；普通 source root
+  缺失会记录在 context，若它阻止 semantic 判断则由 Agent 报告 blocker。
 
 ## Runtime Capture CLI 产物
 
@@ -58,6 +60,8 @@
 - **谁消费**：Runtime Capture CLI 的前置门禁、validator、问题排查人员。
 - **失败处理**：Nsight、PyTorch CUDA 或基础环境门禁失败时不启动正式 profiling；
   workload warmup/smoke 由唯一一次 `test_cmd` 负责，失败体现在 `test.log` 和退出码。
+  当 `cmd` 非空时，服务以暂停采集的 Nsight session 启动；CLI 在 `ready` 成功后才同时
+  开启 Nsight collection 和 Runtime capture gate，因此启动期事件不属于本次产物。
 
 ### `cli_log/<backend>/capture_events/events_<pid>.jsonl`
 
@@ -112,7 +116,8 @@
 ### `cli_log/<backend>/logs/nsys.log`
 
 - **谁填写**：Runtime Capture CLI。
-- **内容**：`nsys profile` 与 `nsys export` 的命令和原始输出。
+- **内容**：直接模式下的 `nsys profile`，或 service 模式下的
+  `nsys launch/start/stop`，以及 `nsys export` 的命令和原始输出。
 - **格式/消费者**：自由文本，供开发者、validator 失败调查使用。
 - **失败处理**：Nsight 非零退出、导出失败或 report 路径异常时保留日志并终止。
 
@@ -133,11 +138,39 @@
 
 ## Semantic Resolver Agent 产物
 
-### `output/<backend>/decomposition.schema.json`
+### `ref/<backend>/semantic_resolver_context.json`
+
+- **谁填写**：`semantic_resolver_tools prepare`，Agent 不手工编辑。
+- **填写依据**：Runtime 中所有被选 invocation 的 direct kernel owner、ancestor capture、完整
+  stack edge、路径映射、源码/AST call expression 和仓库线索。
+- **格式**：固定，`kid-semantic-context/v1`；不得包含 `low_level_id`、最终 semantic interface
+  或 normalized kernel name 等答案。
+- **谁消费**：Semantic Resolver Agent。
+- **失败处理**：Runtime hash 不一致、owner/parent 不完整或 source snapshot 无效时重新 prepare，
+  不能沿用旧 context。
+
+### `ref/<backend>/semantic_resolver_decisions.json`
 
 - **谁填写**：Semantic Resolver Agent。
-- **填写依据**：Runtime capture/stack、path mapping、本地源码、third-party manifest
-  以及必要的 SQLite 回查。
+- **填写依据**：Context 的真实 stack edge、源码与 provider/repository 证据。
+- **格式**：固定，`kid-semantic-decisions/v1`。每个 target 只含 ID、semantic interface、可选
+  provider、normalized name、`high|medium` confidence 和 member 引用；每个 direct owner
+  必须恰好分配一次，同一 interface 跨 invocation 合并。
+- **谁消费**：deterministic finalizer 和 validator，不交给 `source_locate`。
+- **失败处理**：非法 call site、重复/遗漏 owner、低置信度或 provider 冲突都会阻止发布。
+
+### `ref/<backend>/source_snapshot/*`
+
+- **谁填写**：Golden/trace 维护者；正常实时运行通常不需要。
+- **填写依据**：产生 retained trace 时的源码行和 call expression。
+- **格式**：本例为 `kid-source-snapshot/v1`，只冻结 Runtime stack 实际引用的行。
+- **谁消费**：`prepare` 的 source override reader。
+- **失败处理**：快照版本、published path 或行号不匹配时 golden 无效，不退回读取漂移后的源码。
+
+### `output/<backend>/decomposition.schema.json`
+
+- **谁填写**：`semantic_resolver_tools finalize`；Agent 只填写 decisions 与 notes。
+- **填写依据**：通过验证的 decisions 与 Runtime kernel/capture 事实。
 - **填写规则**：
   - `interface` 是适合后续输入输出 dump 和 kernel 优化的 semantic Python 接口；
   - `runtime_event.call_site` 必须来自某条 runtime stack edge 映射后的本地文件/行号；
@@ -145,6 +178,8 @@
   - `provider` 表示实现源码仓库，无法可靠确定时允许 `null`；
   - 一个 semantic target 下的多个 kernel 聚合为一个 `duration_us`，并选择其中最热
     kernel 的精确 Nsight 名称作为 representative；
+  - 相同 interface 跨 stage/call site/invocation 合并；`sample_count` 是出现该 target 的
+    invocation 数，share 的分母是全部代表 invocation 的 GPU 总时间；
   - `low_level_id` 是稳定、唯一、只含小写字母/数字/下划线的标识；
   - 候选列表、stack、execution capture id 和自由文本判断不得塞入最终 schema；
   - 不得输出 `implementation`、`source_files` 或 `symbols`。接口定义、Python/C++
@@ -152,7 +187,7 @@
 - **格式**：固定，`kernel-interface-decomposition/v2`。
 - **谁消费**：`source_locate`、后续 problem translate 和任务打包流程。
 - **失败处理**：无法可靠消歧时 Agent 在 notes 说明阻塞点并请求人工判断；不得用 execution
-  interface 冒充 semantic interface。coverage 或聚合与 Runtime 不一致时不发布。
+  interface 冒充 semantic interface。finalizer/validator 不通过时不得手工修正聚合字段。
 
 ### `ref/<backend>/kid_semantic_resolver_notes.md`
 

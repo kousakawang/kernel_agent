@@ -18,7 +18,8 @@ python3 -m compileall -q framework_engineer
 python3 -m framework_engineer.cli --help
 ```
 
-本地测试不需要 SGLang，也不需要 GPU。它会创建纯 Python toy target，并验证：
+CPU toy 测试不需要 GPU；完整 Golden 测试会使用当前开发工作区中与 `kernel_agent` 同级的
+SGLang/third-party 源码树。测试覆盖：
 
 - `validate-config` 能校验单目标/多目标配置。
 - `run-phase1` 能为多个 target 生成独立 task pack。
@@ -27,6 +28,18 @@ python3 -m framework_engineer.cli --help
 - 自动 mutation diff 能发现原地修改输入。
 - `generate-harness` 后初始 correctness smoke pass。
 - `validate-task-pack` 检查必需文件、selected snapshots 和 correctness smoke。
+- source-location 的 `locate/extract` 两个公开 CLI，以及 Agent 私有
+  `inspect-target/search/finalize/evaluate` helper。
+
+当前 source_locate Agent 的方法论和入口分别是：
+
+```text
+framework_engineer/skills/source_locate.md
+framework_engineer/prompts/start_source_locate.md
+```
+
+真实十 target Golden 测试会在本机已有 SGLang/third-party 源码根上验证 decisions finalize 能
+精确生成 `to_fill_locate.json`，并验证 Golden 核心调用链 evaluator。
 
 ## GPU 服务器主路径
 

@@ -23,7 +23,7 @@ selection:
   skip_invocations: 0
   stages: [prefill, decode, unknown]
   sample_count_per_stage: 1
-  sampling: last_n
+  sampling: unique_decomposition
   aggregation: single
 
 profiling:

@@ -1037,6 +1037,15 @@ importlib.metadata.version(dist_name)   # 以“装好的”为准，不读 pypr
 
 #### 8.1.2 `locate-kernel-source` skill
 
+> **2026-07-19 收敛说明：本小节以下旧 F0–F8 分派、`source_locator.py`、Layer 1/2、
+> `needs_agent/source` 和 KID `runtime_event.implementation` 设计均已废弃，仅保留为历史调研。**
+> 当前实现是 `framework_engineer/skills/source_locate.md` +
+> `prompts/start_source_locate.md`：公开 `locate` CLI 只产
+> `locate_candidates.interface_definition`；自主 Agent 完成四层语义判断；私有
+> `agent_helper inspect-target/search/finalize/evaluate` 只做候选搜索和机械校验；Agent 在生成
+> located schema/notes 后结束；外层再调用公开 `extract` CLI。当前 contract 与实现以
+> `KID_and_locate_source_desgin_v2.md` §4 为准。
+
 **类型**：Skill（agent 上下文兜底歧义）+ 共享 deterministic helper（供 KID 直接 import）
 
 **位置**
@@ -1178,7 +1187,8 @@ class LayerResolution:
 ### 8.2 Step 1 — KID 增强（`import-decomposition` 已迁出）
 
 > **⚠️ 本节已被 [KID_and_locate_source_desgin_v2.md](file:///Users/bytedance/Desktop/infra_agent/kernel_agent/kernel_agent_kadai/KID_and_locate_source_desgin_v2.md) 收敛，以后者为准。** 两处关键修订：
-> 1. **`import-decomposition` 已从本节（Step 1/KID）迁出**，落为 `locate-kernel-source` 的 **Layer 3 抽取阶段**（`framework_engineer/source_location/extractor.py`）。原因：它的输入四层 `source_locations` 完全由 locate 产出、非 KID 产，消费者不应编在生产者之前。§8.3.3 的 `import-kernel-sources-to-taskpack`（Step 2 task_pack 组装）不受影响。
+> 1. 旧 `import-decomposition` 已由公开 `extract` CLI 取代。extract 是 source_locate Agent
+>    之后的外层阶段，不再称为 Layer 3；§8.3.3 的 task_pack 组装不受影响。
 > 2. **KID 入口统一为 high_level_target**（取消 `target_kind` 双模式），且 KID 只产 `(interface, archetype, runtime_event)`、**不再自己做四层源码定位**（委托 locate）。下方保留的旧描述（`--target-kind`、KID 内做跨仓/JIT 溯源）已过时，仅存档参考。
 
 **类型**：现有 `framework_engineer/kernel_interface_decomposer/` 增强 + 新增 CLI
@@ -1629,4 +1639,3 @@ class LayerResolution:
 - Attention adapter 调研（backend 路径参考）：[attention\_framework\_adapter.md](file:///Users/bytedance/Desktop/remote_dev_project/model_ana/attention_framework_adapter.md)
 - L3 logic\_mapping 参考格式：[op\_mapping\_qwen3\_5\_gdn\_sglang\_transformers.md](file:///Users/bytedance/Desktop/remote_dev_project/model_ana/op_mapping_qwen3_5_gdn_sglang_transformers.md)
 - 现有 KID 用法：[tools/kernel\_interface\_decomposer/README.md](file:///Users/bytedance/Desktop/remote_dev_project/model_ana/tools/kernel_interface_decomposer/README.md)
-
