@@ -153,6 +153,63 @@ class SnapshotTests(unittest.TestCase):
             self.assertEqual(both.returncode, 0, both.stderr)
             self.assertIn('"reference": {"available": false', both.stdout)
 
+    def test_generated_candidate_falls_back_when_source_relative_import_cannot_be_resolved(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            task_pack = tmp_path / "task_pack"
+            (task_pack / "snapshots" / "raw").mkdir(parents=True)
+            (task_pack / "snapshots" / "selected").mkdir(parents=True)
+            store = SnapshotStore(task_pack / "snapshots")
+            self._capture_primitive_calls(store, task_id=task_pack.name)
+            manifest = SnapshotSelector(store).select(max_groups=1, max_samples_per_group=4)
+            write_shape_list_summary(task_pack, manifest)
+
+            package_dir = tmp_path / "third_party" / "external_ns"
+            package_dir.mkdir(parents=True)
+            (package_dir / "constants.py").write_text("OFFSET = 7\n", encoding="utf-8")
+            source_file = package_dir / "ops.py"
+            source_file.write_text(
+                "from .constants import OFFSET\n\n"
+                "def external_target(value):\n"
+                "    return value + OFFSET\n",
+                encoding="utf-8",
+            )
+            docs = task_pack / "docs"
+            docs.mkdir(parents=True)
+            (docs / "snapshot_capture_report.json").write_text(
+                json.dumps(
+                    {
+                        "target_interface": {
+                            "file": str(source_file),
+                            "function_name": "external_target",
+                            "qualified_name": "ops.external_target",
+                            "line": 3,
+                            "end_line": 4,
+                            "class_path": [],
+                            "module_name": "ops",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            SnapshotHarnessBuilder(task_pack).generate()
+            original_manifest = json.loads(
+                (task_pack / "original_source" / "manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertFalse(original_manifest["executable"], original_manifest)
+
+            proc = subprocess.run(
+                [sys.executable, "correctness_test.py", "--device", "cpu"],
+                cwd=task_pack,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn('"status": "PASS"', proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

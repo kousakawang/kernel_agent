@@ -117,7 +117,9 @@ class SnapshotRecorder:
         self.store = store
         self.store.ensure()
         self.task_id = task_id
-        self.target = target
+        self.target = dict(target)
+        if isinstance(self.target.get("source"), dict):
+            self.target["source"] = dict(self.target["source"])
         self.signature = signature
         self.deprecated_requested_mutable_arg_paths = mutable_arg_paths or []
         self.tolerance = tolerance or {"atol": 2e-2, "rtol": 2e-2}
@@ -131,6 +133,8 @@ class SnapshotRecorder:
         self.forward_call_counts: dict[str, int] = {}
 
     def decorate(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        self._apply_runtime_identity(fn)
+
         @functools.wraps(fn)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             call_index_global = self.call_index_global
@@ -189,6 +193,29 @@ class SnapshotRecorder:
             return outputs
 
         return wrapper
+
+    def _apply_runtime_identity(self, fn: Callable[..., Any]) -> None:
+        """Make the imported callable identity authoritative over path inference."""
+        module_name = str(getattr(fn, "__module__", "") or "")
+        qualname = str(getattr(fn, "__qualname__", "") or getattr(fn, "__name__", "") or "")
+        function_name = str(getattr(fn, "__name__", "") or qualname.rsplit(".", 1)[-1])
+        if not module_name or not qualname:
+            return
+
+        qualified_name = f"{module_name}.{qualname}"
+        source = dict(self.target.get("source") or {})
+        source.update(
+            {
+                "function_name": function_name,
+                "qualified_name": qualified_name,
+                "module_name": module_name,
+                "runtime_qualname": qualname,
+                "identity_source": "runtime_decorated_callable",
+            }
+        )
+        self.target["source"] = source
+        self.target["qualified_name"] = qualified_name
+        self.target["logical_name"] = function_name
 
     def save_sample(
         self,

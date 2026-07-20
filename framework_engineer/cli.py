@@ -662,10 +662,15 @@ def cmd_probe_target_calls(args: argparse.Namespace) -> int:
         )
     calls = _read_jsonl(log_path)
     succeeded = result["workload"]["returncode"] == 0 and bool(calls)
+    runtime_qualified_name = next(
+        (str(call["qualified_name"]) for call in calls if call.get("qualified_name")),
+        target.qualified_name,
+    )
+    runtime_target = _interface_with_runtime_qualified_name(target, runtime_qualified_name)
     report = {
         "status": "ok" if succeeded else "failed",
-        "target_name": target.qualified_name,
-        "target_interface": target.to_dict(),
+        "target_name": runtime_qualified_name,
+        "target_interface": runtime_target,
         "forward_boundary_interface": boundary.to_dict() if boundary else None,
         "call_count": len(calls),
         "workload_returncode": result["workload"]["returncode"],
@@ -682,7 +687,7 @@ def cmd_probe_target_calls(args: argparse.Namespace) -> int:
     }
     _write_json(docs / "target_call_probe_report.json", report)
     (docs / "target_call_probe_report.md").write_text(
-        f"# Target Call Probe Report\n\n- target: `{target.qualified_name}`\n- call_count: {len(calls)}\n- workload_returncode: {result['workload']['returncode']}\n- log: `{log_path}`\n",
+        f"# Target Call Probe Report\n\n- target: `{runtime_qualified_name}`\n- call_count: {len(calls)}\n- workload_returncode: {result['workload']['returncode']}\n- log: `{log_path}`\n",
         encoding="utf-8",
     )
     _emit_result(args, report, title="Target call probe")
@@ -718,10 +723,11 @@ def cmd_capture_snapshots(args: argparse.Namespace) -> int:
     raw_index = SnapshotStore(snapshot_root).read_raw_index()
     raw_timing_summary = _original_capture_timing_summary_from_raw_index(raw_index)
     succeeded = result["workload"]["returncode"] == 0 and bool(raw_index.get("raw_sample_count", 0))
+    runtime_target = _runtime_target_interface_from_raw_index(raw_index) or target.to_dict()
     report = {
         "status": "ok" if succeeded else "failed",
-        "target_name": target.qualified_name,
-        "target_interface": target.to_dict(),
+        "target_name": runtime_target.get("qualified_name", target.qualified_name),
+        "target_interface": runtime_target,
         "forward_boundary_interface": boundary.to_dict() if boundary else None,
         "windowing_mode": _windowing_mode(args),
         "raw_group_count": raw_index.get("raw_group_count", 0),
@@ -1195,6 +1201,39 @@ def _target_report(target: TargetConfig) -> dict[str, Any]:
     }
 
 
+def _interface_with_runtime_qualified_name(target: SourceInterface, qualified_name: str) -> dict[str, Any]:
+    payload = target.to_dict()
+    suffix = ".".join([*target.class_path, target.function_name])
+    suffix_with_dot = f".{suffix}"
+    if suffix and qualified_name.endswith(suffix_with_dot):
+        module_name = qualified_name[: -len(suffix_with_dot)]
+    else:
+        module_name = qualified_name.rsplit(".", 1)[0] if "." in qualified_name else target.module_name
+    payload.update(
+        {
+            "qualified_name": qualified_name,
+            "module_name": module_name,
+            "runtime_qualname": qualified_name[len(module_name) + 1 :] if module_name else qualified_name,
+            "identity_source": "runtime_probe_callable",
+        }
+    )
+    return payload
+
+
+def _runtime_target_interface_from_raw_index(raw_index: dict[str, Any]) -> dict[str, Any] | None:
+    fallback: dict[str, Any] | None = None
+    for group in raw_index.get("groups", {}).values():
+        target = group.get("target", {})
+        source = target.get("source") if isinstance(target, dict) else None
+        if not isinstance(source, dict) or not source.get("qualified_name"):
+            continue
+        candidate = dict(source)
+        if candidate.get("identity_source") == "runtime_decorated_callable":
+            return candidate
+        fallback = fallback or candidate
+    return fallback
+
+
 def _copy_baseline_to_targets(source_pack: Path, task_packs: list[Path]) -> None:
     source_docs = source_pack / "docs"
     for task_pack in task_packs:
@@ -1626,6 +1665,14 @@ def _function_candidates(file: Path, source: str, module_name: str) -> list[Sour
 
 
 def _infer_module_name(file: Path) -> str:
+    package_parts = [] if file.stem == "__init__" else [file.stem]
+    parent = file.parent
+    while (parent / "__init__.py").exists():
+        package_parts.insert(0, parent.name)
+        parent = parent.parent
+    if len(package_parts) > (0 if file.stem == "__init__" else 1):
+        return ".".join(package_parts)
+
     parts = list(file.with_suffix("").parts)
     if "python" in parts:
         idx = len(parts) - 1 - list(reversed(parts)).index("python")
