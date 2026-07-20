@@ -512,12 +512,13 @@ extract 由 source_locate Agent 之后的外层工作流调用，不再称为 La
     read_hints.txt
 ```
 
-新的主要 golden 为：
+主要 golden 统一收敛在 `example_kernels/source_locate_golden` 的 testcase workspace：
 
-- `to_fill_kid.json`：KID semantic resolution 后、无 `source_locations`；
-- `to_fill_locate_candidates.json`：locate CLI 输出的临时 interface 候选；
-- `to_fill_locate.json`：source_locate Agent 完成四层定位后；
-- `to_fill_extract.json`：extract CLI 完成物料抽取后。
+- `input/all_backends/decomposition.kid.schema.json`：KID semantic resolution 后、无 `source_locations`；
+- `workspaces/all_backends/locate/locate_candidates.schema.json`：locate CLI 输出的临时 interface 候选；
+- `workspaces/all_backends/agent/located.schema.json`：source_locate Agent 完成四层定位后；
+- `workspaces/all_backends/extract/decomposition.extracted.schema.json`：extract CLI 完成物料抽取后；
+- `workspaces/all_backends/extract/kernel_sources/`：最终源码和 read hints。
 
 ---
 

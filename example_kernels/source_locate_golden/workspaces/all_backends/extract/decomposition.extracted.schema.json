@@ -67,7 +67,7 @@
           }
         }
       },
-      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/torch_sdpa"
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/source_locate_golden/workspaces/all_backends/extract/kernel_sources/torch_sdpa"
     },
     {
       "rank": 2,
@@ -132,7 +132,7 @@
           }
         }
       },
-      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/fla_recompute_w_u_fwd"
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/source_locate_golden/workspaces/all_backends/extract/kernel_sources/fla_recompute_w_u_fwd"
     },
     {
       "rank": 3,
@@ -211,7 +211,7 @@
           }
         }
       },
-      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/sgl_kernel_silu_and_mul"
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/source_locate_golden/workspaces/all_backends/extract/kernel_sources/sgl_kernel_silu_and_mul"
     },
     {
       "rank": 4,
@@ -294,7 +294,7 @@
           }
         }
       },
-      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/sgl_kernel_fa3_fwd"
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/source_locate_golden/workspaces/all_backends/extract/kernel_sources/sgl_kernel_fa3_fwd"
     },
     {
       "rank": 5,
@@ -368,7 +368,7 @@
           }
         }
       },
-      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/sglang_jit_add_constant"
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/source_locate_golden/workspaces/all_backends/extract/kernel_sources/sglang_jit_add_constant"
     },
     {
       "rank": 6,
@@ -450,7 +450,7 @@
           }
         }
       },
-      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/flashinfer_top_k_top_p_sampling"
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/source_locate_golden/workspaces/all_backends/extract/kernel_sources/flashinfer_top_k_top_p_sampling"
     },
     {
       "rank": 7,
@@ -519,7 +519,7 @@
           }
         }
       },
-      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/flashinfer_triton_rms_norm"
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/source_locate_golden/workspaces/all_backends/extract/kernel_sources/flashinfer_triton_rms_norm"
     },
     {
       "rank": 8,
@@ -601,7 +601,7 @@
           }
         }
       },
-      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/flashinfer_batch_prefill_paged"
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/source_locate_golden/workspaces/all_backends/extract/kernel_sources/flashinfer_batch_prefill_paged"
     },
     {
       "rank": 9,
@@ -675,7 +675,7 @@
           }
         }
       },
-      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/sglang_cutedsl_fused_norm_scale_shift"
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/source_locate_golden/workspaces/all_backends/extract/kernel_sources/sglang_cutedsl_fused_norm_scale_shift"
     },
     {
       "rank": 10,
@@ -753,7 +753,7 @@
           }
         }
       },
-      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/kid_dry_run_out/workspaces/all_backends/kernel_sources/deepgemm_fp8_paged_mqa_logits"
+      "kernel_sources_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/source_locate_golden/workspaces/all_backends/extract/kernel_sources/deepgemm_fp8_paged_mqa_logits"
     }
   ]
 }

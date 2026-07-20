@@ -74,7 +74,7 @@ Source Locate 只读取源码。除指定的 workspace 输出外，不应修改 
 输入必须是 KID Semantic Resolver 的最终 schema，例如：
 
 ```text
-example_kernels/to_fill_kid.json
+example_kernels/source_locate_golden/input/all_backends/decomposition.kid.schema.json
 ```
 
 它必须满足：
@@ -274,7 +274,7 @@ Agent 内部工作合同，包含：
 PYTHONPATH=. python3 -m framework_engineer.source_location.agent_helper evaluate \
   --actual <workspace>/decomposition.located.json \
   --decisions <workspace>/source_locate_decisions.json \
-  --golden example_kernels/to_fill_locate.json \
+  --golden example_kernels/source_locate_golden/workspaces/all_backends/agent/located.schema.json \
   --manifest /absolute/path/to/third_party_manifest.json \
   --sglang-repo-root /absolute/path/to/sglang
 ```
@@ -386,11 +386,12 @@ Extract 会在清理已有 `kernel_sources/` 前完成预检。修正 located sc
 现有完整示例和 Golden：
 
 ```text
-example_kernels/to_fill_kid.json
-example_kernels/to_fill_locate_candidates.json
-example_kernels/to_fill_locate.json
-example_kernels/to_fill_extract.json
-framework_engineer/source_location/example/third_party_manifest.json
+example_kernels/source_locate_golden/input/all_backends/decomposition.kid.schema.json
+example_kernels/source_locate_golden/config/all_backends/third_party_manifest.json
+example_kernels/source_locate_golden/workspaces/all_backends/locate/locate_candidates.schema.json
+example_kernels/source_locate_golden/workspaces/all_backends/agent/located.schema.json
+example_kernels/source_locate_golden/workspaces/all_backends/extract/decomposition.extracted.schema.json
+example_kernels/source_locate_golden/workspaces/all_backends/extract/kernel_sources/
 ```
 
 运行 Source Location 回归测试：

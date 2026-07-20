@@ -1,0 +1,560 @@
+{
+  "schema_version": "source-locate-agent-decisions/v1",
+  "kernels": [
+    {
+      "low_level_id": "torch_sdpa",
+      "summary": "The semantic target is PyTorch scaled_dot_product_attention, but the matching PyTorch source checkout is not one of the allowed source roots.",
+      "layers": {
+        "interface_definition": {
+          "status": "missed",
+          "rationale": "The KID interface is known, but its Python definition cannot be verified without the PyTorch source repository.",
+          "hits": []
+        },
+        "kernel_impl": {
+          "status": "missed",
+          "rationale": "The dispatcher and native SDPA implementation are expected to exist in PyTorch, but no allowed root contains them.",
+          "hits": []
+        },
+        "py_cpp_binding": {
+          "status": "missed",
+          "rationale": "The Python-to-native dispatcher path cannot be verified without PyTorch sources.",
+          "hits": []
+        },
+        "kernel_header": {
+          "status": "missed",
+          "rationale": "Potential native declarations cannot be checked because the owning repository is absent.",
+          "hits": []
+        }
+      },
+      "gaps": [
+        "PyTorch source is absent from the manifest, so none of the four layers can be evidenced within allowed roots."
+      ],
+      "manual_followup": "Add a matching PyTorch source checkout to the manifest and rerun locate and source_locate."
+    },
+    {
+      "low_level_id": "fla_recompute_w_u_fwd",
+      "summary": "The SGLang wrapper directly launches a Triton kernel in the same module; there is no native bridge or independent header.",
+      "layers": {
+        "interface_definition": {
+          "status": "resolved",
+          "rationale": "The definition matches the KID call-site import and semantic target.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/srt/layers/attention/fla/wy_fast.py",
+              "def_line": 111,
+              "symbol": "recompute_w_u_fwd",
+              "reason": "This is the imported Python wrapper used by the call site."
+            }
+          ]
+        },
+        "kernel_impl": {
+          "status": "resolved",
+          "rationale": "The wrapper launches this Triton JIT kernel directly.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/srt/layers/attention/fla/wy_fast.py",
+              "def_line": 23,
+              "symbol": "recompute_w_u_fwd_kernel",
+              "reason": "This Triton kernel performs the target computation."
+            }
+          ]
+        },
+        "py_cpp_binding": {
+          "status": "not_applicable",
+          "rationale": "The Python wrapper launches Triton directly and does not cross a Python/C++ binding.",
+          "hits": []
+        },
+        "kernel_header": {
+          "status": "not_applicable",
+          "rationale": "The implementation is self-contained Triton code with no independent native declaration header.",
+          "hits": []
+        }
+      },
+      "gaps": [],
+      "manual_followup": null
+    },
+    {
+      "low_level_id": "sgl_kernel_silu_and_mul",
+      "summary": "The Python torch.ops wrapper resolves through SGLang's Torch registration to a CUDA host launcher and FlashInfer device kernel.",
+      "layers": {
+        "interface_definition": {
+          "status": "resolved",
+          "rationale": "The wrapper is the KID-selected public interface and calls torch.ops.sgl_kernel.silu_and_mul.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/python/sgl_kernel/elementwise.py",
+              "def_line": 258,
+              "symbol": "silu_and_mul",
+              "reason": "This Python definition is imported and invoked by the SGLang call site."
+            }
+          ]
+        },
+        "kernel_impl": {
+          "status": "resolved",
+          "rationale": "The native launcher dispatches the templated FlashInfer device kernel in this order.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/csrc/elementwise/activation.cu",
+              "def_line": 85,
+              "symbol": "silu_and_mul",
+              "reason": "This is the registered CUDA host entry and launch site."
+            },
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/include/flashinfer/activation.cuh",
+              "def_line": 28,
+              "symbol": "act_and_mul_kernel",
+              "reason": "This templated CUDA kernel performs the elementwise activation and multiplication."
+            }
+          ]
+        },
+        "py_cpp_binding": {
+          "status": "resolved",
+          "rationale": "Torch Library registration maps the Python torch.ops name to the native launcher.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/csrc/common_extension.cc",
+              "def_line": 76,
+              "symbol": "m.def/m.impl(silu_and_mul)",
+              "reason": "The schema and CUDA implementation registration close the Python-to-native boundary."
+            }
+          ]
+        },
+        "kernel_header": {
+          "status": "resolved",
+          "rationale": "The registered host function has a standalone public declaration.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/include/sgl_kernel_ops.h",
+              "def_line": 139,
+              "symbol": "silu_and_mul declaration",
+              "reason": "This declaration connects the registration unit to the CUDA definition."
+            }
+          ]
+        }
+      },
+      "gaps": [],
+      "manual_followup": null
+    },
+    {
+      "low_level_id": "sgl_kernel_fa3_fwd",
+      "summary": "The Python FlashAttention wrapper crosses SGLang's Torch registration into the sgl-attn host API, launch template, and SM90 device implementation.",
+      "layers": {
+        "interface_definition": {
+          "status": "resolved",
+          "rationale": "This definition is the call-site-selected varlen FlashAttention interface.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/python/sgl_kernel/flash_attn.py",
+              "def_line": 232,
+              "symbol": "flash_attn_varlen_func",
+              "reason": "The function is the Python interface invoked by SGLang attention code."
+            }
+          ]
+        },
+        "kernel_impl": {
+          "status": "resolved",
+          "rationale": "The recorded order follows the native host entry, dispatch/launch template, then the SM90 kernel body.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sgl-attn/hopper/flash_api.cpp",
+              "def_line": 673,
+              "symbol": "mha_fwd",
+              "reason": "This is the native host API reached by the registered operator."
+            },
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sgl-attn/hopper/flash_fwd_launch_template.h",
+              "def_line": 31,
+              "symbol": "run_flash_fwd",
+              "reason": "This template specializes and launches the forward attention implementation."
+            },
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sgl-attn/hopper/flash_fwd_kernel_sm90.h",
+              "def_line": 179,
+              "symbol": "FlashAttnFwdSm90::operator()",
+              "reason": "This device operator is the core SM90 forward kernel implementation."
+            }
+          ]
+        },
+        "py_cpp_binding": {
+          "status": "resolved",
+          "rationale": "The Torch Library schema/export anchors the Python operator to mha_fwd.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/csrc/flash_extension.cc",
+              "def_line": 25,
+              "symbol": "m.def(fwd)",
+              "reason": "This registration exposes the forward native entry used by the Python wrapper."
+            }
+          ]
+        },
+        "kernel_header": {
+          "status": "resolved",
+          "rationale": "The standalone header declares the native mha_fwd entry consumed by the extension.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/sgl-kernel/include/sgl_flash_kernel_ops.h",
+              "def_line": 45,
+              "symbol": "mha_fwd declaration",
+              "reason": "This declaration connects the extension registration and sgl-attn definition."
+            }
+          ]
+        }
+      },
+      "gaps": [],
+      "manual_followup": null
+    },
+    {
+      "low_level_id": "sglang_jit_add_constant",
+      "summary": "The Python wrapper builds a TVM-FFI JIT module from a CUDA header, invokes its host wrapper, and reaches the add_constant CUDA kernel.",
+      "layers": {
+        "interface_definition": {
+          "status": "resolved",
+          "rationale": "This is the public JIT example function selected by KID.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/add_constant.py",
+              "def_line": 24,
+              "symbol": "add_constant",
+              "reason": "The function allocates the result and invokes module.add_constant."
+            }
+          ]
+        },
+        "kernel_impl": {
+          "status": "resolved",
+          "rationale": "The JIT-exported host wrapper launches the concrete CUDA kernel in this order.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/csrc/add_constant.cuh",
+              "def_line": 59,
+              "symbol": "add_constant",
+              "reason": "This templated TVM-FFI host function validates inputs and launches the kernel."
+            },
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/csrc/add_constant.cuh",
+              "def_line": 27,
+              "symbol": "add_constant_kernel",
+              "reason": "This CUDA global function implements the scalar add."
+            }
+          ]
+        },
+        "py_cpp_binding": {
+          "status": "resolved",
+          "rationale": "The load_jit call declares the CUDA source and generated wrapper exported as add_constant.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/add_constant.py",
+              "def_line": 16,
+              "symbol": "load_jit(add_constant)",
+              "reason": "This loader configuration creates the Python-visible TVM-FFI module boundary."
+            }
+          ]
+        },
+        "kernel_header": {
+          "status": "not_applicable",
+          "rationale": "The .cuh file contains executable host/device implementation rather than an independent declaration-only layer.",
+          "hits": []
+        }
+      },
+      "gaps": [],
+      "manual_followup": null
+    },
+    {
+      "low_level_id": "flashinfer_top_k_top_p_sampling",
+      "summary": "The FlashInfer Python API obtains a generated sampling module, crosses its TVM-FFI binding, and reaches the CUDA launcher and rejection-sampling kernel.",
+      "layers": {
+        "interface_definition": {
+          "status": "resolved",
+          "rationale": "This is the KID-selected fused top-k/top-p sampling API.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/sampling.py",
+              "def_line": 1579,
+              "symbol": "top_k_top_p_sampling_from_probs",
+              "reason": "The public function performs the selected sampling operation."
+            }
+          ]
+        },
+        "kernel_impl": {
+          "status": "resolved",
+          "rationale": "The native host entry calls the templated dispatcher, which launches the CUDA kernel.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/csrc/sampling.cu",
+              "def_line": 277,
+              "symbol": "top_k_top_p_sampling_from_probs",
+              "reason": "This TVM-FFI host entry validates tensors and invokes the sampling implementation."
+            },
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/include/flashinfer/sampling.cuh",
+              "def_line": 1606,
+              "symbol": "TopKTopPSamplingFromProb",
+              "reason": "This template dispatches launch geometry and the deterministic specialization."
+            },
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/include/flashinfer/sampling.cuh",
+              "def_line": 1192,
+              "symbol": "TopKTopPSamplingFromProbKernel",
+              "reason": "This CUDA kernel performs the fused rejection sampling loop."
+            }
+          ]
+        },
+        "py_cpp_binding": {
+          "status": "resolved",
+          "rationale": "The generated module loader and its native declaration together establish the Python-to-CUDA boundary.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/sampling.py",
+              "def_line": 68,
+              "symbol": "gen_sampling_module().build_and_load",
+              "reason": "This builds and loads the Python-visible generated sampling module."
+            },
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/csrc/flashinfer_sampling_binding.cu",
+              "def_line": 54,
+              "symbol": "top_k_top_p_sampling_from_probs declaration",
+              "reason": "This binding declaration is used to export the native function into the generated module."
+            }
+          ]
+        },
+        "kernel_header": {
+          "status": "not_applicable",
+          "rationale": "The .cuh file is implementation-bearing and is therefore part of kernel_impl, not a declaration-only header layer.",
+          "hits": []
+        }
+      },
+      "gaps": [],
+      "manual_followup": null
+    },
+    {
+      "low_level_id": "flashinfer_triton_rms_norm",
+      "summary": "The FlashInfer Python function launches a Triton RMSNorm kernel that uses a Triton scale-and-clamp helper; no native bridge or separate header exists.",
+      "layers": {
+        "interface_definition": {
+          "status": "resolved",
+          "rationale": "The definition matches the KID interface and direct call-site import.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/triton/norm.py",
+              "def_line": 9,
+              "symbol": "rms_norm",
+              "reason": "This wrapper computes launch parameters and invokes rms_norm_kernel."
+            }
+          ]
+        },
+        "kernel_impl": {
+          "status": "resolved",
+          "rationale": "The main Triton kernel and its imported computation helper make up the implementation chain.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/triton/kernels/norm.py",
+              "def_line": 7,
+              "symbol": "rms_norm_kernel",
+              "reason": "This Triton JIT function is the directly launched RMSNorm kernel."
+            },
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/triton/kernels/quant.py",
+              "def_line": 5,
+              "symbol": "scale_and_clamp",
+              "reason": "This Triton helper implements the optional output scaling and clamping used by the kernel."
+            }
+          ]
+        },
+        "py_cpp_binding": {
+          "status": "not_applicable",
+          "rationale": "The Python wrapper launches Triton without a C++ extension boundary.",
+          "hits": []
+        },
+        "kernel_header": {
+          "status": "not_applicable",
+          "rationale": "The implementation is Python/Triton and has no independent native declaration header.",
+          "hits": []
+        }
+      },
+      "gaps": [],
+      "manual_followup": null
+    },
+    {
+      "low_level_id": "flashinfer_batch_prefill_paged",
+      "summary": "The FlashInfer wrapper loads a generated module, invokes paged_run through TVM-FFI, and reaches the paged prefill host entry, dispatcher, and CUDA kernel.",
+      "layers": {
+        "interface_definition": {
+          "status": "resolved",
+          "rationale": "The class method is the fully qualified KID interface used for paged KV prefill.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/prefill.py",
+              "def_line": 2198,
+              "symbol": "BatchPrefillWithPagedKVCacheWrapper.run",
+              "reason": "This overload anchor identifies the public class method selected by KID."
+            }
+          ]
+        },
+        "kernel_impl": {
+          "status": "resolved",
+          "rationale": "The order records native host entry, template dispatcher, and launched CUDA kernel.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/csrc/batch_prefill.cu",
+              "def_line": 203,
+              "symbol": "BatchPrefillWithPagedKVCacheRun",
+              "reason": "This TVM-FFI host function prepares parameters and dispatches paged prefill."
+            },
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/include/flashinfer/attention/prefill.cuh",
+              "def_line": 3605,
+              "symbol": "BatchPrefillWithPagedKVCacheDispatched",
+              "reason": "This template selects launch traits and dispatches the paged implementation."
+            },
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/include/flashinfer/attention/prefill.cuh",
+              "def_line": 3409,
+              "symbol": "BatchPrefillWithPagedKVCacheKernel",
+              "reason": "This CUDA global function is the core paged prefill kernel."
+            }
+          ]
+        },
+        "py_cpp_binding": {
+          "status": "resolved",
+          "rationale": "The Python generated-module loader and TVM-FFI paged_run export close the native boundary.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/prefill.py",
+              "def_line": 447,
+              "symbol": "gen_batch_prefill_module().build_and_load",
+              "reason": "This creates the generated module whose paged_run function the wrapper calls."
+            },
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/csrc/batch_prefill_jit_binding.cu",
+              "def_line": 38,
+              "symbol": "BatchPrefillWithPagedKVCacheRun export declaration",
+              "reason": "This declaration is exported as paged_run by TVM-FFI."
+            }
+          ]
+        },
+        "kernel_header": {
+          "status": "not_applicable",
+          "rationale": "The .cuh layer contains launch and device implementation, so it belongs to kernel_impl rather than a declaration-only header.",
+          "hits": []
+        }
+      },
+      "gaps": [],
+      "manual_followup": null
+    },
+    {
+      "low_level_id": "sglang_cutedsl_fused_norm_scale_shift",
+      "summary": "The SGLang custom op compiles a CuTe DSL callable with a TVM-FFI backend; that callable launches the CuTe device kernel.",
+      "layers": {
+        "interface_definition": {
+          "status": "resolved",
+          "rationale": "This custom-op definition is the KID-selected fused normalization interface.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/diffusion/cutedsl/scale_residual_norm_scale_shift.py",
+              "def_line": 279,
+              "symbol": "fused_norm_scale_shift",
+              "reason": "The function validates tensors, compiles the DSL kernel, and executes it."
+            }
+          ]
+        },
+        "kernel_impl": {
+          "status": "resolved",
+          "rationale": "The CuTe callable is the host launch entry and its kernel method is the device implementation.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/diffusion/cutedsl/scale_residual_norm_scale_shift.py",
+              "def_line": 87,
+              "symbol": "ScaleResidualNormScaleShift.__call__",
+              "reason": "This cute.jit callable prepares and launches self.kernel."
+            },
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/diffusion/cutedsl/scale_residual_norm_scale_shift.py",
+              "def_line": 134,
+              "symbol": "ScaleResidualNormScaleShift.kernel",
+              "reason": "This cute.kernel method contains the core device computation."
+            }
+          ]
+        },
+        "py_cpp_binding": {
+          "status": "resolved",
+          "rationale": "cute.compile with the TVM-FFI backend materializes the callable boundary used by the Python custom op.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/diffusion/cutedsl/scale_residual_norm_scale_shift.py",
+              "def_line": 333,
+              "symbol": "cute.compile",
+              "reason": "This compile anchor creates the TVM-FFI callable later invoked by Python."
+            }
+          ]
+        },
+        "kernel_header": {
+          "status": "not_applicable",
+          "rationale": "The CuTe DSL implementation is contained in Python and has no independent native declaration header.",
+          "hits": []
+        }
+      },
+      "gaps": [],
+      "manual_followup": null
+    },
+    {
+      "low_level_id": "deepgemm_fp8_paged_mqa_logits",
+      "summary": "DeepGEMM re-exports the binary extension function, whose pybind registration reaches a C++ host API, JIT code generator/launcher, and the SM90 device kernel template.",
+      "layers": {
+        "interface_definition": {
+          "status": "resolved",
+          "rationale": "The package-level re-export is the Python interface named by KID.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/DeepGEMM/deep_gemm/__init__.py",
+              "def_line": 68,
+              "symbol": "fp8_paged_mqa_logits",
+              "reason": "This import/re-export exposes the binary extension function to callers."
+            }
+          ]
+        },
+        "kernel_impl": {
+          "status": "resolved",
+          "rationale": "The order records the legacy host API, runtime code generation/launch, and generated SM90 device kernel body.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/DeepGEMM/csrc/apis/attention.hpp",
+              "def_line": 401,
+              "symbol": "fp8_paged_mqa_logits",
+              "reason": "This C++ host wrapper forwards the legacy API to the paged MQA implementation."
+            },
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/DeepGEMM/csrc/jit_kernels/impls/smxx_fp8_fp4_paged_mqa_logits.hpp",
+              "def_line": 281,
+              "symbol": "SMXXFP8PagedMQALogitsRuntime::generate/build/launch",
+              "reason": "This is the JIT code generation, compilation, and launch anchor for paged MQA."
+            },
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/DeepGEMM/deep_gemm/include/deep_gemm/impls/sm90_fp8_paged_mqa_logits.cuh",
+              "def_line": 30,
+              "symbol": "sm90_fp8_paged_mqa_logits",
+              "reason": "This CUTLASS global function contains the SM90 paged MQA kernel implementation."
+            }
+          ]
+        },
+        "py_cpp_binding": {
+          "status": "resolved",
+          "rationale": "The pybind registration exposes the legacy fp8_paged_mqa_logits host wrapper.",
+          "hits": [
+            {
+              "file": "/Users/bytedance/Desktop/infra_agent/DeepGEMM/csrc/apis/attention.hpp",
+              "def_line": 445,
+              "symbol": "m.def(fp8_paged_mqa_logits)",
+              "reason": "This pybind anchor maps the Python name to the C++ host function."
+            }
+          ]
+        },
+        "kernel_header": {
+          "status": "not_applicable",
+          "rationale": "The headers in the chain contain executable templates and registrations, so they are implementation/binding hits rather than a separate declaration-only layer.",
+          "hits": []
+        }
+      },
+      "gaps": [],
+      "manual_followup": null
+    }
+  ]
+}

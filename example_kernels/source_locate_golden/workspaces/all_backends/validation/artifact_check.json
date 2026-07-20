@@ -1,0 +1,26 @@
+{
+  "ok": true,
+  "testcase_id": "all_backends",
+  "workspace_contract": true,
+  "kid_projection_preserved": true,
+  "workspace_outputs_are_canonical": true,
+  "candidate_kernels": 10,
+  "located_kernels": 10,
+  "extracted_kernels": 10,
+  "target_directories": 10,
+  "read_hints": 10,
+  "locate_summary": {
+    "resolved": 9,
+    "ambiguous": 0,
+    "not_found": 1
+  },
+  "extract_summary": {
+    "source_files_written": 27,
+    "placeholder_files_written": 13
+  },
+  "unit_tests": {
+    "command": "python3 -m unittest framework_engineer.tests.test_source_location_locate framework_engineer.tests.test_source_location_extract framework_engineer.tests.test_source_location_agent_helper",
+    "passed": 35,
+    "failed": 0
+  }
+}

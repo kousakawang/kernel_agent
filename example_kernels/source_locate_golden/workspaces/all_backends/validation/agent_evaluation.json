@@ -1,0 +1,8 @@
+{
+  "ok": true,
+  "actual": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/source_locate_golden/workspaces/all_backends/agent/located.schema.json",
+  "golden": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/source_locate_golden/workspaces/all_backends/agent/located.schema.json",
+  "kernels": 10,
+  "errors": [],
+  "search_roots_skipped": []
+}

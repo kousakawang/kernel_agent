@@ -15,13 +15,14 @@ KID Agent
   └─ Semantic Resolution
   │
   ▼
-to_fill_kid.json                       # semantic targets，无 source_locations
+source_locate_golden/input/<case>/decomposition.kid.schema.json
+                                       # semantic targets，无 source_locations
   │
   ▼
 locate CLI                             # 只定位 Python interface candidates
   │
   ▼
-to_fill_locate_candidates.json
+source_locate_golden/workspaces/<case>/locate/locate_candidates.schema.json
   │
   ▼
 source_locate Agent                    # 自主定位全部四层，写 decisions
@@ -30,13 +31,15 @@ source_locate Agent                    # 自主定位全部四层，写 decision
 finalize helper                        # 校验、剥离 reasoning、生成 notes
   │
   ▼
-to_fill_locate.json                    # 四层 source_locations 完成
+source_locate_golden/workspaces/<case>/agent/located.schema.json
+                                       # 四层 source_locations 完成
   │
   ▼
 extract CLI
   │
   ▼
-to_fill_extract.json + kernel_sources/ # 回填 kernel_sources_dir
+source_locate_golden/workspaces/<case>/extract/
+                                       # extracted schema + kernel_sources/
   │
   ▼
 snapshot / problem_translate / task_pack
@@ -98,7 +101,8 @@ snapshot / problem_translate / task_pack
   kernel 耗时聚合和热点排序。
 - **输入**：Runtime Capture CLI 的 raw events/调用树、Nsight kernel 归因、相关源码、可选 UT/
   provider/repository 信息。
-- **输出**：`to_fill_kid.json` 或正式 `decomposition_<backend>.schema.json`。
+- **输出**：`source_locate_golden/input/<case>/decomposition.kid.schema.json` 或正式
+  `decomposition_<backend>.schema.json`。
 
 ### Agent 必须完成
 
@@ -124,7 +128,8 @@ snapshot / problem_translate / task_pack
 
 1. 在真实 SGLang Runtime capture 上运行 Prompt Agent，继续积累 transparent wrapper、split
    与 fused semantic 的评测样例。
-2. 更新 `example_kernels/to_fill_kid.json` 到最终字段语义，并接入上层串行编排。
+2. 持续更新 `example_kernels/source_locate_golden/input/<case>/decomposition.kid.schema.json`
+   的最终字段语义，并接入上层串行编排。
 
 ### 已完成
 
@@ -223,7 +228,8 @@ snapshot / problem_translate / task_pack
 - **定位**：source_locate/extract 的下游消费者。
 - **职责**：针对 semantic target，结合 snapshot、UT/reference、四层源码和原仓库，生成
   PyTorch/基础 Python 等价实现与问题定级。
-- **输入**：`to_fill_extract.json`、`kernel_sources/`、snapshot、UT、third-party manifest 和源码。
+- **输入**：`source_locate_golden/workspaces/<case>/extract/decomposition.extracted.schema.json`、
+  同目录 `kernel_sources/`、snapshot、UT、third-party manifest 和源码。
 - **输出**：问题定级、reference implementation、后续 task_pack 所需物料。
 
 ### 约束

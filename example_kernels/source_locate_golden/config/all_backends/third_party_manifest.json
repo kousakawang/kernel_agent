@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "sglang_repo_root": "/Users/bytedance/Desktop/infra_agent/sglang",
+  "repos": [
+    {
+      "name": "flashinfer",
+      "version": "0.6.12",
+      "version_source": "importlib",
+      "clone_source": "official",
+      "resolution": "explicit",
+      "local_path": "/Users/bytedance/Desktop/infra_agent/flashinfer",
+      "url": "https://github.com/flashinfer-ai/flashinfer",
+      "ref": "v0.6.12",
+      "triggered_by": [
+        "default_path",
+        "flashinfer"
+      ],
+      "on_default_path": true,
+      "version_mismatch": false,
+      "status": "ok",
+      "clone_command": null,
+      "error": null,
+      "evidence": "local source path for source-locate example"
+    },
+    {
+      "name": "deep_gemm",
+      "version": "0.1.2",
+      "version_source": "importlib",
+      "clone_source": "sgl_fork",
+      "resolution": "explicit",
+      "local_path": "/Users/bytedance/Desktop/infra_agent/DeepGEMM",
+      "url": "https://github.com/sgl-project/DeepGEMM",
+      "ref": "v0.1.2",
+      "triggered_by": [
+        "default_path"
+      ],
+      "on_default_path": true,
+      "version_mismatch": false,
+      "status": "ok",
+      "clone_command": null,
+      "error": null,
+      "evidence": "local source path for source-locate example"
+    },
+    {
+      "name": "flash_attn",
+      "version": "bcf72ccc6816",
+      "version_source": "cmake_pin",
+      "clone_source": "sgl_fork",
+      "resolution": "explicit",
+      "local_path": "/Users/bytedance/Desktop/infra_agent/sgl-attn",
+      "url": "https://github.com/sgl-project/sgl-attn",
+      "ref": "bcf72ccc6816b36a5fae2c5a3c027604629785e0",
+      "triggered_by": [
+        "cutedsl",
+        "flashinfer",
+        "triton"
+      ],
+      "on_default_path": false,
+      "version_mismatch": false,
+      "status": "ok",
+      "clone_command": null,
+      "error": null,
+      "evidence": "local source path for source-locate example"
+    }
+  ],
+  "failed": []
+}

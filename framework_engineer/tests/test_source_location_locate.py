@@ -357,17 +357,18 @@ class TestContractsAndCli(LocateFixture):
 
 
 class TestRealGolden(unittest.TestCase):
-    def test_to_fill_locate_candidates_golden(self) -> None:
+    def test_all_backends_locate_candidates_golden(self) -> None:
         repo = Path(__file__).resolve().parents[2]
-        schema = repo / "example_kernels" / "to_fill_kid.json"
-        expected = repo / "example_kernels" / "to_fill_locate_candidates.json"
-        manifest = (
-            repo
-            / "framework_engineer"
-            / "source_location"
-            / "example"
-            / "third_party_manifest.json"
+        case = repo / "example_kernels" / "source_locate_golden"
+        schema = case / "input" / "all_backends" / "decomposition.kid.schema.json"
+        expected = (
+            case
+            / "workspaces"
+            / "all_backends"
+            / "locate"
+            / "locate_candidates.schema.json"
         )
+        manifest = case / "config" / "all_backends" / "third_party_manifest.json"
         with tempfile.TemporaryDirectory(prefix="source_locate_golden_") as tmp:
             output = Path(tmp) / "located.json"
             result = locate_schema(
