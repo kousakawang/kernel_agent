@@ -6,19 +6,28 @@
 ## 流水线总览
 
 ```text
-用户配置
+用户提供单-backend配置目录
   │
   ▼
-KID Runtime Capture CLI
-  │  raw events + Nsight trace + high→execution stacks
-  ▼
-KID Semantic Resolver Agent
+KID Agent
+  ├─ Runtime Capture CLI
+  │    raw events + Nsight trace + high→execution stacks
+  └─ Semantic Resolution
   │
   ▼
 to_fill_kid.json                       # semantic targets，无 source_locations
   │
   ▼
-source_locate Agent                    # 自主定位全部四层，可调用 locator/validator CLI
+locate CLI                             # 只定位 Python interface candidates
+  │
+  ▼
+to_fill_locate_candidates.json
+  │
+  ▼
+source_locate Agent                    # 自主定位全部四层，写 decisions
+  │
+  ▼
+finalize helper                        # 校验、剥离 reasoning、生成 notes
   │
   ▼
 to_fill_locate.json                    # 四层 source_locations 完成
@@ -45,7 +54,8 @@ snapshot / problem_translate / task_pack
   - 在各类 execution common interface 处捕获执行事件；
   - 保存 high-level 到 common interface 的完整 Python 调用链；
   - 用 CUDA Runtime/Driver correlation id 关联 GPU kernel；
-  - 支持单-backend 启动命令、多 invocation、warmup 排除和 `all/last_n/single` 采样。
+  - 支持单-backend 启动命令、多 invocation、warmup 排除和默认
+    `unique_decomposition`（另保留 `all/last_n/single`）选择。
 - **输入**：单-backend `kid-runtime-config/v2`：`cmd`、`test_cmd`、`target`、profiling/selection。
 - **输出**：raw events、Nsight SQLite 和 `kid-runtime-capture/v1`；多 backend 由上层串行执行多份配置。
 
@@ -67,7 +77,12 @@ snapshot / problem_translate / task_pack
   `example_kernels/nsys_poc_kid_golden/`。
 - [x] 正式 CLI 已切换为 `capture/analyze`，不再调用 KID 内部 SourceResolver 或生成最终 semantic schema。
 - [x] 正式 high-level instrumentation、完整 Python 调用链、七类 adapter、nested capture 和 Runtime/Driver correlation 已接入。
-- [x] 实现 `all/last_n/single` 可扩展采样、Runtime-only validator，以及 golden/synthetic 无 GPU 回归测试。
+- [x] 实现默认 `unique_decomposition` 收敛与 `all/last_n/single` 可扩展采样；原始 SQLite/JSONL
+  保留全量 invocation，Runtime schema 每种拆分保留末次代表。
+- [x] 增加 repeat/softmax 双 invocation PoC、结构 golden、Runtime-only validator，以及
+  golden/synthetic 无 GPU 回归测试。
+- [x] service 模式改为 paused Nsight session：服务启动并通过 ready 后才开启 Nsight 和
+  Runtime event 记录；轻量 GPU E2E 已验证 ready 前 3 次 target 调用不会进入 trace。
 
 ### TODO
 
@@ -77,7 +92,7 @@ snapshot / problem_translate / task_pack
 
 ---
 
-## 2. KID Semantic Resolver Agent
+## 2. KID Agent：Semantic Resolution 阶段
 
 - **职责**：读取 high→execution 调用树和源码，选择真正的 semantic low-level target，并完成
   kernel 耗时聚合和热点排序。
@@ -107,11 +122,23 @@ snapshot / problem_translate / task_pack
 
 ### TODO
 
-1. 定义 Agent 输入的内部调用树 contract；该 contract 不进入最终 schema。
-2. 实现 Semantic Resolver Agent/skill 和受约束的候选选择输出。
-3. 实现 deterministic validator：Agent 选择必须来自已捕获调用树，callsite/文件必须有效。
-4. 建立 transparent wrapper、split、fused semantic、direct builtin 等评测 case。
-5. 更新 `example_kernels/to_fill_kid.json` 到新字段语义。
+1. 在真实 SGLang Runtime capture 上运行 Prompt Agent，继续积累 transparent wrapper、split
+   与 fused semantic 的评测样例。
+2. 更新 `example_kernels/to_fill_kid.json` 到最终字段语义，并接入上层串行编排。
+
+### 已完成
+
+- [x] 固化 `kid-semantic-resolver-config/v2`、`kid-semantic-context/v1` 和
+  `kid-semantic-decisions/v1` 内部合同。
+- [x] 新增统一 KID Agent Prompt：接收单-backend配置目录，先调用 Runtime Capture CLI，再执行
+  `prepare/decisions/finalize/validate`；Agent 只在 semantic 阶段作判断。
+  决议，指标、代表 kernel、rank、coverage 和最终 archetype 确定性生成。
+- [x] 实现 direct-owner exact-once、真实 stack-edge call site、confidence、provider 冲突、
+  mixed-archetype notes 和最终禁止字段校验。
+- [x] Golden 增加 decisions、context 和 trace-version source snapshot；现有 11-target final
+  schema 可由 helper 精确复现。
+- [x] 增加跨 invocation interface 并集、sample count、AST/source override 和 Prompt contract
+  的 CPU-only 测试。
 
 ---
 
@@ -123,23 +150,24 @@ snapshot / problem_translate / task_pack
   - `python -m framework_engineer.source_location.cli locate`
   - `python -m framework_engineer.source_location.cli extract`
 - **实现文件**：
-  - `locator.py`：schema 遍历、`source_locations` 骨架、interface definition 候选定位、
-    manifest/search-root 处理、report 和原子写回；
+  - `locator.py`：KID v2 schema 遍历、interface definition 候选定位、manifest/search-root
+    处理和原子输出；
   - `extractor.py`：四层文件复制、range completion、`read_hints.txt`、占位和
     `kernel_sources_dir` 回填；
-  - `contracts.py`：定位/抽取 contract；
+  - `contracts.py`：候选/Agent/抽取 contract；
   - `cli.py` / `__main__.py`：`locate`、`extract` 命令入口。
 
 ### 已完成能力
 
-- [x] flat schema 与 nested invocation schema 遍历。
-- [x] 基于 runtime implementation、callsite/import、module alias、relative import、re-export、
+- [x] KID v2 flat schema 遍历和 KID-owned field 原样保留。
+- [x] 基于 callsite/import、module alias、relative import、re-export、
   class method/overload 和 binary re-export 的 interface definition 定位。
-- [x] `resolved/ambiguous/not_found/not_applicable/missed` 状态和 `repo_hint`。
+- [x] locate candidate 的 `resolved/ambiguous/not_found` 与 Agent final 的
+  `resolved/best_effort/missed/not_applicable` 状态。
 - [x] locate report、缺失 manifest repo 处理、原子更新和重复运行保护。
 - [x] extract 全文件复制、Python/C-family end-line 计算、binding/impl 多 hit 目录化。
-- [x] `not_applicable/missed` 占位、`--allow-empty` 和 `kernel_sources_dir` 回填。
-- [x] locator + extractor 共 31 个 CPU 单测通过（2026-07-16 复核）。
+- [x] `not_applicable/missed` 占位、严格预检和 `kernel_sources_dir` 回填。
+- [x] 公开 CLI 只保留 `locate/extract`。
 
 ### 在最新设计中的使用方式
 
@@ -149,23 +177,26 @@ snapshot / problem_translate / task_pack
 - `extract` 在 Agent 写完四层 `source_locations` 后负责机械抽取；
 - `py_cpp_binding/kernel_impl/kernel_header` 的最终语义判断仍归自主 Agent。
 
-现有实现仍兼容旧 schema 中的 `archetype_code/binding_provider/needs_agent/source`。后续若按最新
-设计移除这些字段，只属于 contract 迁移和命名清理，不表示 `source_location` 功能尚未完成。
+现有实现只接受最新 KID v2 和最小四层 contract；旧
+`archetype_code/binding_provider/needs_agent/source` 会被拒绝。
 
 ---
 
-## 4. source_locate Agent
+## 4. source_locate Agent【已完成】
 
 - **类型**：一个自主 Agent，不再划分 locate Layer 1/2/3。
-- **职责**：调用已完成的 `source_location` CLI，并自主阅读源码，最终负责：
+- **载体**：`framework_engineer/skills/source_locate.md` 方法论 +
+  `framework_engineer/prompts/start_source_locate.md` 入口 Prompt；不内置 LLM runner。
+- **职责**：读取 locate candidates、自主阅读源码，最终负责：
   - `interface_definition`
   - `kernel_impl`
   - `py_cpp_binding`
   - `kernel_header`
 - **输入**：KID schema、`third_party_manifest.json`/`missing_repos.md`、sglang/sgl-kernel/
   third-party 源码。
-- **输出**：写入完整 `source_locations` 的 schema、`ref/locate_agent_notes.md`，并调用 extract
-  生成 `kernel_sources/`。
+- **输出**：`source-locate-agent-decisions/v1`、写入完整 `source_locations` 的 schema、
+  `ref/locate_agent_notes.md`。Agent 在 extract 前结束。
+- **私有 helper**：`inspect-target/search/finalize/evaluate`；不加入两个公开 CLI。
 
 ### 设计约束
 
@@ -174,14 +205,16 @@ snapshot / problem_translate / task_pack
 - `py_cpp_binding` 全部由 Agent负责，不建设 provider-specific CLI registry。
 - `kernel_impl` 允许多 hit，按真实调用链顺序记录，覆盖跨仓和模板/device helper。
 - 找不到时允许 `missed/best_effort`，证据和人工建议写入 notes，不扩张主 schema。
+- 正式 hit 仅允许来自 SGLang/内嵌 sgl-kernel/manifest `status=ok` 的源码根。
+- `interface_definition/kernel_impl` 缺源码时为 `missed`，不得标 `not_applicable`。
 
-### 剩余工作
+### 已完成能力
 
-1. 将自主 Agent/skill 与已完成的 `source_location locate/extract` CLI 串起来。
-2. 增加或复用 source_locations validator，供 Agent 提交结果前检查。
-3. 按最新设计逐步清理旧 Layer 命名及 `needs_agent/source/archetype` contract；不影响现有 CLI 使用。
-4. 更新 `to_fill_locate.json` golden，并将 `to_fill_after_layer1.json` 标为 historical。
-5. 用 `example_kernels/all_backends_sglang.py` 做完整的无 GPU Agent 定位评测。
+1. decisions 严格合同：每 target/每层 rationale，每 hit symbol/reason，missed/best-effort 缺口说明。
+2. finalize：合法 repo、文件/行号、状态、KID projection 校验，自动 `repo_hint` 与 notes。
+3. evaluate：Golden 核心 hits 按序匹配，允许有证据的额外 helper hits。
+4. 当前十 target Golden 可由 decisions 经 finalize 精确复现；source-location 相关 35 个 CPU 测试通过。
+5. extract 仍是独立的后续公开 CLI，不属于 Agent 的完成边界。
 
 ---
 
@@ -207,7 +240,6 @@ snapshot / problem_translate / task_pack
    聚合接入正式 KID。
 2. 实现 Semantic Resolver Agent 与最小评测集。
 3. 将 golden 中的 capture `archetype`、可选 `provider`、semantic callsite 迁移到正式 KID schema。
-4. 实现 source_locate Agent；保留 interface locator/extract 为工具。
-5. 简化 source_locations contract 并适配 extractor。
-6. 跑 `all_backends_sglang.py` 无 GPU locate 评测。
-7. 远端 GPU 端到端跑通：KID → source_locate → extract → problem_translate。
+4. 将已完成的 source_locate Agent 接入上层 workspace 编排。
+5. 实现 problem_translate Agent。
+6. 远端 GPU 端到端跑通：KID → source_locate → extract → problem_translate。

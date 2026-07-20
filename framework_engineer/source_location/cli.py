@@ -1,15 +1,7 @@
-"""CLI for deterministic source location and Layer-3 extraction.
+"""The two public source-location commands: ``locate`` and ``extract``.
 
-Convention (matches third_party_solver/cli.py): progress -> stderr, JSON summary
--> stdout, return code 0 on success / 2 on hard stop or config error.
-
-    python3 -m framework_engineer.source_location.cli locate \
-        --schema <kid-schema.json> \
-        --manifest <third_party_manifest.json> \
-        --sglang-repo-root <sglang-root> [--out <output-schema.json>]
-
-    python3 -m framework_engineer.source_location.cli extract \
-        --schema <decomposition_*.schema.json> [--workspace-out <dir>] [--allow-empty]
+Progress is written to stderr, the machine-readable summary to stdout, and
+configuration/contract errors return exit code 2.
 """
 
 from __future__ import annotations
@@ -19,45 +11,9 @@ import json
 import sys
 from pathlib import Path
 
-from .extractor import extract_workspace
+from .contracts import ContractError
+from .extractor import ExtractError, extract_workspace
 from .locator import LocateError, locate_schema
-
-
-def cmd_extract(args: argparse.Namespace) -> int:
-    schema = Path(args.schema)
-    if not schema.exists():
-        print(f"error: schema not found: {schema}", file=sys.stderr)
-        return 2
-
-    report = extract_workspace(
-        schema,
-        workspace_out=args.workspace_out,
-        allow_empty=args.allow_empty,
-    )
-
-    if report.stopped:
-        print(
-            "[extract] HARD STOP: required layers unresolved "
-            "(fill file/line in the schema, or re-run with --allow-empty):",
-            file=sys.stderr,
-        )
-        for m in report.missing:
-            hint = f"  (repo_hint: {m['repo_hint']})" if m.get("repo_hint") else ""
-            reason = f"  [{m['reason']}]" if m.get("reason") else ""
-            print(f"  - {m['kernel']} / {m['layer']}{reason}{hint}", file=sys.stderr)
-        print(json.dumps(report.summary(), indent=2))
-        return 2
-
-    for i, ke in enumerate(report.kernels, 1):
-        wrote = ",".join(ke.layers_written) or "-"
-        ph = ",".join(ke.layers_placeholder) or "-"
-        print(
-            f"[{i}/{len(report.kernels)}] {ke.kernel_id}: wrote {wrote} / placeholder {ph}",
-            file=sys.stderr,
-            flush=True,
-        )
-    print(json.dumps(report.summary(), indent=2))
-    return 0
 
 
 def cmd_locate(args: argparse.Namespace) -> int:
@@ -66,9 +22,9 @@ def cmd_locate(args: argparse.Namespace) -> int:
             Path(args.schema),
             manifest_path=Path(args.manifest),
             sglang_repo_root=Path(args.sglang_repo_root),
-            output_path=Path(args.out) if args.out is not None else None,
+            output_path=Path(args.out),
         )
-    except (LocateError, OSError) as exc:
+    except (LocateError, ContractError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
@@ -78,8 +34,7 @@ def cmd_locate(args: argparse.Namespace) -> int:
         f"{summary['total']} kernels: "
         f"resolved={summary['interface_resolved']}, "
         f"ambiguous={summary['interface_ambiguous']}, "
-        f"not_found={summary['interface_not_found']}, "
-        f"not_applicable={summary['interface_not_applicable']}",
+        f"not_found={summary['interface_not_found']}",
         file=sys.stderr,
     )
     for skipped in result.skipped_roots:
@@ -92,44 +47,62 @@ def cmd_locate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_extract(args: argparse.Namespace) -> int:
+    try:
+        report = extract_workspace(
+            Path(args.schema),
+            workspace_out=Path(args.workspace_out) if args.workspace_out else None,
+        )
+    except (ExtractError, ContractError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    for index, kernel in enumerate(report.kernels, 1):
+        wrote = ",".join(kernel.layers_written) or "-"
+        placeholders = ",".join(kernel.layers_placeholder) or "-"
+        print(
+            f"[{index}/{len(report.kernels)}] {kernel.kernel_id}: "
+            f"wrote {wrote} / placeholder {placeholders}",
+            file=sys.stderr,
+        )
+    print(json.dumps(report.summary(), indent=2, ensure_ascii=False))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python3 -m framework_engineer.source_location.cli",
-        description="Source-location Layer 1 locate and Layer 3 extraction.",
+        description="Locate Python interface candidates and extract Agent-confirmed sources.",
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    e = sub.add_parser("extract", help="Layer 3: slice source layers into kernel_sources/.")
-    e.add_argument("--schema", type=Path, required=True)
-    e.add_argument("--workspace-out", type=Path, default=None)
-    e.add_argument(
-        "--allow-empty",
-        action="store_true",
-        help="Do not hard-stop on unresolved required layers; emit placeholders "
-        "(= user explicitly accepts the gap as a known risk).",
+    locate = subparsers.add_parser(
+        "locate",
+        help="Add transient Python interface candidates to a KID v2 schema copy.",
     )
-    e.set_defaults(func=cmd_extract)
-
-    loc = sub.add_parser(
-        "locate", help="Layer 1: enrich a KID schema with source_locations."
-    )
-    loc.add_argument("--schema", type=Path, required=True)
-    loc.add_argument("--manifest", type=Path, required=True)
-    loc.add_argument("--sglang-repo-root", type=Path, required=True)
-    loc.add_argument(
+    locate.add_argument("--schema", type=Path, required=True)
+    locate.add_argument("--manifest", type=Path, required=True)
+    locate.add_argument("--sglang-repo-root", type=Path, required=True)
+    locate.add_argument(
         "--out",
         type=Path,
-        default=None,
-        help="Write an enriched copy; defaults to atomically updating --schema.",
+        required=True,
+        help="Output schema copy; must differ from --schema.",
     )
-    loc.set_defaults(func=cmd_locate)
+    locate.set_defaults(func=cmd_locate)
 
+    extract = subparsers.add_parser(
+        "extract",
+        help="Copy Agent-confirmed source hits and write read_hints.txt.",
+    )
+    extract.add_argument("--schema", type=Path, required=True)
+    extract.add_argument("--workspace-out", type=Path, default=None)
+    extract.set_defaults(func=cmd_extract)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
+    args = build_parser().parse_args(argv)
     return int(args.func(args))
 
 

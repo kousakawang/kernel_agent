@@ -1,35 +1,42 @@
 {
-  "schema_version": "kernel-interface-decomposition/dry-run-v1",
+  "schema_version": "kernel-interface-decomposition/v2",
   "backend_name": "all_backends",
-  "dry_run": true,
   "target": {
+    "interface": "all_backends_test",
     "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
-    "line": 669,
-    "note": "分解起点(用户指定的 high_level 入口 all_backends_test); 它逐个调用 10 个 demo_Fx(), 下面 kernels[] 是每个 backend 形态的代表算子 (F0-F9)。"
+    "line": 669
   },
   "coverage_report": {
-    "note": "本样例为人工编排的多后端算子目录(每个 demo 一个代表算子, 覆盖 9 类 backend 形态), 非单次 forward 的真实 profiling; 不统计 coverage。"
+    "per_invocation": [],
+    "min_coverage": null,
+    "semantic_target_count": 10,
+    "gpu_kernel_count": null,
+    "uncaptured_hint": "This is a manually curated multi-backend catalog rather than a single profiled high-level invocation; runtime coverage and GPU kernel counts still need to be collected."
   },
   "kernels": [
     {
       "rank": 1,
+      "low_level_id": "torch_sdpa",
       "kernel": {
         "raw_name": "aten::_scaled_dot_product_flash_attention",
         "normalized_name": "sdpa_flash"
       },
-      "low_level_id": "torch_sdpa",
       "interface": "torch.nn.functional.scaled_dot_product_attention",
-      "archetype": "pytorch_native",
-      "archetype_code": "F0",
-      "binding_provider": null,
+      "archetype": "pytorch_dispatch",
+      "provider": "pytorch",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
           "line": 85
-        },
-        "implementation": {
-          "source_files": [],
-          "note": "pytorch 原生算子: 走 torch/aten/cuDNN-flash, sglang 无自有源码; 四层全 not_applicable (无处可定位)。"
         },
         "attribution": {
           "method": "cuda_correlation_id+nvtx",
@@ -39,28 +46,27 @@
     },
     {
       "rank": 2,
+      "low_level_id": "fla_recompute_w_u_fwd",
       "kernel": {
         "raw_name": "recompute_w_u_fwd_kernel",
         "normalized_name": "recompute_w_u_fwd_kernel"
       },
-      "low_level_id": "fla_recompute_w_u_fwd",
-      "interface": "recompute_w_u_fwd_kernel",
-      "archetype": "sglang_triton",
-      "archetype_code": "F1",
-      "binding_provider": null,
+      "interface": "sglang.srt.layers.attention.fla.wy_fast.recompute_w_u_fwd",
+      "archetype": "triton_launch",
+      "provider": "sglang",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
           "line": 152
-        },
-        "implementation": {
-          "source_files": [
-            "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/srt/layers/attention/fla/wy_fast.py"
-          ],
-          "symbols": [
-            "recompute_w_u_fwd_kernel"
-          ],
-          "definition_line": 23
         },
         "attribution": {
           "method": "cuda_correlation_id+nvtx",
@@ -70,23 +76,27 @@
     },
     {
       "rank": 3,
+      "low_level_id": "sgl_kernel_silu_and_mul",
       "kernel": {
         "raw_name": "sgl_kernel::silu_and_mul",
         "normalized_name": "silu_and_mul"
       },
-      "low_level_id": "sgl_kernel_silu_and_mul",
-      "interface": "torch.ops.sgl_kernel.silu_and_mul",
-      "archetype": "sgl_kernel_builtin",
-      "archetype_code": "F2",
-      "binding_provider": "sgl_kernel",
+      "interface": "sgl_kernel.silu_and_mul",
+      "archetype": "pytorch_dispatch",
+      "provider": "sgl-kernel",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
           "line": 189
-        },
-        "implementation": {
-          "source_files": [],
-          "note": "sgl-kernel 算子 AOT 编入 .so, 运行时看不到源码路径; 四层交给 locate 静态定位。"
         },
         "attribution": {
           "method": "cuda_correlation_id+nvtx",
@@ -96,23 +106,27 @@
     },
     {
       "rank": 4,
+      "low_level_id": "sgl_kernel_fa3_fwd",
       "kernel": {
         "raw_name": "flash_fwd_kernel_sm90",
         "normalized_name": "fa3_fwd"
       },
-      "low_level_id": "sgl_kernel_fa3_fwd",
-      "interface": "torch.ops.sgl_kernel.fwd",
-      "archetype": "sgl_kernel_thirdparty",
-      "archetype_code": "F3",
-      "binding_provider": "sgl_kernel",
+      "interface": "sgl_kernel.flash_attn.flash_attn_varlen_func",
+      "archetype": "pytorch_dispatch",
+      "provider": "sgl-attn",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
           "line": 258
-        },
-        "implementation": {
-          "source_files": [],
-          "note": "FA3 通过 CMake FetchContent 从 sgl-attn 编入独立 flash_ops .so; 运行时无源码路径, 交 locate 静态定位 (impl 落在 sgl-attn 仓)。"
         },
         "attribution": {
           "method": "cuda_correlation_id+nvtx",
@@ -122,23 +136,27 @@
     },
     {
       "rank": 5,
+      "low_level_id": "sglang_jit_add_constant",
       "kernel": {
         "raw_name": "add_constant_kernel",
         "normalized_name": "add_constant"
       },
-      "low_level_id": "sglang_jit_add_constant",
-      "interface": "sglang.jit_kernel.add_constant",
-      "archetype": "sglang_jit",
-      "archetype_code": "F4",
-      "binding_provider": "sglang_jit",
+      "interface": "sglang.jit_kernel.add_constant.add_constant",
+      "archetype": "tvm_ffi_call",
+      "provider": "sglang",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
           "line": 318
-        },
-        "implementation": {
-          "source_files": [],
-          "note": "sglang 自有 JIT: 首次调用 load_jit 现场把 csrc/add_constant.cuh 编成 .so; 运行时源在构建目录, 交 locate 定位仓库内 .cuh。"
         },
         "attribution": {
           "method": "cuda_correlation_id+nvtx",
@@ -148,23 +166,27 @@
     },
     {
       "rank": 6,
+      "low_level_id": "flashinfer_top_k_top_p_sampling",
       "kernel": {
         "raw_name": "TopKTopPSamplingFromProbKernel",
         "normalized_name": "top_k_top_p_sampling"
       },
-      "low_level_id": "flashinfer_top_k_top_p_sampling",
-      "interface": "torch.ops.flashinfer.top_k_top_p_sampling_from_probs",
-      "archetype": "thirdparty_aot",
-      "archetype_code": "F5",
-      "binding_provider": "flashinfer",
+      "interface": "flashinfer.sampling.top_k_top_p_sampling_from_probs",
+      "archetype": "tvm_ffi_call",
+      "provider": "flashinfer",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
           "line": 370
-        },
-        "implementation": {
-          "source_files": [],
-          "note": "flashinfer AOT: 预编译 .so 直接 load; 无源码路径, 交 locate 定位 csrc/*.cu + include/*.cuh。"
         },
         "attribution": {
           "method": "cuda_correlation_id+nvtx",
@@ -174,28 +196,27 @@
     },
     {
       "rank": 7,
+      "low_level_id": "flashinfer_triton_rms_norm",
       "kernel": {
         "raw_name": "rms_norm_kernel",
         "normalized_name": "rms_norm"
       },
-      "low_level_id": "flashinfer_triton_rms_norm",
-      "interface": "rms_norm_kernel",
-      "archetype": "thirdparty_triton_dsl",
-      "archetype_code": "F6",
-      "binding_provider": null,
+      "interface": "flashinfer.triton.norm.rms_norm",
+      "archetype": "triton_launch",
+      "provider": "flashinfer",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
           "line": 411
-        },
-        "implementation": {
-          "source_files": [
-            "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/triton/kernels/norm.py"
-          ],
-          "symbols": [
-            "rms_norm_kernel"
-          ],
-          "definition_line": 8
         },
         "attribution": {
           "method": "cuda_correlation_id+nvtx",
@@ -205,23 +226,27 @@
     },
     {
       "rank": 8,
+      "low_level_id": "flashinfer_batch_prefill_paged",
       "kernel": {
         "raw_name": "BatchPrefillWithPagedKVCacheKernel",
         "normalized_name": "batch_prefill_paged"
       },
-      "low_level_id": "flashinfer_batch_prefill_paged",
-      "interface": "BatchPrefillWithPagedKVCacheWrapper.run",
-      "archetype": "thirdparty_cpp_jit",
-      "archetype_code": "F7",
-      "binding_provider": "flashinfer",
+      "interface": "flashinfer.BatchPrefillWithPagedKVCacheWrapper.run",
+      "archetype": "tvm_ffi_call",
+      "provider": "flashinfer",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
           "line": 500
-        },
-        "implementation": {
-          "source_files": [],
-          "note": "flashinfer C++ JIT: plan() 时现场渲染 .cu 并 gen_jit_spec, build_and_load 跑 ninja+nvcc; 源模板在 include/.../prefill.cuh, 交 locate 定位。"
         },
         "attribution": {
           "method": "cuda_correlation_id+nvtx",
@@ -231,23 +256,27 @@
     },
     {
       "rank": 9,
+      "low_level_id": "sglang_cutedsl_fused_norm_scale_shift",
       "kernel": {
         "raw_name": "scale_residual_norm_scale_shift_kernel",
         "normalized_name": "fused_norm_scale_shift"
       },
-      "low_level_id": "sglang_cutedsl_fused_norm_scale_shift",
-      "interface": "torch.ops.sglang.fused_norm_scale_shift",
-      "archetype": "sglang_jit",
-      "archetype_code": "F4",
-      "binding_provider": "sglang_jit",
+      "interface": "sglang.jit_kernel.diffusion.cutedsl.scale_residual_norm_scale_shift.fused_norm_scale_shift",
+      "archetype": "cute_dsl_launch",
+      "provider": "sglang",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
           "line": 567
-        },
-        "implementation": {
-          "source_files": [],
-          "note": "sglang 自有 CuTe DSL: 首次调用 cute.compile 现场编译 @cute.kernel; kernel 用 python DSL 写在仓库内, 交 locate 定位 (归类 F4 sglang_jit)。"
         },
         "attribution": {
           "method": "cuda_correlation_id+nvtx",
@@ -257,23 +286,27 @@
     },
     {
       "rank": 10,
+      "low_level_id": "deepgemm_fp8_paged_mqa_logits",
       "kernel": {
         "raw_name": "sm90_fp8_paged_mqa_logits",
         "normalized_name": "fp8_paged_mqa_logits"
       },
-      "low_level_id": "deepgemm_fp8_paged_mqa_logits",
       "interface": "deep_gemm.fp8_paged_mqa_logits",
-      "archetype": "thirdparty_cpp_jit",
-      "archetype_code": "F7",
-      "binding_provider": "deepgemm",
+      "archetype": "python_binding",
+      "provider": "deepgemm",
+      "metrics": {
+        "duration_us": null,
+        "share_in_invocation": null
+      },
+      "measurement": {
+        "metric": "gpu_kernel_duration_us",
+        "aggregation": "sum",
+        "sample_count": 0
+      },
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/all_backends_sglang.py",
           "line": 646
-        },
-        "implementation": {
-          "source_files": [],
-          "note": "三方 DeepGEMM: AOT 编 _C 扩展, 真正 kernel 由 C++ 内嵌 NVRTC 运行时生成并编译; python 只 import _C 符号, 交 locate 定位 C++ 调用链 (归类 F7)。"
         },
         "attribution": {
           "method": "cuda_correlation_id+nvtx",

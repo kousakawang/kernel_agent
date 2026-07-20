@@ -19,6 +19,49 @@ def _invocation(call_id: str, stage: str, start: int) -> dict[str, object]:
     }
 
 
+def _decomposed_invocation(
+    call_id: str,
+    stage: str,
+    start: int,
+    execution_interface: str,
+    *,
+    repeat: int = 1,
+    provider_hint: str = "provider-a",
+) -> dict[str, object]:
+    captures = []
+    for index in range(repeat):
+        captures.append(
+            {
+                "capture_id": f"{call_id}-capture-{index}",
+                "parent_capture_id": None,
+                "archetype": "pytorch_dispatch",
+                "common_interface": "TorchDispatchMode.__torch_dispatch__",
+                "execution_interface": execution_interface,
+                "provider_hint": provider_hint,
+                "kernel_ids": [f"{call_id}-kernel-{index}"],
+                "metrics": {"direct_gpu_kernel_sum_us": 10.0 + index},
+                "python_stack": [
+                    {
+                        "file": "/repo/workload.py",
+                        "definition_line": 10,
+                        "function": "high",
+                        "qualname": "high",
+                        "call_site_to_next": {
+                            "file": "/repo/workload.py",
+                            "line": 11,
+                        },
+                    }
+                ],
+            }
+        )
+    return {
+        "high_level": {"call_id": call_id, "stage": stage},
+        "execution_captures": captures,
+        "unattributed_kernel_ids": [],
+        "_nvtx_start_ns": start,
+    }
+
+
 class TestConfigAndSampling(unittest.TestCase):
     def test_runtime_v2_config_accepts_direct_test(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -44,7 +87,6 @@ class TestConfigAndSampling(unittest.TestCase):
                         "stop": None,
                         "env": {},
                         "selection": {
-                            "sampling": "last_n",
                             "sample_count_per_stage": 2,
                         },
                         "profiling": {"disable_cuda_graph": True},
@@ -54,7 +96,7 @@ class TestConfigAndSampling(unittest.TestCase):
             )
             config = RuntimeCaptureConfig.load(path)
             self.assertIsNone(config.command)
-            self.assertEqual(config.selection["sampling"], "last_n")
+            self.assertEqual(config.selection["sampling"], "unique_decomposition")
             self.assertEqual(config.profiling["min_capture_coverage"], 1.0)
 
     def test_invalid_legacy_or_cuda_graph_config_fails(self) -> None:
@@ -115,6 +157,101 @@ class TestConfigAndSampling(unittest.TestCase):
             },
         )
         self.assertEqual(selected[0]["high_level"]["call_id"], "2")
+
+    def test_unique_decomposition_chooses_last_across_stages(self) -> None:
+        first = _decomposed_invocation("p0", "prefill", 10, "aten.mm.default")
+        last = _decomposed_invocation(
+            "d0",
+            "decode",
+            20,
+            "aten.mm.default",
+            repeat=2,
+            provider_hint="provider-b",
+        )
+        selected, diagnostics = select_invocations(
+            [first, last],
+            {
+                "sampling": "unique_decomposition",
+                "sample_count_per_stage": 1,
+                "skip_invocations": 0,
+                "stages": [],
+            },
+        )
+        self.assertEqual(
+            [item["high_level"]["call_id"] for item in selected], ["d0"]
+        )
+        self.assertEqual(diagnostics["unique_decomposition_count"], 1)
+        self.assertEqual(
+            diagnostics["decomposition_groups"],
+            [
+                {
+                    "signature_hash": diagnostics["decomposition_groups"][0][
+                        "signature_hash"
+                    ],
+                    "member_call_ids": ["p0", "d0"],
+                    "observed_stages": ["prefill", "decode"],
+                    "representative_call_id": "d0",
+                }
+            ],
+        )
+        self.assertEqual(diagnostics["discarded_call_ids"], ["p0"])
+
+    def test_unique_decomposition_keeps_distinct_execution_interfaces(self) -> None:
+        invocations = [
+            _decomposed_invocation("old", "unknown", 10, "aten.mm.default"),
+            _decomposed_invocation(
+                "softmax", "unknown", 20, "aten._softmax.default"
+            ),
+        ]
+        selected, diagnostics = select_invocations(
+            invocations,
+            {
+                "sampling": "unique_decomposition",
+                "sample_count_per_stage": 1,
+                "skip_invocations": 0,
+                "stages": [],
+            },
+        )
+        self.assertEqual(
+            [item["high_level"]["call_id"] for item in selected],
+            ["old", "softmax"],
+        )
+        self.assertEqual(diagnostics["unique_decomposition_count"], 2)
+
+    def test_unique_decomposition_distinguishes_unattributed_kernel_count(self) -> None:
+        clean = _decomposed_invocation("clean", "unknown", 10, "aten.mm.default")
+        unattributed = _decomposed_invocation(
+            "unattributed", "unknown", 20, "aten.mm.default"
+        )
+        unattributed["unattributed_kernel_ids"] = ["kernel-u"]
+        selected, _ = select_invocations(
+            [clean, unattributed],
+            {
+                "sampling": "unique_decomposition",
+                "sample_count_per_stage": 1,
+                "skip_invocations": 0,
+                "stages": [],
+            },
+        )
+        self.assertEqual(len(selected), 2)
+
+    def test_unique_decomposition_distinguishes_python_call_sites(self) -> None:
+        first = _decomposed_invocation("first", "unknown", 10, "aten.mm.default")
+        second = _decomposed_invocation("second", "unknown", 20, "aten.mm.default")
+        second["execution_captures"][0]["python_stack"][0][
+            "call_site_to_next"
+        ]["line"] = 99
+        selected, diagnostics = select_invocations(
+            [first, second],
+            {
+                "sampling": "unique_decomposition",
+                "sample_count_per_stage": 1,
+                "skip_invocations": 0,
+                "stages": [],
+            },
+        )
+        self.assertEqual(len(selected), 2)
+        self.assertEqual(diagnostics["unique_decomposition_count"], 2)
 
 
 if __name__ == "__main__":

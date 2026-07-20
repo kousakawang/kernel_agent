@@ -1,46 +1,79 @@
-# Locate Layer-1 CLI 本机示例
+# Source Locate 两个 CLI 本机示例
 
-本目录提供一个可直接运行的 `third_party_manifest.json`。其中只保留当前
-Layer-1 示例会使用、并且在本机确实存在的源码仓库：
+完整的用户准备、Agent 启动和产物说明见上一级
+[`README.md`](../README.md)。本文只保留当前开发机路径下的最短命令示例。
 
-- `flashinfer`：`/Users/bytedance/Desktop/infra_agent/flashinfer`
-- `deep_gemm`：`/Users/bytedance/Desktop/infra_agent/DeepGEMM`
-- `flash_attn`（sgl-attn）：`/Users/bytedance/Desktop/infra_agent/sgl-attn`
+`locate` 只产生 Python interface 候选，`extract` 只消费 source_locate Agent 已确认的
+四层 `source_locations`。两者都不按 `archetype/provider` 分派。
 
-sglang 仓库不放进 manifest，而是通过 CLI 的 `--sglang-repo-root` 单独传入。
+本目录的 `third_party_manifest.json` 提供当前示例使用的 FlashInfer、DeepGEMM 和
+sgl-attn 本地源码路径；SGLang 根目录通过 `--sglang-repo-root` 显式传入。
 
-## 运行
+## locate
 
 在 `kernel_agent` 仓库根目录执行：
 
 ```bash
-cd /Users/bytedance/Desktop/infra_agent/kernel_agent
-
 python3 -m framework_engineer.source_location.cli locate \
   --schema example_kernels/to_fill_kid.json \
   --manifest framework_engineer/source_location/example/third_party_manifest.json \
   --sglang-repo-root /Users/bytedance/Desktop/infra_agent/sglang \
-  --out /tmp/to_fill_after_layer1.json
+  --out /tmp/to_fill_locate_candidates.json
 ```
 
-命令成功时返回码为 `0`，并生成：
+`--out` 必填且不能等于 `--schema`。输出保持所有 KID 字段不变，只在每个 kernel 下增加
+临时的 `locate_candidates.interface_definition`。唯一候选、歧义和未找到分别标记为
+`resolved`、`ambiguous`、`not_found`；它们仍需 Agent 验证。
 
-- enrichment schema：`/tmp/to_fill_after_layer1.json`
-- 定位报告：`/tmp/ref/locate_report.json`
+仓库内对应 golden 是 `example_kernels/to_fill_locate_candidates.json`。
 
-可以使用下面的命令查看结果：
+## source_locate Agent
+
+Agent 入口 Prompt 和定位标准分别位于：
+
+```text
+framework_engineer/prompts/start_source_locate.md
+framework_engineer/skills/source_locate.md
+```
+
+Agent 对每个 target 调用私有的 `inspect-target/search` helper，阅读并验证真实调用链，然后写入
+`source-locate-agent-decisions/v1` decisions。最终通过 helper 合并结果：
 
 ```bash
-python3 -m json.tool /tmp/to_fill_after_layer1.json
-python3 -m json.tool /tmp/ref/locate_report.json
+python3 -m framework_engineer.source_location.agent_helper finalize \
+  --schema /tmp/to_fill_locate_candidates.json \
+  --decisions /tmp/source_locate_decisions.json \
+  --manifest framework_engineer/source_location/example/third_party_manifest.json \
+  --sglang-repo-root /Users/bytedance/Desktop/infra_agent/sglang \
+  --out /tmp/to_fill_locate.json \
+  --notes-out /tmp/ref/locate_agent_notes.md
 ```
 
-如果省略 `--out`，CLI 会原子更新 `--schema` 指向的文件。建议第一次运行时保留
-`--out`，确认输出后再决定是否原地更新。
+`finalize` 会删除临时 candidates、校验所有 hit 位于允许的 repo、检查行号、自动计算
+`repo_hint`，并保证 KID 字段不变。私有 helper 不属于公开 CLI；查看其完整用法可执行：
+
+```bash
+python3 -m framework_engineer.source_location.agent_helper --help
+```
+
+Agent 到生成 located schema 和 notes 为止，不调用 extract。
+
+## extract
+
+Agent 确认四层结果并移除 `locate_candidates` 后执行：
+
+```bash
+cp example_kernels/to_fill_locate.json /tmp/to_fill_extract.json
+python3 -m framework_engineer.source_location.cli extract \
+  --schema /tmp/to_fill_extract.json \
+  --workspace-out /tmp/source_locate_workspace
+```
+
+命令创建 `kernel_sources/<low_level_id>/`、复制四层整文件、把计算出的 definition
+结束行写入 `read_hints.txt`，并在 schema 中回填 `kernel_sources_dir`。`missed` 和
+`not_applicable` 会生成说明占位；无效路径或行号会在清理旧输出前失败。
 
 ## 路径说明
 
-这个 manifest 使用当前开发机的绝对路径。如果仓库被移动，请同步修改
-`third_party_manifest.json` 中的 `local_path`，以及命令中的
-`--sglang-repo-root`。manifest 中 `status` 不是 `ok` 或者 `local_path` 不存在的
-仓库不会进入搜索范围。
+manifest 使用当前开发机的绝对路径。仓库移动后需要同步修改其中的 `local_path` 和
+`--sglang-repo-root`。`status != ok` 或路径不存在的 manifest 项不会进入搜索范围。

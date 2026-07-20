@@ -1,8 +1,15 @@
-source\_locations 填写标准（locate 工作标准）
+source\_locations 填写标准（历史源码案例参考）
 
-> **本文是 agent 的执行标准**：locate Layer 2 agent（以及人工填写 dry-run schema 时）据此填 `decomposition_<backend>.schema.json` 里每个 kernel 的 `source_locations` 四层。
->
-> 上位设计见 [KID\_and\_locate\_source\_desgin\_v2.md](file:///Users/bytedance/Desktop/infra_agent/kernel_agent/kernel_agent_kadai/KID_and_locate_source_desgin_v2.md) §5；本文是它「四层到底填哪个文件的哪一行」的**收敛与钉死**，冲突时以本文为准。
+> **2026-07-19 迁移说明**：本文中的 F0–F8、Layer 1/2/3、`needs_agent/source` 和
+> archetype null-rule 已废弃，不再定义生产契约。当前契约以
+> [KID_and_locate_source_desgin_v2.md](file:///Users/bytedance/Desktop/infra_agent/kernel_agent/kernel_agent_kadai/KID_and_locate_source_desgin_v2.md)
+> §4–§5 为准：`locate` CLI 只写临时 `locate_candidates`，source_locate Agent 对四层
+> `source_locations` 负唯一责任，`extract` 只做文件复制、range completion、read hints 和
+> `kernel_sources_dir` 回填。本文其余内容仅保留为各仓库源码调用链案例，后续会按新 Agent
+> 工作流重写。Agent 的当前可执行规范见
+> `framework_engineer/skills/source_locate.md` 和
+> `framework_engineer/prompts/start_source_locate.md`；Agent 在生成 located schema/notes 后结束，
+> extract 由外层工作流显式调用。
 >
 > 日期：2026-07-14
 
@@ -246,4 +253,3 @@ locate 分三层，**定位的智能活集中在 Layer 2**，Layer 1/3 都是确
 | **Layer 3** | 确定性 CLI | 只做**搬运**：按 `source_locations` 的 `{file, def_line}` 拷贝整文件、用 range-completion 补 end line 写进 `read_hints.txt`、回填 `kernel_sources_dir`。 | 不改 `source_locations`、不做任何语义判断。 |
 
 **定位是尽力而为，不是硬门槛**：`kernel_impl` 能定到核心 kernel 就定，调用链上的 device helper（如 flashinfer triton 的 `scale_and_clamp`）由 agent 判断值不值得纳入，**不设硬规则**。定不全不阻断——因为 `schema.json` 里逐层的 `def_line`（一手导航线索）才是 locate 的核心产物，下游 translate_problem 看得到原仓库、可据行号自行探索；`kernel_sources/` 的 extract 文件是给看不到原仓库的 kernel_engineer 的**兜底参考**，允许残缺。
-

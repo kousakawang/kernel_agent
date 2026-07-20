@@ -1,0 +1,193 @@
+{
+  "schema_version": "kid-semantic-decisions/v1",
+  "backend_name": "nsys_poc",
+  "targets": [
+    {
+      "low_level_id": "poc_pytorch_matmul",
+      "interface": "torch.matmul",
+      "provider": "pytorch",
+      "normalized_kernel_name": "torch_matmul_gemm",
+      "confidence": "high",
+      "members": [
+        {
+          "call_id": "1",
+          "capture_id": "1",
+          "semantic_call_site": {
+            "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+            "line": 810
+          }
+        }
+      ]
+    },
+    {
+      "low_level_id": "poc_sgl_kernel_silu_and_mul",
+      "interface": "sgl_kernel.silu_and_mul",
+      "provider": "sgl-kernel",
+      "normalized_kernel_name": "silu_and_mul",
+      "confidence": "high",
+      "members": [
+        {
+          "call_id": "1",
+          "capture_id": "3",
+          "semantic_call_site": {
+            "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+            "line": 820
+          }
+        }
+      ]
+    },
+    {
+      "low_level_id": "poc_sgl_attn_flash_attn_varlen",
+      "interface": "sgl_kernel.flash_attn.flash_attn_varlen_func",
+      "provider": "sgl-attn",
+      "normalized_kernel_name": "flash_attn_varlen_fwd_sm90",
+      "confidence": "high",
+      "members": [
+        {
+          "call_id": "1",
+          "capture_id": "4",
+          "semantic_call_site": {
+            "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+            "line": 834
+          }
+        }
+      ]
+    },
+    {
+      "low_level_id": "poc_sglang_triton_rms_norm",
+      "interface": "sglang.jit_kernel.diffusion.triton.rmsnorm_onepass.triton_one_pass_rms_norm",
+      "provider": "sglang",
+      "normalized_kernel_name": "triton_one_pass_rms_norm",
+      "confidence": "high",
+      "members": [
+        {
+          "call_id": "1",
+          "capture_id": "6",
+          "semantic_call_site": {
+            "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+            "line": 856
+          }
+        }
+      ]
+    },
+    {
+      "low_level_id": "poc_flashinfer_triton_rms_norm",
+      "interface": "flashinfer.triton.norm.rms_norm",
+      "provider": "flashinfer",
+      "normalized_kernel_name": "flashinfer_rms_norm",
+      "confidence": "high",
+      "members": [
+        {
+          "call_id": "1",
+          "capture_id": "7",
+          "semantic_call_site": {
+            "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+            "line": 868
+          }
+        }
+      ]
+    },
+    {
+      "low_level_id": "poc_sglang_jit_add_constant",
+      "interface": "sglang.jit_kernel.add_constant.add_constant",
+      "provider": "sglang",
+      "normalized_kernel_name": "add_constant",
+      "confidence": "high",
+      "members": [
+        {
+          "call_id": "1",
+          "capture_id": "9",
+          "semantic_call_site": {
+            "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+            "line": 879
+          }
+        }
+      ]
+    },
+    {
+      "low_level_id": "poc_flashinfer_min_p_sampling",
+      "interface": "flashinfer.sampling.min_p_sampling_from_probs",
+      "provider": "flashinfer",
+      "normalized_kernel_name": "min_p_sampling_from_probs",
+      "confidence": "high",
+      "members": [
+        {
+          "call_id": "1",
+          "capture_id": "21",
+          "semantic_call_site": {
+            "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+            "line": 891
+          }
+        }
+      ]
+    },
+    {
+      "low_level_id": "poc_sglang_cutedsl_fused_norm_scale_shift",
+      "interface": "sglang.jit_kernel.diffusion.cutedsl.scale_residual_norm_scale_shift.fused_norm_scale_shift",
+      "provider": "sglang",
+      "normalized_kernel_name": "fused_norm_scale_shift",
+      "confidence": "high",
+      "members": [
+        {
+          "call_id": "1",
+          "capture_id": "23",
+          "semantic_call_site": {
+            "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+            "line": 912
+          }
+        }
+      ]
+    },
+    {
+      "low_level_id": "poc_deepgemm_bf16_gemm_nt",
+      "interface": "deep_gemm.bf16_gemm_nt",
+      "provider": "deepgemm",
+      "normalized_kernel_name": "deepgemm_bf16_gemm_nt",
+      "confidence": "high",
+      "members": [
+        {
+          "call_id": "1",
+          "capture_id": "24",
+          "semantic_call_site": {
+            "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+            "line": 933
+          }
+        }
+      ]
+    },
+    {
+      "low_level_id": "poc_sglang_tilelang_hc_split_sinkhorn",
+      "interface": "sglang.srt.layers.mhc.hc_split_sinkhorn",
+      "provider": "sglang",
+      "normalized_kernel_name": "hc_split_sinkhorn",
+      "confidence": "high",
+      "members": [
+        {
+          "call_id": "1",
+          "capture_id": "35",
+          "semantic_call_site": {
+            "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+            "line": 947
+          }
+        }
+      ]
+    },
+    {
+      "low_level_id": "poc_sglang_inductor_scaling_penalties",
+      "interface": "sglang.srt.sampling.penaltylib.repetition_penalty.apply_scaling_penalties",
+      "provider": "sglang",
+      "normalized_kernel_name": "apply_scaling_penalties_inductor",
+      "confidence": "high",
+      "members": [
+        {
+          "call_id": "1",
+          "capture_id": "36",
+          "semantic_call_site": {
+            "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+            "line": 962
+          }
+        }
+      ]
+    }
+  ]
+}

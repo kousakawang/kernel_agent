@@ -34,6 +34,13 @@ def _write_injection(config: RuntimeCaptureConfig, root: Path) -> Path:
     inject = root / "_inject"
     runtime_config = config.runtime_config(events_dir=root / "capture_events")
     runtime_config["output_dir"] = str(root)
+    if config.command is not None:
+        runtime_config["recording_gate_file"] = str(
+            root / "_inject" / "recording.enabled"
+        )
+        runtime_config["active_ranges_dir"] = str(
+            root / "_inject" / "active_ranges"
+        )
     runtime_path = inject / "runtime_config.json"
     runtime_path.write_text(
         json.dumps(runtime_config, indent=2, ensure_ascii=False) + "\n",
@@ -176,6 +183,49 @@ def _nsys_profile_command(
     ]
 
 
+def _nsys_launch_command(
+    config: RuntimeCaptureConfig,
+    session_name: str,
+    application_command: str,
+) -> list[str]:
+    """Launch a service in a paused interactive Nsight session."""
+
+    return [
+        str(config.profiling["nsys_bin"]),
+        "launch",
+        f"--session-new={session_name}",
+        "--trace=cuda,nvtx,osrt",
+        "--trace-fork-before-exec=true",
+        "--show-output=true",
+        "--wait=all",
+        "bash",
+        "-lc",
+        application_command,
+    ]
+
+
+def _nsys_start_command(
+    config: RuntimeCaptureConfig, root: Path, session_name: str
+) -> list[str]:
+    return [
+        str(config.profiling["nsys_bin"]),
+        "start",
+        f"--session={session_name}",
+        "--force-overwrite=true",
+        f"--output={root / '_profile'}",
+    ]
+
+
+def _nsys_stop_command(
+    config: RuntimeCaptureConfig, session_name: str
+) -> list[str]:
+    return [
+        str(config.profiling["nsys_bin"]),
+        "stop",
+        f"--session={session_name}",
+    ]
+
+
 def _wait_ready(config: RuntimeCaptureConfig, process: subprocess.Popen[Any]) -> None:
     ready = config.ready or {}
     if not ready:
@@ -230,6 +280,52 @@ def _stop_process_group(
             pass
 
 
+def _wait_recording_drain(
+    root: Path, process: subprocess.Popen[Any], timeout: float
+) -> None:
+    """Wait until high-level calls admitted before gate close have returned."""
+
+    active_dir = root / "_inject" / "active_ranges"
+    deadline = time.monotonic() + min(timeout, 60.0)
+    empty_since: float | None = None
+    while time.monotonic() < deadline:
+        if not list(active_dir.glob("*.active")):
+            now = time.monotonic()
+            if empty_since is None:
+                empty_since = now
+            elif now - empty_since >= 0.1:
+                return
+        else:
+            empty_since = None
+        if process.poll() is not None:
+            raise RuntimeError(
+                "profiled service exited while KID high-level ranges were active"
+            )
+        time.sleep(0.05)
+    active = sorted(path.name for path in active_dir.glob("*.active"))
+    raise TimeoutError(f"KID high-level ranges did not drain: {active}")
+
+
+def _run_nsys_control(
+    command: list[str],
+    *,
+    config: RuntimeCaptureConfig,
+    log: Any,
+    timeout: float,
+) -> subprocess.CompletedProcess[str]:
+    log.write("command: " + shlex.join(command) + "\n")
+    log.flush()
+    return subprocess.run(
+        command,
+        cwd=config.workdir,
+        env=_base_env(config),
+        stdout=log,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=timeout,
+    )
+
+
 def _run_profile(config: RuntimeCaptureConfig, root: Path, env: dict[str, str]) -> Path:
     nsys_log_path = root / "logs" / "nsys.log"
     test_log_path = root / "logs" / "test.log"
@@ -259,8 +355,14 @@ def _run_profile(config: RuntimeCaptureConfig, root: Path, env: dict[str, str]) 
             raise RuntimeError(f"profiled test failed with exit code {result.returncode}")
     else:
         service_command = _eager_command(config.command)
-        command = _nsys_profile_command(config, root, service_command)
+        session_name = "KID" + uuid.uuid4().hex
+        command = _nsys_launch_command(config, session_name, service_command)
+        gate_path = root / "_inject" / "recording.enabled"
+        active_dir = root / "_inject" / "active_ranges"
+        active_dir.mkdir(parents=True, exist_ok=True)
         service_process: subprocess.Popen[Any] | None = None
+        collection_started = False
+        failure: BaseException | None = None
         with nsys_log_path.open("w", encoding="utf-8") as nsys_log:
             nsys_log.write("command: " + shlex.join(command) + "\n")
             nsys_log.flush()
@@ -275,6 +377,18 @@ def _run_profile(config: RuntimeCaptureConfig, root: Path, env: dict[str, str]) 
                     start_new_session=True,
                 )
                 _wait_ready(config, service_process)
+                start_result = _run_nsys_control(
+                    _nsys_start_command(config, root, session_name),
+                    config=config,
+                    log=nsys_log,
+                    timeout=timeout,
+                )
+                if start_result.returncode != 0:
+                    raise RuntimeError(
+                        f"nsys start failed with exit code {start_result.returncode}"
+                    )
+                collection_started = True
+                gate_path.touch()
                 with test_log_path.open("w", encoding="utf-8") as test_log:
                     test_result = subprocess.run(
                         ["bash", "-lc", config.test_command],
@@ -289,13 +403,39 @@ def _run_profile(config: RuntimeCaptureConfig, root: Path, env: dict[str, str]) 
                     raise RuntimeError(
                         f"test command failed with exit code {test_result.returncode}"
                     )
+            except BaseException as exc:
+                failure = exc
             finally:
+                gate_path.unlink(missing_ok=True)
+                if collection_started and service_process is not None:
+                    try:
+                        _wait_recording_drain(root, service_process, timeout)
+                    except BaseException as exc:
+                        if failure is None:
+                            failure = exc
+                    try:
+                        stop_result = _run_nsys_control(
+                            _nsys_stop_command(config, session_name),
+                            config=config,
+                            log=nsys_log,
+                            timeout=timeout,
+                        )
+                        if stop_result.returncode != 0 and failure is None:
+                            failure = RuntimeError(
+                                "nsys stop failed with exit code "
+                                f"{stop_result.returncode}"
+                            )
+                    except BaseException as exc:
+                        if failure is None:
+                            failure = exc
                 if service_process is not None:
                     _stop_process_group(service_process, config)
                     try:
                         service_process.wait(timeout=60)
                     except subprocess.TimeoutExpired:
                         service_process.kill()
+            if failure is not None:
+                raise failure
     report = root / "_profile.nsys-rep"
     if not report.exists():
         alternatives = sorted(root.glob("_profile*.nsys-rep"))
@@ -397,6 +537,11 @@ def format_summary(result: dict[str, Any]) -> str:
         f"{diagnostics.get('eligible_invocation_count', 0)}/"
         f"{diagnostics.get('selected_invocation_count', 0)}"
     )
+    if "unique_decomposition_count" in diagnostics:
+        lines.append(
+            "Unique decomposition groups: "
+            f"{diagnostics.get('unique_decomposition_count', 0)}"
+        )
     return "\n".join(lines) + "\n"
 
 

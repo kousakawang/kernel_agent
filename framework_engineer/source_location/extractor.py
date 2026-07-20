@@ -1,30 +1,14 @@
-"""Layer 3 extraction (formerly `import-decomposition`).
+"""Mechanical extraction of the source-locate Agent's four-layer result.
 
-Reads a locate-enriched ``decomposition_<backend>.schema.json`` and, for each
-kernel, copies the four source layers into ``kernel_sources/<id>/`` files plus a
-``read_hints.txt``, then backfills ``kernel_sources_dir`` into the schema.
-
-Purely mechanical + idempotent (locate standard §1/§6):
-  * resolved       -> copy the WHOLE source file; a range-completion helper (py:
-                      AST/indent; c-family: brace/`;` matching) computes the
-                      definition's end line only to record a ``read lines X-Y``
-                      focus hint in read_hints.txt. Content is NEVER truncated —
-                      filtering is left to a later translate_problem filter.
-  * not_applicable -> empty file + comment (form-decided null, e.g. triton c/d)
-  * missed/blank   -> placeholder empty file + comment (only with allow_empty)
-
-Layer shapes (locate standard §2): ``interface_definition``/``py_cpp_binding``
-are single-file (exactly 1 hit; >1 = ambiguous). ``kernel_impl``/``kernel_header``
-are *directory* layers whose ``hits`` may hold multiple entries — each is copied
-into a ``<layer>/`` subdirectory (kernel_impl preserves call order via index).
-
-A ``missed``/unfilled REQUIRED layer is a hard stop unless ``allow_empty`` is set.
+``resolved`` and ``best_effort`` hits are copied as whole files.  Python AST or
+C-family brace scanning computes only the focus range recorded in
+``read_hints.txt``; no ``end_line`` is added to the schema.  ``missed`` and
+``not_applicable`` are valid final states and produce explicit placeholders.
 """
 
 from __future__ import annotations
 
 import ast
-import json
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,16 +16,19 @@ from typing import Any
 
 from .contracts import (
     DIRECTORY_LAYERS,
+    EXTRACTABLE_STATUSES,
     LAYER_FILENAME,
     LAYER_PLACEHOLDER_FILENAME,
     LAYERS,
     LayerHit,
     LayerResult,
     ORDERED_DIRECTORY_LAYERS,
-    REQUIRED_LAYERS,
-    SINGLE_FILE_LAYERS,
+    STATUS_BEST_EFFORT,
     STATUS_NOT_APPLICABLE,
-    STATUS_RESOLVED,
+    agent_layers,
+    load_json_object,
+    validate_agent_schema,
+    write_json_atomic,
 )
 
 # Range-completion caps + file-type sets.
@@ -59,7 +46,7 @@ _COMMENT_PREFIX = {
 
 
 class ExtractError(Exception):
-    """Hard-stop condition (e.g. a required layer is unresolved)."""
+    """A filesystem or hit error that prevents safe extraction."""
 
 
 @dataclass
@@ -75,8 +62,6 @@ class ExtractReport:
     schema: str
     workspace_out: str
     kernels: list[KernelExtract] = field(default_factory=list)
-    stopped: bool = False
-    missing: list[dict[str, Any]] = field(default_factory=list)
 
     def summary(self) -> dict[str, Any]:
         written = sum(len(k.layers_written) for k in self.kernels)
@@ -87,37 +72,7 @@ class ExtractReport:
             "kernels": len(self.kernels),
             "written": written,
             "placeholders": placeholders,
-            "stopped": self.stopped,
         }
-
-
-def _iter_kernel_entries(schema: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return the list of kernel entries regardless of schema nesting.
-
-    KID's real schema nests kernels under invocations[].selected_kernels[];
-    dry-run uses a flat ``kernels`` list. Support both.
-    """
-    if isinstance(schema.get("kernels"), list):
-        return [k for k in schema["kernels"] if isinstance(k, dict)]
-    out: list[dict[str, Any]] = []
-    for inv in schema.get("invocations") or []:
-        if isinstance(inv, dict):
-            for k in inv.get("selected_kernels") or []:
-                if isinstance(k, dict):
-                    out.append(k)
-    return out
-
-
-def _kernel_id(entry: dict[str, Any], index: int) -> str:
-    for key in ("low_level_id", "kernel_id", "id"):
-        val = entry.get(key)
-        if val and "<FILL" not in str(val):
-            return str(val)
-    kernel = entry.get("kernel") or {}
-    name = kernel.get("normalized_name") or kernel.get("raw_name")
-    if name and "<FILL" not in str(name):
-        return str(name)
-    return f"kernel_{index}"
 
 
 def _comment(ext: str, text: str) -> str:
@@ -334,130 +289,85 @@ def _end_line_for(src: Path, lines: list[str], def_line: int) -> int:
     return end
 
 
-def _layer_problem(result: LayerResult) -> str | None:
-    """Return a reason string if a layer cannot be extracted, else None.
-
-    Covers data-level gaps (status / unfilled placeholder / no hits), the
-    single-file-vs-directory hit-count rule (single-file layers must have
-    exactly one hit; >1 is ambiguous), AND filesystem gaps (a filled path that
-    points nowhere / an out-of-range def_line). A wrong/nonexistent path is
-    treated *exactly like "not filled"* (handoff contract).
-    """
-    if result.status == STATUS_NOT_APPLICABLE:
-        return None  # legitimately empty; not a problem
-    if result.status != STATUS_RESOLVED:
-        return f"status={result.status}"
-    if not result.hits:
-        return "no hits"
-    if result.name in SINGLE_FILE_LAYERS and len(result.hits) > 1:
-        return f"ambiguous: {len(result.hits)} hits for single-file layer"
-    for i, hit in enumerate(result.hits):
-        prob = _hit_problem(hit)
-        if prob is not None:
-            # Point at which hit failed for directory layers.
-            return prob if len(result.hits) == 1 else f"hit[{i}] {prob}"
-    return None
-
-
 def _hit_problem(hit: LayerHit) -> str | None:
     """Filesystem/validity check for a single hit."""
-    if hit.is_fillable():
-        return "unfilled placeholder"
-    if not hit.file:
-        return "empty file path"
     path = Path(hit.file)
     if not path.exists():
         return f"file not found: {hit.file}"
     if not path.is_file():
         return f"not a file: {hit.file}"
-    if hit.def_line is not None:
-        try:
-            total = len(path.read_text(errors="ignore").splitlines())
-        except OSError as exc:
-            return f"unreadable: {exc}"
-        if hit.def_line < 1 or hit.def_line > total:
-            return f"def_line {hit.def_line} out of range (1-{total})"
+    try:
+        total = len(path.read_text(errors="ignore").splitlines())
+    except OSError as exc:
+        return f"unreadable: {exc}"
+    if hit.def_line > total:
+        return f"def_line {hit.def_line} out of range (1-{total})"
     return None
 
 
-def _copy_and_range(src: Path, def_line: int | None) -> tuple[str, str]:
-    """Copy ``src`` verbatim; compute a *focus hint* range for read_hints.txt.
+def _range_hint(src: Path, def_line: int) -> str:
+    """Compute the focus range while leaving copied source bytes untouched."""
 
-    Layer 3 is pure "copy the file + record where to look" — it does NOT truncate
-    content (content filtering is left to a later translate_problem filter). So we
-    return the WHOLE file; ``def_line`` + the computed end line only produce the
-    ``read lines X-Y`` hint that tells the reader which span is the definition.
-    """
     text = src.read_text(errors="ignore")
-    if def_line is None:
-        return text, "whole file"
     lines = text.splitlines(keepends=True)
     end = _end_line_for(src, lines, def_line)
-    return text, f"read lines {def_line}-{end}"
+    return f"read lines {def_line}-{end}"
+
+
+def _validate_source_hits(entries: list[dict[str, Any]]) -> None:
+    """Fail before cleaning old output when any declared hit is unusable."""
+
+    problems: list[str] = []
+    for entry in entries:
+        kernel_id = entry["low_level_id"]
+        for layer_name, result in agent_layers(entry).items():
+            if not result.is_extractable:
+                continue
+            for index, hit in enumerate(result.hits):
+                problem = _hit_problem(hit)
+                if problem:
+                    problems.append(
+                        f"{kernel_id}/{layer_name}/hit[{index}]: {problem}"
+                    )
+    if problems:
+        raise ExtractError("invalid source hits:\n  - " + "\n  - ".join(problems))
 
 
 def extract_workspace(
     schema_path: Path,
     workspace_out: Path | None = None,
-    *,
-    allow_empty: bool = False,
 ) -> ExtractReport:
     schema_path = Path(schema_path).resolve()
-    schema = json.loads(schema_path.read_text())
-    workspace_out = Path(workspace_out).resolve() if workspace_out else schema_path.parent
+    schema = load_json_object(schema_path, label="schema")
+    entries = validate_agent_schema(schema)
+    _validate_source_hits(entries)
+
+    workspace_out = (
+        Path(workspace_out).resolve() if workspace_out else schema_path.parent
+    )
     kernels_root = workspace_out / "kernel_sources"
-
-    entries = _iter_kernel_entries(schema)
-
-    # --- Pre-flight hard-stop gate: any unresolved REQUIRED layer? -----------
-    # A required layer is "missing" if it has no usable location OR the location
-    # the user filled does not exist on disk (wrong/nonexistent path == not filled).
-    missing: list[dict[str, Any]] = []
-    for idx, entry in enumerate(entries):
-        kid = _kernel_id(entry, idx)
-        layers = _entry_layers(entry)
-        for name in REQUIRED_LAYERS:
-            result = layers.get(name)
-            if result is None:
-                missing.append({"kernel": kid, "layer": name, "repo_hint": None, "reason": "layer block absent"})
-                continue
-            problem = _layer_problem(result)
-            if problem is not None:
-                missing.append(
-                    {"kernel": kid, "layer": name, "repo_hint": result.repo_hint, "reason": problem}
-                )
-    if missing and not allow_empty:
-        report = ExtractReport(
-            schema=str(schema_path),
-            workspace_out=str(workspace_out),
-            stopped=True,
-            missing=missing,
-        )
-        return report
 
     # --- Extraction ----------------------------------------------------------
     # Regenerate from a clean slate: wipe the whole kernel_sources/ tree so a
     # re-run (after the user changed config/paths/ids) leaves no residue — e.g. a
     # previous run's kernel_impl.py sitting next to the new kernel_impl.cu, or an
-    # orphaned subdir from a renamed/removed kernel. Done only *after* the gate,
-    # so a hard-stopped re-run never destroys the previous good outputs.
+    # orphaned subdir from a renamed/removed kernel. Done only after structural
+    # and filesystem preflight, so invalid input preserves previous good output.
     if kernels_root.exists():
         shutil.rmtree(kernels_root)
 
     report = ExtractReport(schema=str(schema_path), workspace_out=str(workspace_out))
-    for idx, entry in enumerate(entries):
-        kid = _kernel_id(entry, idx)
+    for entry in entries:
+        kid = entry["low_level_id"]
         dest = kernels_root / kid
         dest.mkdir(parents=True, exist_ok=True)
-        layers = _entry_layers(entry)
-        archetype = _entry_archetype(entry)
+        layers = agent_layers(entry)
 
         ke = KernelExtract(kernel_id=kid, kernel_sources_dir=str(dest))
         read_hints: list[str] = []
 
         for name in LAYERS:
-            result = layers.get(name) or LayerResult(name=name, status="not_found")
-            written, hints = _emit_layer(dest, name, result, archetype, allow_empty)
+            written, hints = _emit_layer(dest, name, layers[name])
             read_hints.extend(hints)
             if written == "written":
                 ke.layers_written.append(name)
@@ -468,32 +378,14 @@ def extract_workspace(
         entry["kernel_sources_dir"] = str(dest)
         report.kernels.append(ke)
 
-    schema_path.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + "\n")
+    write_json_atomic(schema_path, schema)
     return report
-
-
-def _entry_layers(entry: dict[str, Any]) -> dict[str, LayerResult]:
-    sl = entry.get("source_locations") or {}
-    layers_raw = sl.get("layers") or {}
-    out: dict[str, LayerResult] = {}
-    for name in LAYERS:
-        d = layers_raw.get(name)
-        if isinstance(d, dict):
-            out[name] = LayerResult.from_dict(name, d)
-    return out
-
-
-def _entry_archetype(entry: dict[str, Any]) -> str:
-    sl = entry.get("source_locations") or {}
-    return str(sl.get("archetype") or entry.get("archetype") or "unknown")
 
 
 def _emit_layer(
     dest: Path,
     layer: str,
     result: LayerResult,
-    archetype: str,
-    allow_empty: bool,
 ) -> tuple[str, list[str]]:
     """Write one layer's file(s); return (status, read_hint_lines).
 
@@ -503,25 +395,25 @@ def _emit_layer(
     order). Returns one hint line per file.
     """
     is_dir = layer in DIRECTORY_LAYERS
-    problem = _layer_problem(result)
-
-    if problem is None and result.status == STATUS_RESOLVED:
+    if result.status in EXTRACTABLE_STATUSES:
         if is_dir:
             return _emit_directory_resolved(dest, layer, result)
         return _emit_single_resolved(dest, layer, result)
 
-    # not_applicable / missed / not_found / ambiguous / invalid -> placeholder.
+    # missed and not_applicable are valid Agent conclusions.
     if is_dir:
-        return _emit_directory_placeholder(dest, layer, result, archetype, problem)
-    return _emit_single_placeholder(dest, layer, result, archetype, problem)
+        return _emit_directory_placeholder(dest, layer, result)
+    return _emit_single_placeholder(dest, layer, result)
 
 
 def _emit_single_resolved(dest: Path, layer: str, result: LayerResult) -> tuple[str, list[str]]:
     hit = result.hits[0]
     filename = _single_file_name(layer, hit.file)
-    content, rng = _copy_and_range(Path(hit.file), hit.def_line)
-    (dest / filename).write_text(content)
-    return "written", [f"{filename}: {rng}  (from {hit.file})"]
+    source = Path(hit.file)
+    hint = _range_hint(source, hit.def_line)
+    shutil.copyfile(source, dest / filename)
+    qualifier = " [best_effort]" if result.status == STATUS_BEST_EFFORT else ""
+    return "written", [f"{filename}: {hint}{qualifier}  (from {hit.file})"]
 
 
 def _emit_directory_resolved(dest: Path, layer: str, result: LayerResult) -> tuple[str, list[str]]:
@@ -530,46 +422,53 @@ def _emit_directory_resolved(dest: Path, layer: str, result: LayerResult) -> tup
     hints: list[str] = []
     for i, hit in enumerate(result.hits):
         filename = _directory_layer_filename(layer, i, hit.file)
-        content, rng = _copy_and_range(Path(hit.file), hit.def_line)
-        (subdir / filename).write_text(content)
-        hints.append(f"{layer}/{filename}: {rng}  (from {hit.file})")
+        source = Path(hit.file)
+        hint = _range_hint(source, hit.def_line)
+        shutil.copyfile(source, subdir / filename)
+        qualifier = " [best_effort]" if result.status == STATUS_BEST_EFFORT else ""
+        hints.append(
+            f"{layer}/{filename}: {hint}{qualifier}  (from {hit.file})"
+        )
     return "written", hints
 
 
 def _emit_single_placeholder(
-    dest: Path, layer: str, result: LayerResult, archetype: str, problem: str | None
+    dest: Path, layer: str, result: LayerResult
 ) -> tuple[str, list[str]]:
+    filename = LAYER_FILENAME[layer]
     if result.status == STATUS_NOT_APPLICABLE:
-        filename = LAYER_FILENAME[layer]
         (dest / filename).write_text(
-            _comment(Path(filename).suffix, f"该层形态不适用（archetype={archetype}）。")
+            _comment(Path(filename).suffix, "该层不适用。")
         )
-        return "placeholder", [f"{filename}: N/A (not applicable for {archetype})"]
+        return "placeholder", [f"{filename}: N/A (not applicable)"]
 
-    # Preserve the filled source extension even when the path is wrong/missing.
-    hit_file = result.hits[0].file if (result.hits and not result.hits[0].is_fillable()) else None
-    filename = _single_file_name(layer, hit_file)
-    reason = problem or "not located"
+    reason = "status=missed"
     (dest / filename).write_text(
-        _comment(Path(filename).suffix, f"该层未定位（{reason}），见 ref/locate_agent_notes.md，用户已知风险。")
+        _comment(
+            Path(filename).suffix,
+            f"该层未定位（{reason}），见 ref/locate_agent_notes.md。",
+        )
     )
     return "placeholder", [f"{filename}: MISSING ({reason})"]
 
 
 def _emit_directory_placeholder(
-    dest: Path, layer: str, result: LayerResult, archetype: str, problem: str | None
+    dest: Path, layer: str, result: LayerResult
 ) -> tuple[str, list[str]]:
     subdir = dest / layer
     subdir.mkdir(parents=True, exist_ok=True)
     placeholder = LAYER_PLACEHOLDER_FILENAME[layer]
     if result.status == STATUS_NOT_APPLICABLE:
         (subdir / placeholder).write_text(
-            _comment(Path(placeholder).suffix, f"该层形态不适用（archetype={archetype}）。")
+            _comment(Path(placeholder).suffix, "该层不适用。")
         )
-        return "placeholder", [f"{layer}/: N/A (not applicable for {archetype})"]
+        return "placeholder", [f"{layer}/: N/A (not applicable)"]
 
-    reason = problem or "not located"
+    reason = "status=missed"
     (subdir / placeholder).write_text(
-        _comment(Path(placeholder).suffix, f"该层未定位（{reason}），见 ref/locate_agent_notes.md，用户已知风险。")
+        _comment(
+            Path(placeholder).suffix,
+            f"该层未定位（{reason}），见 ref/locate_agent_notes.md。",
+        )
     )
     return "placeholder", [f"{layer}/: MISSING ({reason})"]

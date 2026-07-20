@@ -9,7 +9,9 @@ from typing import Any
 
 
 RUNTIME_CONFIG_VERSION = "kid-runtime-config/v2"
-SAMPLING_STRATEGIES = frozenset({"all", "last_n", "single"})
+SAMPLING_STRATEGIES = frozenset(
+    {"all", "last_n", "single", "unique_decomposition"}
+)
 
 
 class ConfigError(ValueError):
@@ -225,7 +227,7 @@ class RuntimeCaptureConfig:
             "skip_invocations": int(selection.get("skip_invocations", 0)),
             "stages": list(selection.get("stages") or []),
             "sample_count_per_stage": int(selection.get("sample_count_per_stage", 1)),
-            "sampling": str(selection.get("sampling", "last_n")),
+            "sampling": str(selection.get("sampling", "unique_decomposition")),
             "aggregation": str(selection.get("aggregation", "single")),
         }
         if selection["skip_invocations"] < 0:

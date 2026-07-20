@@ -14,13 +14,19 @@ from __future__ import annotations
 
 from typing import Any
 
-from framework_engineer.source_location.contracts import (
-    DIRECTORY_LAYERS,
-    LAYERS,
-    REQUIRED_LAYERS,
+LAYERS: tuple[str, ...] = (
+    "interface_definition",
+    "kernel_impl",
+    "py_cpp_binding",
+    "kernel_header",
+)
+DIRECTORY_LAYERS: tuple[str, ...] = (
+    "kernel_impl",
+    "py_cpp_binding",
+    "kernel_header",
 )
 
-FILL = "<FILL"  # sentinel prefix; must match source_location.contracts.FILL_SENTINEL
+FILL = "<FILL"  # legacy dry-run sentinel prefix
 
 
 def fill(hint: str) -> str:

@@ -1,1 +1,1 @@
-// 该层形态不适用（archetype=sglang_triton）。
+// 该层不适用。

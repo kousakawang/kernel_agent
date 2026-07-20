@@ -1,0 +1,73 @@
+{
+  "schema_version": "kid-source-snapshot/v1",
+  "published_file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
+  "trace_source": "nsys_poc.py revision used by the 2026-07-17 H20 golden trace",
+  "source_revision": "c699163aadfebbe0c7e73f0852c6912ffbec5d58",
+  "reason": "The live PoC later added a softmax variant and its line numbers no longer match the retained Runtime trace.",
+  "lines": {
+    "591": {
+      "source": "591:             with execution_capture(...):",
+      "call_expression": "execution_capture(...)"
+    },
+    "674": {
+      "source": "674:             with execution_capture(...):",
+      "call_expression": "execution_capture(...)"
+    },
+    "768": {
+      "source": "768:             with execution_capture(...):",
+      "call_expression": "execution_capture(...)"
+    },
+    "810": {
+      "source": "810:             return torch.matmul(a, b)",
+      "call_expression": "torch.matmul(a, b)"
+    },
+    "820": {
+      "source": "820:             return silu_and_mul(value)",
+      "call_expression": "silu_and_mul(value)"
+    },
+    "834": {
+      "source": "834:             return flash_attn_varlen_func(...)",
+      "call_expression": "flash_attn_varlen_func(q, k, v, max_seqlen_q=4, cu_seqlens_q=cu_q, max_seqlen_k=4, cu_seqlens_k=cu_k, causal=True)"
+    },
+    "856": {
+      "source": "856:             return triton_one_pass_rms_norm(value, weight)",
+      "call_expression": "triton_one_pass_rms_norm(value, weight)"
+    },
+    "868": {
+      "source": "868:             rms_norm(value, weight, output, eps=1e-6)",
+      "call_expression": "rms_norm(value, weight, output, eps=1e-6)"
+    },
+    "879": {
+      "source": "879:             return add_constant(source, constant=5)",
+      "call_expression": "add_constant(source, constant=5)"
+    },
+    "891": {
+      "source": "891:             return min_p_sampling_from_probs(...)",
+      "call_expression": "min_p_sampling_from_probs(probabilities, min_p=0.05, deterministic=True)"
+    },
+    "912": {
+      "source": "912:             return fused_norm_scale_shift(...)",
+      "call_expression": "fused_norm_scale_shift(value, weight, bias, scale, shift, norm_type='rms', eps=1e-5)"
+    },
+    "933": {
+      "source": "933:             deep_gemm.bf16_gemm_nt(a, b, output)",
+      "call_expression": "deep_gemm.bf16_gemm_nt(a, b, output)"
+    },
+    "947": {
+      "source": "947:             return hc_split_sinkhorn(...)",
+      "call_expression": "hc_split_sinkhorn(mixes, scale, base, hc_mult=hc, sinkhorn_iters=4)"
+    },
+    "962": {
+      "source": "962:             apply_scaling_penalties(logits, penalties)",
+      "call_expression": "apply_scaling_penalties(logits, penalties)"
+    },
+    "1081": {
+      "source": "1081:                     outputs.append(case.run())",
+      "call_expression": "outputs.append(case.run())"
+    },
+    "1096": {
+      "source": "1096:         return _run_cases(cases)",
+      "call_expression": "_run_cases(cases)"
+    }
+  }
+}

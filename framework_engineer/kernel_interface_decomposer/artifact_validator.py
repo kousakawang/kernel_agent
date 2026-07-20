@@ -12,11 +12,18 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable
 
+try:
+    from .sampling import decomposition_signature_hash
+    from .semantic_resolver import SemanticResolver, SemanticResolverConfig
+except ImportError:  # pragma: no cover - direct script execution fallback
+    from sampling import decomposition_signature_hash
+    from semantic_resolver import SemanticResolver, SemanticResolverConfig
+
 
 RUNTIME_SCHEMA = "kid-runtime-capture/v1"
 FINAL_SCHEMA = "kernel-interface-decomposition/v2"
 CONFIG_RUNTIME_SCHEMA = "kid-runtime-config/v2"
-CONFIG_RESOLVER_SCHEMA = "kid-semantic-resolver-config/v1"
+CONFIG_RESOLVER_SCHEMA = "kid-semantic-resolver-config/v2"
 ENVIRONMENT_SCHEMA = "kid-runtime-environment/v1"
 CAPTURE_ARCHETYPES = {
     "pytorch_dispatch",
@@ -175,6 +182,52 @@ class RuntimeArtifactValidator:
             diagnostics.get("capture_event_count") == len(self.raw_events),
             "diagnostics.capture_event_count mismatch",
         )
+        invocations = self.runtime.get("invocations", [])
+        self.require(
+            diagnostics.get("selected_invocation_count") == len(invocations),
+            "diagnostics.selected_invocation_count mismatch",
+        )
+        if self.runtime.get("invocation_selection", {}).get("sampling") == "unique_decomposition":
+            groups = diagnostics.get("decomposition_groups", [])
+            self.require(
+                diagnostics.get("unique_decomposition_count") == len(groups),
+                "diagnostics.unique_decomposition_count mismatch",
+            )
+            self.require(
+                len(groups) == len(invocations),
+                "unique decomposition groups do not match selected invocations",
+            )
+            selected_by_call = {
+                str(item.get("high_level", {}).get("call_id")): item
+                for item in invocations
+            }
+            grouped_call_ids: list[str] = []
+            for group in groups:
+                member_call_ids = [str(item) for item in group.get("member_call_ids", [])]
+                representative = str(group.get("representative_call_id"))
+                grouped_call_ids.extend(member_call_ids)
+                self.require(
+                    bool(member_call_ids) and representative == member_call_ids[-1],
+                    f"invalid unique decomposition representative: {representative}",
+                )
+                invocation = selected_by_call.get(representative)
+                self.require(
+                    invocation is not None,
+                    f"unique decomposition representative was not selected: {representative}",
+                )
+                if invocation is not None:
+                    self.require(
+                        group.get("signature_hash")
+                        == decomposition_signature_hash(invocation),
+                        f"unique decomposition signature mismatch: {representative}",
+                    )
+            self.require(
+                Counter(grouped_call_ids)
+                == Counter(
+                    str(item) for item in diagnostics.get("eligible_call_ids", [])
+                ),
+                "unique decomposition members do not match eligible_call_ids",
+            )
 
         kernels = self.runtime.get("kernels", [])
         kernel_by_id = {str(item.get("kernel_id")): item for item in kernels}
@@ -414,7 +467,18 @@ class ArtifactValidator:
         resolver_config_path = config_root / self.backend / "semantic_resolver_config.json"
         final_path = self.root / "output" / self.backend / "decomposition.schema.json"
         notes_path = self.root / "ref" / self.backend / "kid_semantic_resolver_notes.md"
-        for path in (runtime_config_path, resolver_config_path, final_path, notes_path, self.root / "README.md", self.root / "ARTIFACT_GUIDE.md"):
+        context_path = self.root / "ref" / self.backend / "semantic_resolver_context.json"
+        decisions_path = self.root / "ref" / self.backend / "semantic_resolver_decisions.json"
+        for path in (
+            runtime_config_path,
+            resolver_config_path,
+            final_path,
+            notes_path,
+            context_path,
+            decisions_path,
+            self.root / "README.md",
+            self.root / "ARTIFACT_GUIDE.md",
+        ):
             self.require(path.is_file() and path.stat().st_size > 0, f"missing or empty golden artifact: {path}")
         if self.errors:
             return False
@@ -438,9 +502,33 @@ class ArtifactValidator:
         manifest = Path(resolver.get("source_context", {}).get("third_party_manifest", ""))
         self.require(manifest.is_file(), f"third-party manifest does not exist: {manifest}")
         self.require(not list(cli_dir.rglob("*.nsys-rep")), ".nsys-rep must not be retained")
+        try:
+            resolver_config = SemanticResolverConfig.load(resolver_config_path)
+            self.require(
+                resolver_config.context_output == context_path.resolve(),
+                "resolver context_output is outside the backend ref directory",
+            )
+            self.require(
+                resolver_config.decisions_output == decisions_path.resolve(),
+                "resolver decisions_output is outside the backend ref directory",
+            )
+            self.require(
+                resolver_config.output == final_path.resolve(),
+                "resolver output is outside the backend output directory",
+            )
+            self.require(
+                resolver_config.notes_output == notes_path.resolve(),
+                "resolver notes_output is outside the backend ref directory",
+            )
+            self.errors.extend(SemanticResolver(resolver_config).validate())
+        except (ValueError, OSError) as exc:
+            self.errors.append(f"cannot validate Semantic Resolver artifacts: {exc}")
 
         self.require(self.final.get("schema_version") == FINAL_SCHEMA, "final schema_version mismatch")
-        self.require(self.final.get("target") == self.runtime.get("target"), "final target differs from Runtime target")
+        mapped_target = dict(self.runtime.get("target") or {})
+        if mapped_target.get("file"):
+            mapped_target["file"] = self._map_runtime_path(mapped_target["file"], resolver)
+        self.require(self.final.get("target") == mapped_target, "final target differs from mapped Runtime target")
         for key, location in _iter_keys(self.final):
             if key in FINAL_FORBIDDEN_FIELDS:
                 self.errors.append(f"final contains forbidden field {key!r} at {location}")
@@ -468,8 +556,8 @@ class ArtifactValidator:
             self.require(entry.get("metrics", {}).get("duration_us", 0) > 0, f"non-positive final duration: {label}")
 
         runtime_total = sum(
-            item.get("high_level", {}).get("gpu_kernel_sum_us", 0)
-            for item in self.runtime.get("invocations", [])
+            item.get("covered_us", 0)
+            for item in self.final.get("coverage_report", {}).get("per_invocation", [])
         )
         self.require(_close(sum(durations), runtime_total), "final semantic duration sum differs from Runtime")
         return not self.errors

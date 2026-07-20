@@ -9,7 +9,10 @@ from types import SimpleNamespace
 from framework_engineer.kernel_interface_decomposer.cli import _build_parser
 from framework_engineer.kernel_interface_decomposer.runner import (
     _eager_command,
+    _nsys_launch_command,
     _nsys_profile_command,
+    _nsys_start_command,
+    _nsys_stop_command,
 )
 
 
@@ -50,6 +53,31 @@ class TestCliRunnerContract(unittest.TestCase):
         self.assertNotIn("--target-processes=all", command)
         self.assertIn("--trace-fork-before-exec=true", command)
         self.assertEqual(command[-3:], ["bash", "-lc", "python workload.py"])
+
+    def test_service_uses_paused_interactive_nsys_session(self) -> None:
+        config = SimpleNamespace(profiling={"nsys_bin": "nsys"})
+        launch = _nsys_launch_command(
+            config,  # type: ignore[arg-type]
+            "KIDsession",
+            "python server.py",
+        )
+        start = _nsys_start_command(
+            config,  # type: ignore[arg-type]
+            Path("/tmp/kid-output"),
+            "KIDsession",
+        )
+        stop = _nsys_stop_command(
+            config,  # type: ignore[arg-type]
+            "KIDsession",
+        )
+        self.assertEqual(launch[1], "launch")
+        self.assertIn("--session-new=KIDsession", launch)
+        self.assertIn("--trace=cuda,nvtx,osrt", launch)
+        self.assertNotIn("profile", launch)
+        self.assertEqual(start[1], "start")
+        self.assertIn("--session=KIDsession", start)
+        self.assertIn("--output=/tmp/kid-output/_profile", start)
+        self.assertEqual(stop, ["nsys", "stop", "--session=KIDsession"])
 
 
 if __name__ == "__main__":
