@@ -258,6 +258,121 @@ class Phase1CliEndToEndTests(unittest.TestCase):
                 self.assertTrue((output_root / task_id / "correctness_test.py").exists())
                 self.assertTrue((output_root / task_id / "snapshots" / "manifest.json").exists())
 
+    def test_human_failure_output_renders_multiline_service_and_workload_logs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            task_pack = tmp_path / "task_pack"
+            service_file = tmp_path / "service.py"
+            workload_file = tmp_path / "workload.py"
+            service_file.write_text(
+                "import sys, time\n"
+                "print('service stdout line 1', flush=True)\n"
+                "print('service stderr line 2', file=sys.stderr, flush=True)\n"
+                "time.sleep(60)\n",
+                encoding="utf-8",
+            )
+            workload_file.write_text(
+                "import sys\n"
+                "print('workload stdout line 1')\n"
+                "print('workload stderr line 2', file=sys.stderr)\n"
+                "raise SystemExit(7)\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env["PYTHONPATH"] = os.pathsep.join([str(PROJECT_ROOT), env.get("PYTHONPATH", "")]).rstrip(os.pathsep)
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "framework_engineer.cli",
+                    "run-baseline",
+                    "--output-format",
+                    "human",
+                    "--task-pack",
+                    str(task_pack),
+                    "--service-cmd",
+                    f"{sys.executable} {service_file}",
+                    "--workload-cmd",
+                    f"{sys.executable} {workload_file}",
+                    "--startup-timeout",
+                    "1",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=30,
+            )
+
+            self.assertEqual(proc.returncode, 1, proc)
+            self.assertIn("Baseline result\nstatus: failed", proc.stdout)
+            self.assertIn("| service stdout line 1", proc.stdout)
+            self.assertIn("| service stderr line 2", proc.stdout)
+            self.assertIn("| workload stdout line 1", proc.stdout)
+            self.assertIn("| workload stderr line 2", proc.stdout)
+            self.assertNotIn(r"\n", proc.stdout)
+
+            report = json.loads((task_pack / "docs" / "baseline_result.json").read_text(encoding="utf-8"))
+            self.assertIn("service stdout line 1", report["service"]["stdout"])
+            self.assertIn("service stderr line 2", report["service"]["stderr"])
+            self.assertEqual(report["workload"]["returncode"], 7)
+
+            target_file = tmp_path / "target.py"
+            target_file.write_text(
+                "def target(value):\n"
+                "    return value\n\n"
+                "def forward(value):\n"
+                "    return target(value)\n",
+                encoding="utf-8",
+            )
+            output_root = tmp_path / "phase1_output"
+            config_file = tmp_path / "phase1_config.py"
+            config_file.write_text(
+                textwrap.dedent(
+                    f"""
+                    output_root = {str(output_root)!r}
+                    service_cmd = {f"{sys.executable} {service_file}"!r}
+                    workload_cmd = {f"{sys.executable} {workload_file}"!r}
+                    forward_boundary_file = {str(target_file)!r}
+                    forward_boundary_line = 4
+                    startup_timeout = 1
+                    force = True
+                    targets = [
+                        {{"task_id": "target", "target_file": {str(target_file)!r}, "target_line": 1}},
+                    ]
+                    """
+                ),
+                encoding="utf-8",
+            )
+            phase1 = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "framework_engineer.cli",
+                    "run-phase1",
+                    "--output-format",
+                    "human",
+                    "--config",
+                    str(config_file),
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(phase1.returncode, 1, phase1)
+            self.assertIn("Phase 1.2 summary\nstatus: failed", phase1.stdout)
+            self.assertIn("START scaffold-task-pack target=target", phase1.stderr)
+            self.assertIn("FAIL  run-baseline target=group", phase1.stderr)
+            self.assertIn("| workload stderr line 2", phase1.stderr)
+            self.assertNotIn(r"\n", phase1.stderr)
+
     def _run_cli(self, *args: str, extra_env: dict[str, str] | None = None, timeout: int = 120) -> dict:
         env = os.environ.copy()
         env["PYTHONPATH"] = os.pathsep.join([str(PROJECT_ROOT), env.get("PYTHONPATH", "")]).rstrip(os.pathsep)
