@@ -2325,7 +2325,7 @@ def run_launcher(args: argparse.Namespace) -> int:
         args.nsys_bin,
         "profile",
         "--force-overwrite=true",
-        "--trace=cuda,nvtx,osrt",
+        "--trace=cuda,nvtx",
         f"--output={profile_base}",
         sys.executable,
         "-u",

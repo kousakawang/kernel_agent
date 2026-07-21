@@ -12,6 +12,7 @@ RUNTIME_CONFIG_VERSION = "kid-runtime-config/v2"
 SAMPLING_STRATEGIES = frozenset(
     {"all", "last_n", "single", "unique_decomposition"}
 )
+TRACE_RETENTION_POLICIES = frozenset({"always", "never", "on_failure"})
 
 
 class ConfigError(ValueError):
@@ -252,6 +253,9 @@ class RuntimeCaptureConfig:
             "max_runtime_sec": float(profiling.get("max_runtime_sec", 1800)),
             "disable_cuda_graph": bool(profiling.get("disable_cuda_graph", True)),
             "min_capture_coverage": float(profiling.get("min_capture_coverage", 1.0)),
+            "trace_retention": str(
+                profiling.get("trace_retention", "on_failure")
+            ),
         }
         if profiling["max_runtime_sec"] <= 0:
             raise ConfigError("profiling.max_runtime_sec must be > 0")
@@ -259,6 +263,11 @@ class RuntimeCaptureConfig:
             raise ConfigError("CUDA Graph discovery is unsupported; disable_cuda_graph must be true")
         if not 0 <= profiling["min_capture_coverage"] <= 1:
             raise ConfigError("profiling.min_capture_coverage must be in [0, 1]")
+        if profiling["trace_retention"] not in TRACE_RETENTION_POLICIES:
+            raise ConfigError(
+                "profiling.trace_retention must be one of "
+                + ", ".join(sorted(TRACE_RETENTION_POLICIES))
+            )
 
         return cls(
             path=config_path,

@@ -38,7 +38,8 @@ KID 的正式入口是 `framework_engineer/prompts/start_kid.md`，输入为
 `config/nsys_poc/` 目录。Agent 依次执行：
 
 1. Runtime Capture CLI 读取 `runtime_capture_config.json`，执行静态环境探测和
-   Nsight profiling；`test_cmd` 自行在 high-level 外完成 warmup，CLI 输出完整 Python 调用栈、execution
+   Nsight profiling；无服务时先关闭采集运行一次 `test_cmd` warmup，再开启采集运行正式
+   `test_cmd`，CLI 输出完整 Python 调用栈、execution
    capture 树、CUDA correlation 和 GPU kernel activity。
 2. Semantic Resolver helper 的 `prepare` 把 direct kernel owner、调用栈边、源码片段
    和仓库线索整理为 context。Agent 只填写 decisions 与 notes；`finalize` 再从 Runtime
@@ -49,7 +50,8 @@ Runtime Capture 的 JSONL、SQLite 或 Agent notes。KID 最终产物只交付 s
    的源码位置由 `source_locate` 在后续阶段补充。
 
 KID 每份配置只处理一个 `cmd`/`test_cmd`。PoC 没有常驻服务，因此
-`cmd=null` 并直接 profiling `test_cmd`。多个 backend 由上层串行执行多份配置，
+`cmd=null`，同一 `test_cmd` 必须可重复执行：第一次预热，第二次才进入 Nsight/KID
+采集窗口。多个 backend 由上层串行执行多份配置，
 不会合并到一个 KID 配置中。
 
 Semantic Resolver 的标准命令为：
@@ -67,13 +69,15 @@ python3 -m framework_engineer.kernel_interface_decomposer.semantic_resolver_tool
 `framework_engineer/kernel_interface_decomposer/nsys_poc.py`，不使用 source override 或历史
 snapshot。源码行号变化时必须重新生成整套 trace/context/final，不能只修改配置行号。
 
-`profile.sqlite` 是可复查的 Nsight 证据；`.nsys-rep` 是导出 SQLite 前的临时
+生产默认在成功 analyze 后删除 `profile.sqlite`；本 golden 为 parser 回归而在配置中显式
+使用 `trace_retention=always`，因此保留这份可复查证据。`.nsys-rep` 是导出 SQLite 前的临时
 中间文件，不属于 CLI 交付合同，也不保存在 golden 中。GPU 耗时均为关联
 kernel activity duration 之和，用于热点排序，不等同于多 stream 端到端 wall time。
 
 正式默认使用 `unique_decomposition`：相同 execution 拆分只保留最后一次代表，不同拆分
 分别保留；同时兼容 `all`、`last_n` 和 `single`。本 golden 显式使用 `single`，
-等价于每个 stage 选择最后一次 invocation；全部未选调用始终保留在 JSONL/SQLite 中。
+等价于每个 stage 选择最后一次 invocation；全部未选调用始终保留在 JSONL 中，SQLite
+仅在本 golden 或失败排障等 retention 场景中保留。
 
 ## 验证
 

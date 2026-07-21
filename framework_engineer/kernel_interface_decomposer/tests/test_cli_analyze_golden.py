@@ -144,6 +144,57 @@ class TestAnalyzeCliGolden(unittest.TestCase):
                 ),
             )
 
+    def test_analyze_default_does_not_copy_or_delete_external_sqlite(self) -> None:
+        source_sqlite = self.golden_cli / "trace/profile.sqlite"
+        with tempfile.TemporaryDirectory(prefix="kid-analyze-retention-") as tempdir:
+            temp_root = Path(tempdir)
+            output_dir = temp_root / "nsys_poc"
+            config_path = temp_root / "runtime_capture_config.json"
+            config = json.loads(self.golden_config_path.read_text(encoding="utf-8"))
+            config["workdir"] = str(self.repo_root.parent)
+            config["output_dir"] = str(output_dir)
+            config["target"]["file"] = str(
+                self.repo_root
+                / "framework_engineer/kernel_interface_decomposer/nsys_poc.py"
+            )
+            config["profiling"].pop("trace_retention", None)
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    MODULE,
+                    "analyze",
+                    str(config_path),
+                    "--sqlite",
+                    str(source_sqlite),
+                    "--events-dir",
+                    str(self.golden_cli / "capture_events"),
+                ],
+                cwd=self.repo_root,
+                env={
+                    **os.environ,
+                    "PYTHONPATH": os.pathsep.join(
+                        value
+                        for value in (str(self.repo_root), os.environ.get("PYTHONPATH"))
+                        if value
+                    ),
+                },
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            runtime = json.loads(
+                (output_dir / "runtime_capture.schema.json").read_text(encoding="utf-8")
+            )
+            self.assertNotIn("sqlite", runtime["artifacts"])
+            self.assertFalse((output_dir / "trace/profile.sqlite").exists())
+            self.assertTrue(source_sqlite.is_file())
+            validator = RuntimeArtifactValidator(output_dir)
+            self.assertTrue(validator.validate(), msg="; ".join(validator.errors))
+
 
 if __name__ == "__main__":
     unittest.main()

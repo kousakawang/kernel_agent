@@ -24,8 +24,10 @@
   `null`；`test_cmd` 必须是唯一的触发命令；`selection` 定义 high-level invocation
   的选择规则（默认按拆分去重并保留末次代表的 `unique_decomposition`，或 `all`、每 stage
   末尾 N 次的 `last_n`、末尾一次的 `single`）；
-  `profiling` 定义 Nsight 和 CUDA Graph 行为；`output_dir` 指向
-  `cli_log/<backend>`。
+  `profiling` 定义 Nsight、CUDA Graph 和 trace retention；无服务时同一 `test_cmd`
+  会先关闭采集执行一次 warmup，再开启采集执行一次正式测试，因此必须可重复且幂等；
+  `output_dir` 指向 `cli_log/<backend>`。本 golden 为 parser 回归显式使用
+  `trace_retention=always`，生产默认是 `on_failure`。
 - **格式**：固定，`kid-runtime-config/v2`。
 - **谁消费**：Runtime Capture CLI。
 - **失败处理**：路径、命令或 target 无效时在 profiling 前失败；不能自动猜测另一
@@ -59,7 +61,7 @@
 - **格式**：固定，`kid-runtime-environment/v1`。
 - **谁消费**：Runtime Capture CLI 的前置门禁、validator、问题排查人员。
 - **失败处理**：Nsight、PyTorch CUDA 或基础环境门禁失败时不启动正式 profiling；
-  workload warmup/smoke 由唯一一次 `test_cmd` 负责，失败体现在 `test.log` 和退出码。
+  无服务 workload 的第一次 `test_cmd` 是 warmup，失败体现在 `warmup.log` 和退出码。
   当 `cmd` 非空时，服务以暂停采集的 Nsight session 启动；CLI 在 `ready` 成功后才同时
   开启 Nsight collection 和 Runtime capture gate，因此启动期事件不属于本次产物。
 
@@ -76,15 +78,16 @@
 - **失败处理**：ID 重复、parent 缺失、stack 为空或事件数与 NVTX 不一致时，该轮
   capture 无效，必须重新运行而不是丢弃异常事件。
 
-### `cli_log/<backend>/trace/profile.sqlite`
+### `cli_log/<backend>/trace/profile.sqlite`（golden/调试可选）
 
 - **谁填写**：Runtime Capture CLI 调用 `nsys export --type=sqlite` 生成。
 - **填写依据**：与上述 JSONL 同一次 profiling 的 NVTX、CUDA Runtime/Driver API
   和 GPU kernel activity。
-- **填写规则**：必须保留完整 SQLite；不能用其他轮次或旧文件替换。本合同不保留
-  `.nsys-rep`，但原始 `nsys.log` 可以记录其临时路径。
+- **填写规则**：生产默认在成功 analyze 和校验后删除，失败时保留；golden 和 parser
+  调试通过 `trace_retention=always` 保留完整 SQLite，且不能用其他轮次或旧文件替换。
+  本合同不保留 `.nsys-rep`，但原始 `nsys.log` 可以记录其临时路径。
 - **格式**：Nsight Systems SQLite，不比较二进制字节，只验证关系和数值。
-- **谁消费**：Runtime Capture 聚合器、Semantic Resolver Agent 的疑难回查、validator。
+- **谁消费**：Runtime Capture 聚合器；保留时也供疑难回查和 validator 作原始数据交叉校验。
 - **失败处理**：SQLite 损坏、correlation 匹配失败或与 JSON 时间不一致时整轮失效并
   重新 profiling。
 
@@ -104,7 +107,7 @@
 - **格式**：固定，`kid-runtime-capture/v1`。
 - **谁消费**：Semantic Resolver Agent 和 validator；不直接交给 `source_locate`。
 - **失败处理**：coverage 不足、kernel 多 owner、direct/inclusive 聚合不守恒或 SQLite
-  对不上时 CLI 失败，并保留 logs/SQLite 供定位。
+  对不上时 CLI 失败；默认 `on_failure` 会保留 logs/SQLite 供定位。
 
 ### `cli_log/<backend>/logs/probe.log`
 
@@ -116,10 +119,17 @@
 ### `cli_log/<backend>/logs/nsys.log`
 
 - **谁填写**：Runtime Capture CLI。
-- **内容**：直接模式下的 `nsys profile`，或 service 模式下的
-  `nsys launch/start/stop`，以及 `nsys export` 的命令和原始输出。
+- **内容**：所有模式的 `nsys launch/start/stop`、`nsys export` 命令和原始输出；正式
+  trace 只启用 `cuda,nvtx`，不启用 `osrt`。
 - **格式/消费者**：自由文本，供开发者、validator 失败调查使用。
 - **失败处理**：Nsight 非零退出、导出失败或 report 路径异常时保留日志并终止。
+
+### `cli_log/<backend>/logs/warmup.log`
+
+- **谁填写**：Runtime Capture CLI。
+- **内容**：`cmd=null` 时第一次 `test_cmd` 的输出；服务模式记录 ready 前启动阶段已经完成。
+- **格式/消费者**：自由文本，仅供排错，不进入 Runtime 或最终 schema。
+- **失败处理**：direct warmup 非零退出时不执行 `nsys start`，并以该日志为首要证据。
 
 ### `cli_log/<backend>/logs/test.log`
 

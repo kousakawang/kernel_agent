@@ -32,7 +32,12 @@ RUN_GPU_E2E = os.environ.get("KID_RUN_GPU_E2E") == "1" or FORCE_GPU_E2E
 
 def _failure_logs(output_dir: Path) -> str:
     sections: list[str] = []
-    for relative in ("logs/test.log", "logs/nsys.log", "logs/probe.log"):
+    for relative in (
+        "logs/warmup.log",
+        "logs/test.log",
+        "logs/nsys.log",
+        "logs/probe.log",
+    ):
         path = output_dir / relative
         if not path.is_file():
             continue

@@ -114,7 +114,6 @@ class RuntimeArtifactValidator:
         for relative in (
             "runtime_capture.schema.json",
             "environment_probe.json",
-            "trace/profile.sqlite",
         ):
             self._require_file(self.cli_dir / relative)
         event_paths = sorted((self.cli_dir / "capture_events").glob("events_*.jsonl"))
@@ -162,6 +161,13 @@ class RuntimeArtifactValidator:
     def _validate_tree_and_metrics(self) -> None:
         self.require(self.runtime.get("schema_version") == RUNTIME_SCHEMA, "runtime schema_version mismatch")
         self.require(self.environment.get("schema_version") == ENVIRONMENT_SCHEMA, "environment schema_version mismatch")
+        declared_sqlite = self.runtime.get("artifacts", {}).get("sqlite")
+        if declared_sqlite is not None:
+            self.require(
+                declared_sqlite == "trace/profile.sqlite",
+                f"unexpected Runtime SQLite artifact path: {declared_sqlite}",
+            )
+            self._require_file(self.cli_dir / str(declared_sqlite))
         raw_by_key: dict[tuple[Any, str], dict[str, Any]] = {}
         raw_by_call: Counter[str] = Counter()
         for event in self.raw_events:
@@ -304,6 +310,8 @@ class RuntimeArtifactValidator:
 
     def _validate_sqlite(self) -> None:
         sqlite_path = self.cli_dir / "trace/profile.sqlite"
+        if not sqlite_path.is_file():
+            return
         try:
             connection = sqlite3.connect(f"file:{sqlite_path}?mode=ro", uri=True)
             connection.row_factory = sqlite3.Row

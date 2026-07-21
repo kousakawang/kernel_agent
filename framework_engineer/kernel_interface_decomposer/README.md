@@ -41,18 +41,19 @@ Each `kid-runtime-config/v2` file describes one backend and one test command:
     "nsys_bin": "nsys",
     "max_runtime_sec": 1800,
     "disable_cuda_graph": true,
-    "min_capture_coverage": 1.0
+    "min_capture_coverage": 1.0,
+    "trace_retention": "on_failure"
   }
 }
 ```
 
-Set `cmd` to `null` to profile `test_cmd` directly. When `cmd` starts a service,
-KID launches it in a paused Nsight Systems session, waits for `ready`, then
-starts Nsight collection and enables Runtime event recording immediately before
-`test_cmd`. Collection stops after the test and any admitted high-level call has
-returned. Service startup and pre-ready warmup therefore remain outside both the
-SQLite trace window and Runtime JSONL. Warmup in direct mode belongs inside the
-test workload and should run outside the selected high-level invocation.
+Every capture follows `launch → warmup/ready → nsys start → test → nsys stop`.
+When `cmd` starts a service, KID launches it in a paused Nsight Systems session,
+waits for `ready`, then enables collection immediately before `test_cmd`. When
+`cmd=null`, an Nsight-owned helper runs the same `test_cmd` twice: the first run
+warms caches with collection and Runtime recording disabled, and the second is
+the formal test. A direct `test_cmd` must therefore be repeatable and idempotent.
+Only `cuda,nvtx` are traced; OS runtime tracing is intentionally disabled.
 
 Sampling supports `unique_decomposition`, `all`, `last_n`, and `single`.
 `unique_decomposition` is the default: it groups invocations by kernel-owner
@@ -61,7 +62,8 @@ kernel count, then keeps the final invocation in each group. Stage, runtime
 IDs, timings, provider hints, kernel names/counts, and repeated identical
 execution calls do not split a group. `last_n` selects the final N invocations
 independently per stage; `single` is the golden-compatible alias for `last_n`
-with N=1. Raw JSONL and SQLite always retain every invocation.
+with N=1. JSONL retains every invocation. SQLite is a temporary analysis input
+by default and is retained only when capture fails.
 
 ## Commands
 
@@ -84,11 +86,14 @@ command and direct semantic/source resolution are intentionally unsupported.
 ├── environment_probe.json
 ├── runtime_capture.schema.json
 ├── capture_events/events_<pid>.jsonl
-├── trace/profile.sqlite
-└── logs/{probe,nsys,test,summary}.log
+└── logs/{probe,nsys,warmup,test,summary}.log
 ```
 
-`profile.nsys-rep` is temporary and is removed after SQLite export. The Runtime
+Both `profile.nsys-rep` and the exported SQLite are temporary on success. Set
+`profiling.trace_retention=always` for parser development or golden generation;
+`on_failure` (the default) keeps SQLite only for failed capture diagnostics, and
+`never` removes it even on failure. Standalone `analyze` never deletes its
+explicit external `--sqlite` input. The Runtime
 schema contains complete high→execution stacks, nested capture relationships,
 CUDA launch correlation, direct/inclusive GPU duration, and attribution
 coverage. It must not contain semantic targets or source-location results.
