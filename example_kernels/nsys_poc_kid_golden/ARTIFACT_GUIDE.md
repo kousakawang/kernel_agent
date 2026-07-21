@@ -11,7 +11,7 @@
 | `config/<backend>/` | 用户或上层编排器 | 单-backend 用户输入，不是 KID 运行产物。 |
 | `cli_log/<backend>/` | Runtime Capture CLI | 可复查的运行时事实、trace 和日志；不得包含 semantic oracle。 |
 | `output/<backend>/` | Semantic Resolver finalizer | KID 对外发布的固定 schema，也是 `source_locate` 的唯一 KID 输入。 |
-| `ref/<backend>/` | Helper、Agent、维护者 | Context、decisions、notes 和 trace-version source evidence，仅供解析复现。 |
+| `ref/<backend>/` | Helper、Agent、维护者 | Context、decisions 和 notes，仅供解析复现。 |
 
 ## 配置输入
 
@@ -146,7 +146,7 @@
 - **格式**：固定，`kid-semantic-context/v1`；不得包含 `low_level_id`、最终 semantic interface
   或 normalized kernel name 等答案。
 - **谁消费**：Semantic Resolver Agent。
-- **失败处理**：Runtime hash 不一致、owner/parent 不完整或 source snapshot 无效时重新 prepare，
+- **失败处理**：Runtime hash 不一致、owner/parent 不完整或分析源码与 stack 行号不匹配时重新 prepare，
   不能沿用旧 context。
 
 ### `ref/<backend>/semantic_resolver_decisions.json`
@@ -158,14 +158,6 @@
   必须恰好分配一次，同一 interface 跨 invocation 合并。
 - **谁消费**：deterministic finalizer 和 validator，不交给 `source_locate`。
 - **失败处理**：非法 call site、重复/遗漏 owner、低置信度或 provider 冲突都会阻止发布。
-
-### `ref/<backend>/source_snapshot/*`
-
-- **谁填写**：Golden/trace 维护者；正常实时运行通常不需要。
-- **填写依据**：产生 retained trace 时的源码行和 call expression。
-- **格式**：本例为 `kid-source-snapshot/v1`，只冻结 Runtime stack 实际引用的行。
-- **谁消费**：`prepare` 的 source override reader。
-- **失败处理**：快照版本、published path 或行号不匹配时 golden 无效，不退回读取漂移后的源码。
 
 ### `output/<backend>/decomposition.schema.json`
 

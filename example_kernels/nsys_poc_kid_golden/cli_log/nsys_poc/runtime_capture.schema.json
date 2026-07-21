@@ -4,7 +4,7 @@
   "target": {
     "interface": "high_level",
     "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-    "line": 1095
+    "line": 1119
   },
   "invocation_selection": {
     "skip_invocations": 0,
@@ -25,22 +25,22 @@
       "high_level": {
         "call_id": "1",
         "interface": "high_level",
-        "nvtx_cpu_duration_us": 6164.228,
+        "nvtx_cpu_duration_us": 6095.532,
         "kernel_ids": [
-          "p315237144199168-c6801-k38",
-          "p315237144199168-c6814-k39",
-          "p315237144199168-c6845-k40",
-          "p315237144199168-c6859-k41",
-          "p315237144199168-c6877-k42",
-          "p315237144199168-c6884-k43",
-          "p315237144199168-c6892-k44",
-          "p315237144199168-c6924-k45",
-          "p315237144199168-c6936-k46",
-          "p315237144199168-c6945-k47",
-          "p315237144199168-c6969-k48",
-          "p315237144199168-c6976-k49"
+          "p319631315173376-c6801-k38",
+          "p319631315173376-c6814-k39",
+          "p319631315173376-c6845-k40",
+          "p319631315173376-c6859-k41",
+          "p319631315173376-c6877-k42",
+          "p319631315173376-c6884-k43",
+          "p319631315173376-c6892-k44",
+          "p319631315173376-c6924-k45",
+          "p319631315173376-c6936-k46",
+          "p319631315173376-c6945-k47",
+          "p319631315173376-c6969-k48",
+          "p319631315173376-c6976-k49"
         ],
-        "gpu_kernel_sum_us": 48.096,
+        "gpu_kernel_sum_us": 48.09700000000001,
         "stage": "unknown"
       },
       "execution_captures": [
@@ -61,32 +61,32 @@
           "python_stack": [
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1094,
+              "definition_line": 1118,
               "function": "high_level",
               "qualname": "high_level",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1096
+                "line": 1120
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1067,
+              "definition_line": 1091,
               "function": "_run_cases",
               "qualname": "_run_cases",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1081
+                "line": 1105
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 809,
+              "definition_line": 817,
               "function": "run",
               "qualname": "_case_pytorch_native.<locals>.run",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 810
+                "line": 818
               }
             },
             {
@@ -112,17 +112,17 @@
           ],
           "child_capture_ids": [],
           "kernel_ids": [
-            "p315237144199168-c6801-k38"
+            "p319631315173376-c6801-k38"
           ],
           "inclusive_kernel_ids": [
-            "p315237144199168-c6801-k38"
+            "p319631315173376-c6801-k38"
           ],
           "metrics": {
-            "nvtx_cpu_duration_us": 202.944,
-            "direct_gpu_kernel_sum_us": 21.536,
-            "direct_share_of_high_gpu": 0.44777112441783107,
-            "inclusive_gpu_kernel_sum_us": 21.536,
-            "inclusive_share_of_high_gpu": 0.44777112441783107
+            "nvtx_cpu_duration_us": 196.23,
+            "direct_gpu_kernel_sum_us": 21.6,
+            "direct_share_of_high_gpu": 0.4490924589891261,
+            "inclusive_gpu_kernel_sum_us": 21.6,
+            "inclusive_share_of_high_gpu": 0.4490924589891261
           },
           "attribution_role": "kernel_owner",
           "hotspot_rank": 1
@@ -144,32 +144,32 @@
           "python_stack": [
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1094,
+              "definition_line": 1118,
               "function": "high_level",
               "qualname": "high_level",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1096
+                "line": 1120
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1067,
+              "definition_line": 1091,
               "function": "_run_cases",
               "qualname": "_run_cases",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1081
+                "line": 1105
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 819,
+              "definition_line": 838,
               "function": "run",
               "qualname": "_case_sgl_kernel_builtin.<locals>.run",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 820
+                "line": 839
               }
             },
             {
@@ -215,17 +215,17 @@
           ],
           "child_capture_ids": [],
           "kernel_ids": [
-            "p315237144199168-c6814-k39"
+            "p319631315173376-c6814-k39"
           ],
           "inclusive_kernel_ids": [
-            "p315237144199168-c6814-k39"
+            "p319631315173376-c6814-k39"
           ],
           "metrics": {
-            "nvtx_cpu_duration_us": 49.561,
+            "nvtx_cpu_duration_us": 44.941,
             "direct_gpu_kernel_sum_us": 1.312,
-            "direct_share_of_high_gpu": 0.027278775781769796,
+            "direct_share_of_high_gpu": 0.02727820862008025,
             "inclusive_gpu_kernel_sum_us": 1.312,
-            "inclusive_share_of_high_gpu": 0.027278775781769796
+            "inclusive_share_of_high_gpu": 0.02727820862008025
           },
           "attribution_role": "kernel_owner",
           "hotspot_rank": 9
@@ -247,32 +247,32 @@
           "python_stack": [
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1094,
+              "definition_line": 1118,
               "function": "high_level",
               "qualname": "high_level",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1096
+                "line": 1120
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1067,
+              "definition_line": 1091,
               "function": "_run_cases",
               "qualname": "_run_cases",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1081
+                "line": 1105
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 833,
+              "definition_line": 852,
               "function": "run",
               "qualname": "_case_sgl_kernel_sgl_attn.<locals>.run",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 834
+                "line": 853
               }
             },
             {
@@ -318,19 +318,19 @@
           ],
           "child_capture_ids": [],
           "kernel_ids": [
-            "p315237144199168-c6845-k40",
-            "p315237144199168-c6859-k41"
+            "p319631315173376-c6845-k40",
+            "p319631315173376-c6859-k41"
           ],
           "inclusive_kernel_ids": [
-            "p315237144199168-c6845-k40",
-            "p315237144199168-c6859-k41"
+            "p319631315173376-c6845-k40",
+            "p319631315173376-c6859-k41"
           ],
           "metrics": {
-            "nvtx_cpu_duration_us": 140.915,
-            "direct_gpu_kernel_sum_us": 9.408,
-            "direct_share_of_high_gpu": 0.19560878243512975,
-            "inclusive_gpu_kernel_sum_us": 9.408,
-            "inclusive_share_of_high_gpu": 0.19560878243512975
+            "nvtx_cpu_duration_us": 127.023,
+            "direct_gpu_kernel_sum_us": 9.344999999999999,
+            "direct_share_of_high_gpu": 0.19429486246543437,
+            "inclusive_gpu_kernel_sum_us": 9.344999999999999,
+            "inclusive_share_of_high_gpu": 0.19429486246543437
           },
           "attribution_role": "kernel_owner",
           "hotspot_rank": 2
@@ -352,32 +352,32 @@
           "python_stack": [
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1094,
+              "definition_line": 1118,
               "function": "high_level",
               "qualname": "high_level",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1096
+                "line": 1120
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1067,
+              "definition_line": 1091,
               "function": "_run_cases",
               "qualname": "_run_cases",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1081
+                "line": 1105
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 855,
+              "definition_line": 874,
               "function": "run",
               "qualname": "_case_sglang_triton.<locals>.run",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 856
+                "line": 875
               }
             },
             {
@@ -426,14 +426,14 @@
           ],
           "kernel_ids": [],
           "inclusive_kernel_ids": [
-            "p315237144199168-c6877-k42"
+            "p319631315173376-c6877-k42"
           ],
           "metrics": {
-            "nvtx_cpu_duration_us": 316.241,
+            "nvtx_cpu_duration_us": 321.212,
             "direct_gpu_kernel_sum_us": 0,
             "direct_share_of_high_gpu": 0.0,
-            "inclusive_gpu_kernel_sum_us": 2.272,
-            "inclusive_share_of_high_gpu": 0.047238855622089154
+            "inclusive_gpu_kernel_sum_us": 2.208,
+            "inclusive_share_of_high_gpu": 0.045907229141110666
           },
           "attribution_role": "ancestor_context",
           "hotspot_rank": 12
@@ -458,32 +458,32 @@
           "python_stack": [
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1094,
+              "definition_line": 1118,
               "function": "high_level",
               "qualname": "high_level",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1096
+                "line": 1120
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1067,
+              "definition_line": 1091,
               "function": "_run_cases",
               "qualname": "_run_cases",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1081
+                "line": 1105
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 855,
+              "definition_line": 874,
               "function": "run",
               "qualname": "_case_sglang_triton.<locals>.run",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 856
+                "line": 875
               }
             },
             {
@@ -549,17 +549,17 @@
           ],
           "child_capture_ids": [],
           "kernel_ids": [
-            "p315237144199168-c6877-k42"
+            "p319631315173376-c6877-k42"
           ],
           "inclusive_kernel_ids": [
-            "p315237144199168-c6877-k42"
+            "p319631315173376-c6877-k42"
           ],
           "metrics": {
-            "nvtx_cpu_duration_us": 100.718,
-            "direct_gpu_kernel_sum_us": 2.272,
-            "direct_share_of_high_gpu": 0.047238855622089154,
-            "inclusive_gpu_kernel_sum_us": 2.272,
-            "inclusive_share_of_high_gpu": 0.047238855622089154
+            "nvtx_cpu_duration_us": 99.656,
+            "direct_gpu_kernel_sum_us": 2.208,
+            "direct_share_of_high_gpu": 0.045907229141110666,
+            "inclusive_gpu_kernel_sum_us": 2.208,
+            "inclusive_share_of_high_gpu": 0.045907229141110666
           },
           "attribution_role": "kernel_owner",
           "hotspot_rank": 4
@@ -584,32 +584,32 @@
           "python_stack": [
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1094,
+              "definition_line": 1118,
               "function": "high_level",
               "qualname": "high_level",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1096
+                "line": 1120
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1067,
+              "definition_line": 1091,
               "function": "_run_cases",
               "qualname": "_run_cases",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1081
+                "line": 1105
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 867,
+              "definition_line": 886,
               "function": "run",
               "qualname": "_case_flashinfer_triton.<locals>.run",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 868
+                "line": 887
               }
             },
             {
@@ -625,17 +625,17 @@
           ],
           "child_capture_ids": [],
           "kernel_ids": [
-            "p315237144199168-c6884-k43"
+            "p319631315173376-c6884-k43"
           ],
           "inclusive_kernel_ids": [
-            "p315237144199168-c6884-k43"
+            "p319631315173376-c6884-k43"
           ],
           "metrics": {
-            "nvtx_cpu_duration_us": 72.73,
-            "direct_gpu_kernel_sum_us": 1.568,
-            "direct_share_of_high_gpu": 0.03260146373918829,
-            "inclusive_gpu_kernel_sum_us": 1.568,
-            "inclusive_share_of_high_gpu": 0.03260146373918829
+            "nvtx_cpu_duration_us": 71.697,
+            "direct_gpu_kernel_sum_us": 1.6,
+            "direct_share_of_high_gpu": 0.0332661080732686,
+            "inclusive_gpu_kernel_sum_us": 1.6,
+            "inclusive_share_of_high_gpu": 0.0332661080732686
           },
           "attribution_role": "kernel_owner",
           "hotspot_rank": 7
@@ -660,32 +660,32 @@
           "python_stack": [
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1094,
+              "definition_line": 1118,
               "function": "high_level",
               "qualname": "high_level",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1096
+                "line": 1120
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1067,
+              "definition_line": 1091,
               "function": "_run_cases",
               "qualname": "_run_cases",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1081
+                "line": 1105
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 878,
+              "definition_line": 897,
               "function": "run",
               "qualname": "_case_sglang_jit.<locals>.run",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 879
+                "line": 898
               }
             },
             {
@@ -700,28 +700,28 @@
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 590,
+              "definition_line": 598,
               "function": "wrapped",
               "qualname": "_captured_callable.<locals>.wrapped",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 591
+                "line": 599
               }
             }
           ],
           "child_capture_ids": [],
           "kernel_ids": [
-            "p315237144199168-c6892-k44"
+            "p319631315173376-c6892-k44"
           ],
           "inclusive_kernel_ids": [
-            "p315237144199168-c6892-k44"
+            "p319631315173376-c6892-k44"
           ],
           "metrics": {
-            "nvtx_cpu_duration_us": 35.127,
-            "direct_gpu_kernel_sum_us": 0.864,
-            "direct_share_of_high_gpu": 0.017964071856287428,
-            "inclusive_gpu_kernel_sum_us": 0.864,
-            "inclusive_share_of_high_gpu": 0.017964071856287428
+            "nvtx_cpu_duration_us": 46.48,
+            "direct_gpu_kernel_sum_us": 0.896,
+            "direct_share_of_high_gpu": 0.018629020521030416,
+            "inclusive_gpu_kernel_sum_us": 0.896,
+            "inclusive_share_of_high_gpu": 0.018629020521030416
           },
           "attribution_role": "kernel_owner",
           "hotspot_rank": 11
@@ -746,32 +746,32 @@
           "python_stack": [
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1094,
+              "definition_line": 1118,
               "function": "high_level",
               "qualname": "high_level",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1096
+                "line": 1120
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1067,
+              "definition_line": 1091,
               "function": "_run_cases",
               "qualname": "_run_cases",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1081
+                "line": 1105
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 890,
+              "definition_line": 909,
               "function": "run",
               "qualname": "_case_flashinfer_ffi.<locals>.run",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 891
+                "line": 910
               }
             },
             {
@@ -806,28 +806,28 @@
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 590,
+              "definition_line": 598,
               "function": "wrapped",
               "qualname": "_captured_callable.<locals>.wrapped",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 591
+                "line": 599
               }
             }
           ],
           "child_capture_ids": [],
           "kernel_ids": [
-            "p315237144199168-c6924-k45"
+            "p319631315173376-c6924-k45"
           ],
           "inclusive_kernel_ids": [
-            "p315237144199168-c6924-k45"
+            "p319631315173376-c6924-k45"
           ],
           "metrics": {
-            "nvtx_cpu_duration_us": 57.805,
+            "nvtx_cpu_duration_us": 56.586,
             "direct_gpu_kernel_sum_us": 4.576,
-            "direct_share_of_high_gpu": 0.09514304723885562,
+            "direct_share_of_high_gpu": 0.09514106908954818,
             "inclusive_gpu_kernel_sum_us": 4.576,
-            "inclusive_share_of_high_gpu": 0.09514304723885562
+            "inclusive_share_of_high_gpu": 0.09514106908954818
           },
           "attribution_role": "kernel_owner",
           "hotspot_rank": 3
@@ -849,32 +849,32 @@
           "python_stack": [
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1094,
+              "definition_line": 1118,
               "function": "high_level",
               "qualname": "high_level",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1096
+                "line": 1120
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1067,
+              "definition_line": 1091,
               "function": "_run_cases",
               "qualname": "_run_cases",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1081
+                "line": 1105
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 911,
+              "definition_line": 930,
               "function": "run",
               "qualname": "_case_sglang_cutedsl.<locals>.run",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 912
+                "line": 931
               }
             },
             {
@@ -953,14 +953,14 @@
           ],
           "kernel_ids": [],
           "inclusive_kernel_ids": [
-            "p315237144199168-c6936-k46"
+            "p319631315173376-c6936-k46"
           ],
           "metrics": {
-            "nvtx_cpu_duration_us": 345.101,
+            "nvtx_cpu_duration_us": 349.27,
             "direct_gpu_kernel_sum_us": 0,
             "direct_share_of_high_gpu": 0.0,
-            "inclusive_gpu_kernel_sum_us": 1.504,
-            "inclusive_share_of_high_gpu": 0.03127079174983367
+            "inclusive_gpu_kernel_sum_us": 1.472,
+            "inclusive_share_of_high_gpu": 0.030604819427407108
           },
           "attribution_role": "ancestor_context",
           "hotspot_rank": 13
@@ -984,32 +984,32 @@
           "python_stack": [
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1094,
+              "definition_line": 1118,
               "function": "high_level",
               "qualname": "high_level",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1096
+                "line": 1120
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1067,
+              "definition_line": 1091,
               "function": "_run_cases",
               "qualname": "_run_cases",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1081
+                "line": 1105
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 911,
+              "definition_line": 930,
               "function": "run",
               "qualname": "_case_sglang_cutedsl.<locals>.run",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 912
+                "line": 931
               }
             },
             {
@@ -1144,28 +1144,28 @@
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 590,
+              "definition_line": 598,
               "function": "wrapped",
               "qualname": "_captured_callable.<locals>.wrapped",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 591
+                "line": 599
               }
             }
           ],
           "child_capture_ids": [],
           "kernel_ids": [
-            "p315237144199168-c6936-k46"
+            "p319631315173376-c6936-k46"
           ],
           "inclusive_kernel_ids": [
-            "p315237144199168-c6936-k46"
+            "p319631315173376-c6936-k46"
           ],
           "metrics": {
-            "nvtx_cpu_duration_us": 64.102,
-            "direct_gpu_kernel_sum_us": 1.504,
-            "direct_share_of_high_gpu": 0.03127079174983367,
-            "inclusive_gpu_kernel_sum_us": 1.504,
-            "inclusive_share_of_high_gpu": 0.03127079174983367
+            "nvtx_cpu_duration_us": 79.307,
+            "direct_gpu_kernel_sum_us": 1.472,
+            "direct_share_of_high_gpu": 0.030604819427407108,
+            "inclusive_gpu_kernel_sum_us": 1.472,
+            "inclusive_share_of_high_gpu": 0.030604819427407108
           },
           "attribution_role": "kernel_owner",
           "hotspot_rank": 8
@@ -1190,42 +1190,42 @@
           "python_stack": [
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1094,
+              "definition_line": 1118,
               "function": "high_level",
               "qualname": "high_level",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1096
+                "line": 1120
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1067,
+              "definition_line": 1091,
               "function": "_run_cases",
               "qualname": "_run_cases",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1081
+                "line": 1105
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 932,
+              "definition_line": 951,
               "function": "run",
               "qualname": "_case_deepgemm_binding.<locals>.run",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 933
+                "line": 952
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 590,
+              "definition_line": 598,
               "function": "wrapped",
               "qualname": "_captured_callable.<locals>.wrapped",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 591
+                "line": 599
               }
             }
           ],
@@ -1235,17 +1235,17 @@
             "27"
           ],
           "kernel_ids": [
-            "p315237144199168-c6945-k47"
+            "p319631315173376-c6945-k47"
           ],
           "inclusive_kernel_ids": [
-            "p315237144199168-c6945-k47"
+            "p319631315173376-c6945-k47"
           ],
           "metrics": {
-            "nvtx_cpu_duration_us": 392.091,
+            "nvtx_cpu_duration_us": 400.582,
             "direct_gpu_kernel_sum_us": 2.176,
-            "direct_share_of_high_gpu": 0.04524284763805723,
+            "direct_share_of_high_gpu": 0.045241906979645294,
             "inclusive_gpu_kernel_sum_us": 2.176,
-            "inclusive_share_of_high_gpu": 0.04524284763805723
+            "inclusive_share_of_high_gpu": 0.045241906979645294
           },
           "attribution_role": "kernel_owner",
           "hotspot_rank": 5
@@ -1269,32 +1269,32 @@
           "python_stack": [
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1094,
+              "definition_line": 1118,
               "function": "high_level",
               "qualname": "high_level",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1096
+                "line": 1120
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1067,
+              "definition_line": 1091,
               "function": "_run_cases",
               "qualname": "_run_cases",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1081
+                "line": 1105
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 946,
+              "definition_line": 965,
               "function": "run",
               "qualname": "_case_sglang_tilelang.<locals>.run",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 947
+                "line": 966
               }
             },
             {
@@ -1309,28 +1309,28 @@
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 671,
+              "definition_line": 679,
               "function": "patched_call",
               "qualname": "_install_tilelang_capture.<locals>.patched_call",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 674
+                "line": 682
               }
             }
           ],
           "child_capture_ids": [],
           "kernel_ids": [
-            "p315237144199168-c6969-k48"
+            "p319631315173376-c6969-k48"
           ],
           "inclusive_kernel_ids": [
-            "p315237144199168-c6969-k48"
+            "p319631315173376-c6969-k48"
           ],
           "metrics": {
-            "nvtx_cpu_duration_us": 70.674,
-            "direct_gpu_kernel_sum_us": 1.92,
-            "direct_share_of_high_gpu": 0.03992015968063872,
-            "inclusive_gpu_kernel_sum_us": 1.92,
-            "inclusive_share_of_high_gpu": 0.03992015968063872
+            "nvtx_cpu_duration_us": 57.064,
+            "direct_gpu_kernel_sum_us": 1.952,
+            "direct_share_of_high_gpu": 0.040584651849387685,
+            "inclusive_gpu_kernel_sum_us": 1.952,
+            "inclusive_share_of_high_gpu": 0.040584651849387685
           },
           "attribution_role": "kernel_owner",
           "hotspot_rank": 6
@@ -1354,32 +1354,32 @@
           "python_stack": [
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1094,
+              "definition_line": 1118,
               "function": "high_level",
               "qualname": "high_level",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1096
+                "line": 1120
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 1067,
+              "definition_line": 1091,
               "function": "_run_cases",
               "qualname": "_run_cases",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 1081
+                "line": 1105
               }
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 961,
+              "definition_line": 980,
               "function": "run",
               "qualname": "_case_sglang_inductor.<locals>.run",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 962
+                "line": 981
               }
             },
             {
@@ -1494,28 +1494,28 @@
             },
             {
               "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-              "definition_line": 763,
+              "definition_line": 771,
               "function": "patched_run",
               "qualname": "_install_inductor_capture.<locals>.patched_run",
               "call_site_to_next": {
                 "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-                "line": 768
+                "line": 776
               }
             }
           ],
           "child_capture_ids": [],
           "kernel_ids": [
-            "p315237144199168-c6976-k49"
+            "p319631315173376-c6976-k49"
           ],
           "inclusive_kernel_ids": [
-            "p315237144199168-c6976-k49"
+            "p319631315173376-c6976-k49"
           ],
           "metrics": {
-            "nvtx_cpu_duration_us": 50.228,
+            "nvtx_cpu_duration_us": 49.437,
             "direct_gpu_kernel_sum_us": 0.96,
-            "direct_share_of_high_gpu": 0.01996007984031936,
+            "direct_share_of_high_gpu": 0.019959664843961156,
             "inclusive_gpu_kernel_sum_us": 0.96,
-            "inclusive_share_of_high_gpu": 0.01996007984031936
+            "inclusive_share_of_high_gpu": 0.019959664843961156
           },
           "attribution_role": "kernel_owner",
           "hotspot_rank": 10
@@ -1529,216 +1529,216 @@
   ],
   "kernels": [
     {
-      "kernel_id": "p315237144199168-c6801-k38",
+      "kernel_id": "p319631315173376-c6801-k38",
       "correlation_id": 6801,
       "name": "nvjet_sm90_hsh_128x128_64x6_1x2_h_bz_NNT",
-      "global_pid": 315237144199168,
+      "global_pid": 319631315173376,
       "device_id": 0,
       "stream_id": 7,
-      "gpu_start_ns": 14115253761,
-      "gpu_end_ns": 14115275297,
-      "duration_us": 21.536,
+      "gpu_start_ns": 13702172799,
+      "gpu_end_ns": 13702194399,
+      "duration_us": 21.6,
       "launch_api": {
         "name": "cuLaunchKernelEx",
-        "start_ns": 14115226879,
+        "start_ns": 13702144427,
         "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
       },
       "high_call_id": "1",
       "owner_capture_id": "1"
     },
     {
-      "kernel_id": "p315237144199168-c6814-k39",
+      "kernel_id": "p319631315173376-c6814-k39",
       "correlation_id": 6814,
       "name": "void flashinfer::activation::act_and_mul_kernel<__half, &silu<float>>(T1 *, const T1 *, int)",
-      "global_pid": 315237144199168,
+      "global_pid": 319631315173376,
       "device_id": 0,
       "stream_id": 7,
-      "gpu_start_ns": 14115722051,
-      "gpu_end_ns": 14115723363,
+      "gpu_start_ns": 13702641921,
+      "gpu_end_ns": 13702643233,
       "duration_us": 1.312,
       "launch_api": {
         "name": "cudaLaunchKernel_v7000",
-        "start_ns": 14115701639,
+        "start_ns": 13702623003,
         "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
       },
       "high_call_id": "1",
       "owner_capture_id": "3"
     },
     {
-      "kernel_id": "p315237144199168-c6845-k40",
+      "kernel_id": "p319631315173376-c6845-k40",
       "correlation_id": 6845,
       "name": "void flash::prepare_varlen_num_blocks_kernel<(int)1, (bool)1>(int, int, int, const int *, const int *, const int *, const int *, const int *, const int *, int, int, int, int, int, cutlass::FastDivmod, cutlass::FastDivmod, int *, int *, int *, int *, int *, bool, bool, bool, int)",
-      "global_pid": 315237144199168,
+      "global_pid": 319631315173376,
       "device_id": 0,
       "stream_id": 7,
-      "gpu_start_ns": 14116000548,
-      "gpu_end_ns": 14116003108,
-      "duration_us": 2.56,
+      "gpu_start_ns": 13702900577,
+      "gpu_end_ns": 13702903138,
+      "duration_us": 2.561,
       "launch_api": {
         "name": "cudaLaunchKernel_v7000",
-        "start_ns": 14115980805,
+        "start_ns": 13702885307,
         "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
       },
       "high_call_id": "1",
       "owner_capture_id": "4"
     },
     {
-      "kernel_id": "p315237144199168-c6859-k41",
+      "kernel_id": "p319631315173376-c6859-k41",
       "correlation_id": 6859,
       "name": "void cutlass::device_kernel<flash::enable_sm90_or_later<flash::FlashAttnFwdSm90<flash::CollectiveMainloopFwdSm90<(int)2, cute::tuple<cute::C<(int)1>, cute::C<(int)1>, cute::C<(int)1>>, cute::tuple<cute::C<(int)64>, cute::C<(int)192>, cute::C<(int)64>>, (int)64, cutlass::bfloat16_t, float, cutlass::arch::Sm90, (bool)1, (bool)0, (bool)0, (bool)1, (bool)0, (bool)0, (bool)0, (bool)1, (bool)1, (bool)0, (bool)0, (bool)0, cutlass::bfloat16_t, (int)1>, flash::CollectiveEpilogueFwd<cute::tuple<cute::C<(int)64>, cute::C<(int)64>, cute::C<(int)192>>, cute::tuple<cute::C<(int)1>, cute::C<(int)1>, cute::C<(int)1>>, cutlass::bfloat16_t, cutlass::arch::Sm90, (int)128, (bool)1, (bool)0, (bool)0, (bool)0>, flash::VarlenDynamicPersistentTileScheduler<(int)64, (int)192, (int)128, (int)32, (bool)0, (bool)0, (bool)1, (bool)1, (bool)1, (bool)1>>>>(T1::Params)",
-      "global_pid": 315237144199168,
+      "global_pid": 319631315173376,
       "device_id": 0,
       "stream_id": 7,
-      "gpu_start_ns": 14116040772,
-      "gpu_end_ns": 14116047620,
-      "duration_us": 6.848,
+      "gpu_start_ns": 13702934370,
+      "gpu_end_ns": 13702941154,
+      "duration_us": 6.784,
       "launch_api": {
         "name": "cudaLaunchKernelExC_v11060",
-        "start_ns": 14116028758,
+        "start_ns": 13702923744,
         "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
       },
       "high_call_id": "1",
       "owner_capture_id": "4"
     },
     {
-      "kernel_id": "p315237144199168-c6877-k42",
+      "kernel_id": "p319631315173376-c6877-k42",
       "correlation_id": 6877,
       "name": "_rms_norm_tiled_onepass",
-      "global_pid": 315237144199168,
+      "global_pid": 319631315173376,
       "device_id": 0,
       "stream_id": 7,
-      "gpu_start_ns": 14116513734,
-      "gpu_end_ns": 14116516006,
-      "duration_us": 2.272,
+      "gpu_start_ns": 13703407779,
+      "gpu_end_ns": 13703409987,
+      "duration_us": 2.208,
       "launch_api": {
         "name": "cuLaunchKernelEx",
-        "start_ns": 14116501624,
+        "start_ns": 13703395284,
         "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
       },
       "high_call_id": "1",
       "owner_capture_id": "6"
     },
     {
-      "kernel_id": "p315237144199168-c6884-k43",
+      "kernel_id": "p319631315173376-c6884-k43",
       "correlation_id": 6884,
       "name": "rms_norm_kernel",
-      "global_pid": 315237144199168,
+      "global_pid": 319631315173376,
       "device_id": 0,
       "stream_id": 7,
-      "gpu_start_ns": 14116729351,
-      "gpu_end_ns": 14116730919,
-      "duration_us": 1.568,
+      "gpu_start_ns": 13703614212,
+      "gpu_end_ns": 13703615812,
+      "duration_us": 1.6,
       "launch_api": {
         "name": "cuLaunchKernelEx",
-        "start_ns": 14116719366,
+        "start_ns": 13703603429,
         "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
       },
       "high_call_id": "1",
       "owner_capture_id": "7"
     },
     {
-      "kernel_id": "p315237144199168-c6892-k44",
+      "kernel_id": "p319631315173376-c6892-k44",
       "correlation_id": 6892,
       "name": "void <unnamed>::add_constant_kernel<(int)5>(int *, const int *, unsigned long)",
-      "global_pid": 315237144199168,
+      "global_pid": 319631315173376,
       "device_id": 0,
       "stream_id": 7,
-      "gpu_start_ns": 14117004936,
-      "gpu_end_ns": 14117005800,
-      "duration_us": 0.864,
+      "gpu_start_ns": 13703889285,
+      "gpu_end_ns": 13703890181,
+      "duration_us": 0.896,
       "launch_api": {
         "name": "cudaLaunchKernelExC_v11060",
-        "start_ns": 14116992391,
+        "start_ns": 13703876148,
         "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
       },
       "high_call_id": "1",
       "owner_capture_id": "9"
     },
     {
-      "kernel_id": "p315237144199168-c6924-k45",
+      "kernel_id": "p319631315173376-c6924-k45",
       "correlation_id": 6924,
       "name": "void flashinfer::sampling::MinPSamplingFromProbKernel<(unsigned int)1024, (cub::_V_300302_SM_750_800_890_900_1000_1030_1200::BlockScanAlgorithm)2, (cub::_V_300302_SM_750_800_890_900_1000_1030_1200::BlockReduceAlgorithm)2, (unsigned int)4, (bool)1, float, int>(T6 *, float *, T7 *, bool *, T7 *, float, unsigned int, unsigned long *, unsigned long, unsigned long *, unsigned long)",
-      "global_pid": 315237144199168,
+      "global_pid": 319631315173376,
       "device_id": 0,
       "stream_id": 7,
-      "gpu_start_ns": 14118530221,
-      "gpu_end_ns": 14118534797,
+      "gpu_start_ns": 13705461227,
+      "gpu_end_ns": 13705465803,
       "duration_us": 4.576,
       "launch_api": {
         "name": "cudaLaunchKernel_v7000",
-        "start_ns": 14118510526,
+        "start_ns": 13705440763,
         "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
       },
       "high_call_id": "1",
       "owner_capture_id": "21"
     },
     {
-      "kernel_id": "p315237144199168-c6936-k46",
+      "kernel_id": "p319631315173376-c6936-k46",
       "correlation_id": 6936,
       "name": "kernel_cutlass_kernel_sglangjit_kerneldiffusioncutedslscale_residual_norm_scale_shiftScaleResidualNormScaleShift_object_at__tensorptrbf16_gmem_align32_o_2048div2048div20481___tensorptrbf1_0",
-      "global_pid": 315237144199168,
+      "global_pid": 319631315173376,
       "device_id": 0,
       "stream_id": 7,
-      "gpu_start_ns": 14119050991,
-      "gpu_end_ns": 14119052495,
-      "duration_us": 1.504,
+      "gpu_start_ns": 13705971245,
+      "gpu_end_ns": 13705972717,
+      "duration_us": 1.472,
       "launch_api": {
         "name": "cudaLaunchKernelExC_v11060",
-        "start_ns": 14119031805,
+        "start_ns": 13705952077,
         "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
       },
       "high_call_id": "1",
       "owner_capture_id": "23"
     },
     {
-      "kernel_id": "p315237144199168-c6945-k47",
+      "kernel_id": "p319631315173376-c6945-k47",
       "correlation_id": 6945,
       "name": "void deep_gemm::sm90_bf16_gemm_impl<(cute::UMMA::Major)0, (cute::UMMA::Major)0, (unsigned int)0, (unsigned int)0, (unsigned int)0, (unsigned int)1, (unsigned int)64, (unsigned int)16, (unsigned int)64, (unsigned int)128, (unsigned int)128, (unsigned int)32, (unsigned int)16, (unsigned int)128, (unsigned int)128, (unsigned int)1, (bool)0, (unsigned int)78, (deep_gemm::GemmType)0, (bool)0, cutlass::bfloat16_t>(int *, unsigned int, unsigned int, unsigned int, CUtensorMap_st, CUtensorMap_st, CUtensorMap_st)",
-      "global_pid": 315237144199168,
+      "global_pid": 319631315173376,
       "device_id": 0,
       "stream_id": 7,
-      "gpu_start_ns": 14119572977,
-      "gpu_end_ns": 14119575153,
+      "gpu_start_ns": 13706493103,
+      "gpu_end_ns": 13706495279,
       "duration_us": 2.176,
       "launch_api": {
         "name": "cuLaunchKernelEx",
-        "start_ns": 14119558726,
+        "start_ns": 13706478909,
         "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
       },
       "high_call_id": "1",
       "owner_capture_id": "24"
     },
     {
-      "kernel_id": "p315237144199168-c6969-k48",
+      "kernel_id": "p319631315173376-c6969-k48",
       "correlation_id": 6969,
       "name": "hc_split_sinkhorn_kernel__kernel",
-      "global_pid": 315237144199168,
+      "global_pid": 319631315173376,
       "device_id": 0,
       "stream_id": 7,
-      "gpu_start_ns": 14120477845,
-      "gpu_end_ns": 14120479765,
-      "duration_us": 1.92,
+      "gpu_start_ns": 13707346034,
+      "gpu_end_ns": 13707347986,
+      "duration_us": 1.952,
       "launch_api": {
         "name": "cuLaunchKernelEx",
-        "start_ns": 14120461806,
+        "start_ns": 13707331412,
         "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
       },
       "high_call_id": "1",
       "owner_capture_id": "35"
     },
     {
-      "kernel_id": "p315237144199168-c6976-k49",
+      "kernel_id": "p319631315173376-c6976-k49",
       "correlation_id": 6976,
       "name": "triton_poi_fused_copy__div_lt_mul_where_0",
-      "global_pid": 315237144199168,
+      "global_pid": 319631315173376,
       "device_id": 0,
       "stream_id": 7,
-      "gpu_start_ns": 14120843190,
-      "gpu_end_ns": 14120844150,
+      "gpu_start_ns": 13707710580,
+      "gpu_end_ns": 13707711540,
       "duration_us": 0.96,
       "launch_api": {
         "name": "cuLaunchKernel",
-        "start_ns": 14120829963,
+        "start_ns": 13707696882,
         "table": "CUPTI_ACTIVITY_KIND_RUNTIME"
       },
       "high_call_id": "1",
@@ -1759,7 +1759,7 @@
     "execution_range_count": 36,
     "capture_event_count": 36,
     "capture_event_files": [
-      "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/cli_log/nsys_poc/capture_events/events_2012382.jsonl"
+      "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/cli_log/nsys_poc/capture_events/events_2274295.jsonl"
     ],
     "cuda_api_event_count": 2238,
     "trace_kernel_count": 58,
@@ -1793,7 +1793,7 @@
     }
   },
   "run": {
-    "run_id": "02ec1709c96d43718c3290aedc866458",
-    "created_at_unix": 1784371094.336763
+    "run_id": "700196d06dd041ccb3627ba2c927136e",
+    "created_at_unix": 1784556263.789093
   }
 }

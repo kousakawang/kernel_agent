@@ -1,9 +1,9 @@
 # Nsight PoC KID 两阶段 Golden
 
-这个目录是正式 KID 开发的完整输入/输出基准，数据来自 2026-07-17 在
-NVIDIA H20（SM90）上重新执行的一次 11-case Nsight Systems PoC。该次执行
+这个目录是正式 KID 开发的完整输入/输出基准，数据来自 2026-07-20 使用当前
+`nsys_poc.py` 在 NVIDIA H20（SM90）上执行的一次 11-case Nsight Systems PoC。该次执行
 捕获 36 个原始 execution capture、13 个与 GPU kernel 相关的结构化 capture、
-12 个 GPU kernel，GPU duration sum 为 48.096 us，归因 coverage 为 100%。
+12 个 GPU kernel，GPU duration sum 为 48.097 us，归因 coverage 为 100%。
 
 ## 目录结构
 
@@ -15,15 +15,14 @@ nsys_poc_kid_golden/
 ├── cli_log/nsys_poc/
 │   ├── environment_probe.json
 │   ├── runtime_capture.schema.json
-│   ├── capture_events/events_2012382.jsonl
+│   ├── capture_events/events_2274295.jsonl
 │   ├── trace/profile.sqlite
 │   └── logs/{probe,nsys,test,summary}.log
 ├── output/nsys_poc/decomposition.schema.json
 ├── ref/nsys_poc/
 │   ├── semantic_resolver_context.json
 │   ├── semantic_resolver_decisions.json
-│   ├── kid_semantic_resolver_notes.md
-│   └── source_snapshot/nsys_poc.trace_snapshot.json
+│   └── kid_semantic_resolver_notes.md
 ├── ARTIFACT_GUIDE.md
 └── README.md
 ```
@@ -64,15 +63,16 @@ python3 -m framework_engineer.kernel_interface_decomposer.semantic_resolver_tool
   validate config/nsys_poc/semantic_resolver_config.json
 ```
 
-本 golden 的 Runtime trace 对应早于 softmax variant 的 PoC 行号，因此 context 使用
-trace-version source snapshot 分析；最终发布路径仍是规范化后的项目源码路径。
+本 golden 的 Runtime target、raw stack、semantic context 和 call site 均直接对应当前
+`framework_engineer/kernel_interface_decomposer/nsys_poc.py`，不使用 source override 或历史
+snapshot。源码行号变化时必须重新生成整套 trace/context/final，不能只修改配置行号。
 
 `profile.sqlite` 是可复查的 Nsight 证据；`.nsys-rep` 是导出 SQLite 前的临时
 中间文件，不属于 CLI 交付合同，也不保存在 golden 中。GPU 耗时均为关联
 kernel activity duration 之和，用于热点排序，不等同于多 stream 端到端 wall time。
 
 正式默认使用 `unique_decomposition`：相同 execution 拆分只保留最后一次代表，不同拆分
-分别保留；同时兼容 `all`、`last_n` 和 `single`。本历史 golden 显式使用 `single`，
+分别保留；同时兼容 `all`、`last_n` 和 `single`。本 golden 显式使用 `single`，
 等价于每个 stage 选择最后一次 invocation；全部未选调用始终保留在 JSONL/SQLite 中。
 
 ## 验证

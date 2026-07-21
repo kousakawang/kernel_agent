@@ -34,12 +34,7 @@
       }
     ]
   },
-  "analysis_source_overrides": [
-    {
-      "published_path": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-      "analysis_path": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/ref/nsys_poc/source_snapshot/nsys_poc.trace_snapshot.json"
-    }
-  ],
+  "analysis_source_overrides": [],
   "context_output": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/ref/nsys_poc/semantic_resolver_context.json",
   "decisions_output": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/ref/nsys_poc/semantic_resolver_decisions.json",
   "output": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/output/nsys_poc/decomposition.schema.json",

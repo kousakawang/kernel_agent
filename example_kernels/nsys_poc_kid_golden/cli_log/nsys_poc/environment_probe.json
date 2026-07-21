@@ -1,6 +1,6 @@
 {
   "schema_version": "kid-runtime-environment/v1",
-  "created_at_unix": 1784281379.3212752,
+  "created_at_unix": 1784555586.6967363,
   "python": {
     "version": "3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]",
     "executable": "/usr/bin/python3",
@@ -185,7 +185,7 @@
       "static_reasons": [],
       "smoke": {
         "status": "passed",
-        "elapsed_s": 0.15771297365427017,
+        "elapsed_s": 0.15316016227006912,
         "output_shape": [
           1024,
           1024
@@ -200,7 +200,7 @@
       "static_reasons": [],
       "smoke": {
         "status": "passed",
-        "elapsed_s": 0.0012274160981178284,
+        "elapsed_s": 0.0012664459645748138,
         "output_shape": [
           64,
           2048
@@ -215,7 +215,7 @@
       "static_reasons": [],
       "smoke": {
         "status": "passed",
-        "elapsed_s": 0.01071876659989357,
+        "elapsed_s": 0.010859653353691101,
         "output_shape": [
           4,
           2,
@@ -231,7 +231,7 @@
       "static_reasons": [],
       "smoke": {
         "status": "passed",
-        "elapsed_s": 4.281469505280256,
+        "elapsed_s": 4.226434204727411,
         "output_shape": [
           512,
           2048
@@ -246,7 +246,7 @@
       "static_reasons": [],
       "smoke": {
         "status": "passed",
-        "elapsed_s": 0.004534527659416199,
+        "elapsed_s": 0.004522666335105896,
         "output_shape": [
           64,
           2048
@@ -261,7 +261,7 @@
       "static_reasons": [],
       "smoke": {
         "status": "passed",
-        "elapsed_s": 0.008153319358825684,
+        "elapsed_s": 0.007515400648117065,
         "output_shape": [
           4096
         ],
@@ -275,7 +275,7 @@
       "static_reasons": [],
       "smoke": {
         "status": "passed",
-        "elapsed_s": 0.029883649200201035,
+        "elapsed_s": 0.026977743953466415,
         "output_shape": [
           4
         ],
@@ -289,7 +289,7 @@
       "static_reasons": [],
       "smoke": {
         "status": "passed",
-        "elapsed_s": 0.5109208077192307,
+        "elapsed_s": 0.5087066330015659,
         "output_shape": [
           1,
           4,
@@ -305,7 +305,7 @@
       "static_reasons": [],
       "smoke": {
         "status": "passed",
-        "elapsed_s": 0.05910627916455269,
+        "elapsed_s": 0.006574232131242752,
         "output_shape": [
           128,
           128
@@ -320,7 +320,7 @@
       "static_reasons": [],
       "smoke": {
         "status": "passed",
-        "elapsed_s": 1.4355993419885635,
+        "elapsed_s": 1.4265787154436111,
         "output_shape": [
           2,
           16,
@@ -336,37 +336,13 @@
       "static_reasons": [],
       "smoke": {
         "status": "passed",
-        "elapsed_s": 0.31176042929291725,
+        "elapsed_s": 0.278866533190012,
         "output_shape": [
           8,
           4096
         ],
         "output_dtype": "torch.float32"
       }
-    },
-    "flash_attn4_cutedsl": {
-      "optional": true,
-      "minimum_compute_capability": [
-        10,
-        0
-      ],
-      "static_supported": false,
-      "static_reasons": [
-        "requires compute capability 10.0 or newer"
-      ],
-      "smoke": null
-    },
-    "tokenspeed_mla_cutedsl": {
-      "optional": true,
-      "minimum_compute_capability": [
-        10,
-        0
-      ],
-      "static_supported": false,
-      "static_reasons": [
-        "requires compute capability 10.0 or newer"
-      ],
-      "smoke": null
     }
   },
   "capture_adapters": {
