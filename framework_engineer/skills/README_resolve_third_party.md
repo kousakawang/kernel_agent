@@ -27,7 +27,16 @@ kernel-agent 流水线 **Step 0.5 第一步**：确定 sglang 运行时依赖的
 
 ### 2. 一份 config 文件
 
-复制模板 [../configs/resolve_third_party.example.py](../configs/resolve_third_party.example.py) 改成你的值。字段：
+**参考模板（务必先看）**：[`kernel_agent/framework_engineer/configs/resolve_third_party.example.py`](../configs/resolve_third_party.example.py)
+
+复制它改成你的值即可：
+
+```bash
+cp kernel_agent/framework_engineer/configs/resolve_third_party.example.py my_resolve_cfg.py
+# 然后编辑 my_resolve_cfg.py，把下表的必填字段改成你环境里的真实值
+```
+
+字段说明：
 
 | 字段 | 必填 | 说明 |
 | --- | :---: | --- |
@@ -39,6 +48,29 @@ kernel-agent 流水线 **Step 0.5 第一步**：确定 sglang 运行时依赖的
 | `explicit_paths` | ⬜ | `{name: 本地路径}`，用户手动指定、覆盖自动定位（P1）。 |
 | `extra_env` | ⬜ | 额外环境变量，如 `{"PYTHONPATH": ...}`。 |
 | `https_proxy` | ⬜ | 所有 git clone 用的代理（也可命令行 `--https-proxy` 传）。 |
+
+一份**最小可跑**示例（只填必填项，完整版见上面的模板文件）：
+
+```python
+# my_resolve_cfg.py
+service_cmds = [
+    {
+        "backend_name": "flashinfer",
+        "cmd": (
+            "python3 -m sglang.launch_server --model-path /data/models/Qwen3.5-9B/ "
+            "--host 127.0.0.1 --port 8080 --attention-backend fa3 "
+            "--tensor-parallel-size 1 --disable-radix-cache"
+        ),
+    },
+]
+sglang_repo_root = "/sgl-workspace/sglang"      # 必须含 sgl-kernel/
+third_party_cache = "/data/third_party_cache"   # clone 落盘处
+output_root = "/data/step0_5_out"               # manifest 落盘处
+
+# 可选
+# https_proxy = "100.68.160.173:3128"
+# extra_env = {"PYTHONPATH": "/sgl-workspace/sglang/python"}
+```
 
 > config 也支持 `.json` 或 YAML 子集；`.py` 为推荐格式（与框架其余配置一致）。
 

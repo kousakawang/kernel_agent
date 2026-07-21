@@ -18,6 +18,7 @@ from framework_engineer.kernel_interface_decomposer.semantic_resolver import (
     SemanticResolverConfig,
     SemanticResolverError,
 )
+from framework_engineer.kernel_interface_decomposer.config import ConfigError
 
 
 MODULE = (
@@ -39,13 +40,13 @@ class SemanticResolverFixture(unittest.TestCase):
         cls.golden_decisions = json.loads(
             (
                 cls.golden
-                / "ref/nsys_poc/semantic_resolver_decisions.json"
+                / "nsys_poc/ref/semantic_resolver_decisions.json"
             ).read_text(encoding="utf-8")
         )
         cls.golden_final = json.loads(
             (
                 cls.golden
-                / "output/nsys_poc/decomposition.schema.json"
+                / "nsys_poc/output/decomposition.schema.json"
             ).read_text(encoding="utf-8")
         )
 
@@ -57,34 +58,50 @@ class SemanticResolverFixture(unittest.TestCase):
         decisions: dict[str, Any] | None = None,
         notes: str | None = None,
     ) -> tuple[Path, SemanticResolverConfig]:
-        backend_ref = root / "ref/nsys_poc"
-        backend_output = root / "output/nsys_poc"
+        config_dir = root / "config/nsys_poc"
+        backend_cli = root / "nsys_poc/cli_log"
+        backend_ref = root / "nsys_poc/ref"
+        backend_output = root / "nsys_poc/output"
+        config_dir.mkdir(parents=True)
+        backend_cli.mkdir(parents=True)
         backend_ref.mkdir(parents=True)
         backend_output.mkdir(parents=True)
         config = copy.deepcopy(self.golden_config)
-        if runtime is not None:
-            runtime_path = root / "runtime_capture.schema.json"
-            runtime_path.write_text(
-                json.dumps(runtime, indent=2) + "\n", encoding="utf-8"
+        runtime_value = runtime or json.loads(
+            (self.golden / "nsys_poc/cli_log/runtime_capture.schema.json").read_text(
+                encoding="utf-8"
             )
-            config["runtime_capture"] = str(runtime_path)
-        config["context_output"] = str(backend_ref / "semantic_resolver_context.json")
-        config["decisions_output"] = str(backend_ref / "semantic_resolver_decisions.json")
-        config["notes_output"] = str(backend_ref / "kid_semantic_resolver_notes.md")
-        config["output"] = str(backend_output / "decomposition.schema.json")
+        )
+        (backend_cli / "runtime_capture.schema.json").write_text(
+            json.dumps(runtime_value, indent=2) + "\n", encoding="utf-8"
+        )
+        runtime_config = json.loads(
+            (
+                self.golden / "config/nsys_poc/runtime_capture_config.json"
+            ).read_text(encoding="utf-8")
+        )
+        runtime_config["workdir"] = str(self.repo_root.parent)
+        runtime_config["output_dir"] = str(root)
+        runtime_config["target"]["file"] = str(
+            self.repo_root
+            / "framework_engineer/kernel_interface_decomposer/nsys_poc.py"
+        )
+        (config_dir / "runtime_capture_config.json").write_text(
+            json.dumps(runtime_config, indent=2) + "\n", encoding="utf-8"
+        )
         decisions_value = decisions or copy.deepcopy(self.golden_decisions)
-        Path(config["decisions_output"]).write_text(
+        (backend_ref / "semantic_resolver_decisions.json").write_text(
             json.dumps(decisions_value, indent=2) + "\n", encoding="utf-8"
         )
-        Path(config["notes_output"]).write_text(
+        (backend_ref / "kid_semantic_resolver_notes.md").write_text(
             notes
             if notes is not None
             else (
-                self.golden / "ref/nsys_poc/kid_semantic_resolver_notes.md"
+                self.golden / "nsys_poc/ref/kid_semantic_resolver_notes.md"
             ).read_text(encoding="utf-8"),
             encoding="utf-8",
         )
-        config_path = root / "semantic_resolver_config.json"
+        config_path = config_dir / "semantic_resolver_config.json"
         config_path.write_text(
             json.dumps(config, indent=2) + "\n", encoding="utf-8"
         )
@@ -124,40 +141,112 @@ class TestSemanticResolverGolden(SemanticResolverFixture):
             serialized = json.dumps(context)
             self.assertNotIn("low_level_id", serialized)
             self.assertNotIn("normalized_kernel_name", serialized)
-
-    def test_python_source_override_uses_ast_call_expression(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="kid-semantic-ast-") as temporary:
-            root = Path(temporary)
-            analysis_source = root / "trace_source.py"
-            analysis_source.write_text(
-                "\n" * 817 + "value = torch.matmul(a, b)\n", encoding="utf-8"
+            self.assertEqual(
+                {hint["name"] for hint in context["repository_hints"]},
+                {"sglang", "flashinfer", "flash_attn", "deep_gemm"},
             )
+            self.assertTrue(
+                all(
+                    hint["source"] == "third_party_manifest"
+                    for hint in context["repository_hints"]
+                )
+            )
+
+    def test_empty_mapping_keeps_paths_and_outputs_are_derived(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="kid-semantic-empty-map-") as temporary:
+            root = Path(temporary)
             config_path, _ = self.make_workspace(root)
             raw = json.loads(config_path.read_text(encoding="utf-8"))
-            raw["analysis_source_overrides"] = [
+            raw["source_context"]["runtime_to_local_path_mappings"] = []
+            config_path.write_text(json.dumps(raw), encoding="utf-8")
+            config = SemanticResolverConfig.load(config_path)
+            self.assertEqual(config.map_runtime_path("/runtime/source.py"), "/runtime/source.py")
+            self.assertEqual(
+                config.runtime_capture,
+                (root / "nsys_poc/cli_log/runtime_capture.schema.json").resolve(),
+            )
+            self.assertEqual(
+                config.context_output,
+                (root / "nsys_poc/ref/semantic_resolver_context.json").resolve(),
+            )
+            self.assertEqual(
+                config.output,
+                (root / "nsys_poc/output/decomposition.schema.json").resolve(),
+            )
+
+    def test_shared_output_root_keeps_backend_paths_isolated(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="kid-semantic-backends-") as temporary:
+            root = Path(temporary)
+            first_path, first = self.make_workspace(root)
+            second_dir = root / "config/other"
+            second_dir.mkdir(parents=True)
+            runtime_raw = json.loads(
+                (first_path.parent / "runtime_capture_config.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            runtime_raw["backend_name"] = "other"
+            (second_dir / "runtime_capture_config.json").write_text(
+                json.dumps(runtime_raw), encoding="utf-8"
+            )
+            semantic_raw = json.loads(first_path.read_text(encoding="utf-8"))
+            semantic_raw["backend_name"] = "other"
+            second_path = second_dir / "semantic_resolver_config.json"
+            second_path.write_text(json.dumps(semantic_raw), encoding="utf-8")
+            second = SemanticResolverConfig.load(second_path)
+            self.assertEqual(first.output_root, second.output_root)
+            self.assertNotEqual(first.runtime_capture, second.runtime_capture)
+            self.assertNotEqual(first.context_output, second.context_output)
+            self.assertNotEqual(first.output, second.output)
+
+    def test_longest_path_mapping_wins_and_removed_fields_fail(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="kid-semantic-ast-") as temporary:
+            root = Path(temporary)
+            config_path, config = self.make_workspace(root)
+            raw = json.loads(config_path.read_text(encoding="utf-8"))
+            raw["source_context"]["runtime_to_local_path_mappings"] = [
                 {
-                    "published_path": str(
-                        self.repo_root
-                        / "framework_engineer/kernel_interface_decomposer/nsys_poc.py"
-                    ),
-                    "analysis_path": str(analysis_source),
-                }
+                    "runtime_prefix": "/runtime",
+                    "local_prefix": "/local/general",
+                },
+                {
+                    "runtime_prefix": "/runtime/pkg",
+                    "local_prefix": "/local/specific",
+                },
             ]
             config_path.write_text(
                 json.dumps(raw, indent=2) + "\n", encoding="utf-8"
             )
-            context = SemanticResolver(
+            mapped = SemanticResolverConfig.load(config_path)
+            self.assertEqual(
+                mapped.map_runtime_path("/runtime/pkg/source.py"),
+                "/local/specific/source.py",
+            )
+            for removed in (
+                "runtime_capture",
+                "analysis_source_overrides",
+                "context_output",
+                "decisions_output",
+                "notes_output",
+                "output",
+            ):
+                candidate = copy.deepcopy(raw)
+                candidate[removed] = [] if removed == "analysis_source_overrides" else "unused"
+                config_path.write_text(json.dumps(candidate), encoding="utf-8")
+                with self.subTest(removed=removed), self.assertRaisesRegex(
+                    ConfigError, f"unsupported.*{removed}"
+                ):
+                    SemanticResolverConfig.load(config_path)
+            candidate = copy.deepcopy(raw)
+            candidate["source_context"]["source_roots"] = []
+            config_path.write_text(json.dumps(candidate), encoding="utf-8")
+            with self.assertRaisesRegex(ConfigError, "unsupported.*source_roots"):
                 SemanticResolverConfig.load(config_path)
-            ).prepare_context()
-            matmul = next(
-                capture
-                for capture in context["invocations"][0]["owner_captures"]
-                if capture["member_ref"]["capture_id"] == "1"
-            )
-            edge = next(
-                item for item in matmul["stack_edges"] if item["call_site"]["line"] == 818
-            )
-            self.assertEqual(edge["call_expression"], "torch.matmul(a, b)")
+            candidate = copy.deepcopy(raw)
+            candidate["schema_version"] = "kid-semantic-resolver-config/v2"
+            config_path.write_text(json.dumps(candidate), encoding="utf-8")
+            with self.assertRaisesRegex(ConfigError, "kid-semantic-resolver-config/v3"):
+                SemanticResolverConfig.load(config_path)
 
     def test_helper_cli_reproduces_final_golden(self) -> None:
         with tempfile.TemporaryDirectory(prefix="kid-semantic-cli-") as temporary:
@@ -216,7 +305,7 @@ class TestSemanticResolverGolden(SemanticResolverFixture):
         runtime = json.loads(
             (
                 self.golden
-                / "cli_log/nsys_poc/runtime_capture.schema.json"
+                / "nsys_poc/cli_log/runtime_capture.schema.json"
             ).read_text(encoding="utf-8")
         )
         capture = next(
@@ -244,7 +333,7 @@ class TestSemanticResolverMultiInvocation(SemanticResolverFixture):
         runtime = json.loads(
             (
                 self.golden
-                / "cli_log/nsys_poc/runtime_capture.schema.json"
+                / "nsys_poc/cli_log/runtime_capture.schema.json"
             ).read_text(encoding="utf-8")
         )
         original = runtime["invocations"][0]

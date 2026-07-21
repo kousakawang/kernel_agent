@@ -25,7 +25,7 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("prepare", "finalize", "validate"):
         command = commands.add_parser(name)
-        command.add_argument("config", help="kid-semantic-resolver-config/v2 path")
+        command.add_argument("config", help="kid-semantic-resolver-config/v3 path")
     return parser
 
 

@@ -1,20 +1,14 @@
 {
   "schema_version": "kid-semantic-context/v1",
   "backend_name": "nsys_poc",
-  "runtime_capture": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/cli_log/nsys_poc/runtime_capture.schema.json",
-  "runtime_sha256": "4e45a597334198d6b2bb94135c0d863564ac83258deb1e48eca0642e0cbf9465",
+  "runtime_capture": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/nsys_poc/cli_log/runtime_capture.schema.json",
+  "runtime_sha256": "7d9538aa91cd561bbf26bdaf13078e3a6b2875a3fe5840ea10b3a98de8f9b03c",
   "target": {
     "interface": "high_level",
     "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
     "line": 1119
   },
   "repository_hints": [
-    {
-      "name": "DeepGEMM",
-      "local_path": "/Users/bytedance/Desktop/infra_agent/DeepGEMM",
-      "source": "source_root",
-      "available": true
-    },
     {
       "name": "deep_gemm",
       "local_path": "/Users/bytedance/Desktop/infra_agent/DeepGEMM",
@@ -37,21 +31,9 @@
       "status": "ok"
     },
     {
-      "name": "flashinfer",
-      "local_path": "/Users/bytedance/Desktop/remote_dev_project/model_ana/flashinfer",
-      "source": "source_root",
-      "available": true
-    },
-    {
-      "name": "sgl-attn",
-      "local_path": "/Users/bytedance/Desktop/infra_agent/sgl-attn",
-      "source": "source_root",
-      "available": true
-    },
-    {
       "name": "sglang",
       "local_path": "/Users/bytedance/Desktop/infra_agent/sglang",
-      "source": "source_root",
+      "source": "third_party_manifest",
       "available": true
     }
   ],

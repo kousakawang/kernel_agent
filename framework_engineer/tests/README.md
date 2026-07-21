@@ -29,7 +29,8 @@ SGLang/third-party 源码树。测试覆盖：
 - `generate-harness` 后初始 correctness smoke pass。
 - `validate-task-pack` 检查必需文件、selected snapshots 和 correctness smoke。
 - source-location 的 `locate/extract` 两个公开 CLI，以及 Agent 私有
-  `inspect-target/search/finalize/evaluate` helper。
+  `prepare-run/inspect-target/search/finalize/evaluate/validate-run` helper；
+- `source-locate-agent-config/v1` 能从单个配置派生并校验完整 testcase workspace。
 
 当前 source_locate Agent 的方法论和入口分别是：
 

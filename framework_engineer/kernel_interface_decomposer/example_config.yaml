@@ -1,7 +1,7 @@
-schema_version: kid-runtime-config/v2
+schema_version: kid-runtime-config/v3
 backend_name: triton
 workdir: /workspace
-output_dir: /workspace/kid/cli_log/triton
+output_dir: /workspace/kid
 
 target:
   file: /workspace/sglang/python/sglang/srt/model_executor/model_runner.py
@@ -21,7 +21,6 @@ env:
 
 selection:
   skip_invocations: 0
-  stages: [prefill, decode, unknown]
   sample_count_per_stage: 1
   sampling: unique_decomposition
   aggregation: single
@@ -31,3 +30,4 @@ profiling:
   max_runtime_sec: 1800
   disable_cuda_graph: true
   min_capture_coverage: 1.0
+  trace_retention: on_failure

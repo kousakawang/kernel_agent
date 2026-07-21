@@ -1040,10 +1040,10 @@ importlib.metadata.version(dist_name)   # 以“装好的”为准，不读 pypr
 > **2026-07-19 收敛说明：本小节以下旧 F0–F8 分派、`source_locator.py`、Layer 1/2、
 > `needs_agent/source` 和 KID `runtime_event.implementation` 设计均已废弃，仅保留为历史调研。**
 > 当前实现是 `framework_engineer/skills/source_locate.md` +
-> `prompts/start_source_locate.md`：公开 `locate` CLI 只产
-> `locate_candidates.interface_definition`；自主 Agent 完成四层语义判断；私有
-> `agent_helper inspect-target/search/finalize/evaluate` 只做候选搜索和机械校验；Agent 在生成
-> located schema/notes 后结束；外层再调用公开 `extract` CLI。当前 contract 与实现以
+> `prompts/start_source_locate.md`：用户只提供 `source-locate-agent-config/v1`；入口 Prompt
+> 自主编排公开 `locate`、四层语义判断、finalize 和公开 `extract`。私有
+> `agent_helper prepare-run/inspect-target/search/finalize/evaluate/validate-run` 负责配置预检、
+> 候选搜索和机械校验。当前 contract 与实现以
 > `KID_and_locate_source_desgin_v2.md` §4 为准。
 
 **类型**：Skill（agent 上下文兜底歧义）+ 共享 deterministic helper（供 KID 直接 import）

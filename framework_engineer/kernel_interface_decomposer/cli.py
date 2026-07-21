@@ -18,12 +18,12 @@ def _build_parser() -> argparse.ArgumentParser:
     capture = subparsers.add_parser(
         "capture", help="Run one backend/test workflow under Nsight Systems"
     )
-    capture.add_argument("config", help="kid-runtime-config/v2 JSON or YAML path")
+    capture.add_argument("config", help="kid-runtime-config/v3 JSON or YAML path")
 
     analyze = subparsers.add_parser(
         "analyze", help="Rebuild Runtime Capture output from existing SQLite/JSONL"
     )
-    analyze.add_argument("config", help="kid-runtime-config/v2 JSON or YAML path")
+    analyze.add_argument("config", help="kid-runtime-config/v3 JSON or YAML path")
     analyze.add_argument("--sqlite", required=True, help="Nsight Systems SQLite path")
     analyze.add_argument(
         "--events-dir", required=True, help="Directory containing events_<pid>.jsonl"

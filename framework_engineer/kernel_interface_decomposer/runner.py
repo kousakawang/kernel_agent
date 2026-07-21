@@ -629,27 +629,22 @@ def analyze_existing_trace(
         sqlite_retained=retain_sqlite,
     )
     if write_output:
-        config.output_dir.mkdir(parents=True, exist_ok=True)
-        config.events_dir().mkdir(parents=True, exist_ok=True)
-        config.logs_dir().mkdir(parents=True, exist_ok=True)
-        if retain_sqlite:
-            config.trace_dir().mkdir(parents=True, exist_ok=True)
-            destination_sqlite = config.sqlite_path()
-            if sqlite_path.resolve() != destination_sqlite.resolve():
-                shutil.copy2(sqlite_path, destination_sqlite)
-        elif sqlite_path.resolve() != config.sqlite_path().resolve():
-            config.sqlite_path().unlink(missing_ok=True)
-            try:
-                config.trace_dir().rmdir()
-            except OSError:
-                pass
-        for source_event in sorted(events_dir.glob("events_*.jsonl")):
-            destination_event = config.events_dir() / source_event.name
-            if source_event.resolve() != destination_event.resolve():
-                shutil.copy2(source_event, destination_event)
-        environment_path = config.output_dir / "environment_probe.json"
-        if not environment_path.exists():
-            environment_path.write_text(
+        destination = config.cli_dir()
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        staging = destination.parent / f".{destination.name}.kid-{uuid.uuid4().hex}"
+        _prepare_layout(staging)
+        try:
+            preserve_explicit_sqlite = (
+                sqlite_path.resolve()
+                == (destination / "trace" / "profile.sqlite").resolve()
+            )
+            if retain_sqlite or preserve_explicit_sqlite:
+                shutil.copy2(sqlite_path, staging / "trace" / "profile.sqlite")
+            else:
+                shutil.rmtree(staging / "trace")
+            for source_event in sorted(events_dir.glob("events_*.jsonl")):
+                shutil.copy2(source_event, staging / "capture_events" / source_event.name)
+            (staging / "environment_probe.json").write_text(
                 json.dumps(
                     {
                         "schema_version": ENVIRONMENT_VERSION,
@@ -666,16 +661,22 @@ def analyze_existing_trace(
                 + "\n",
                 encoding="utf-8",
             )
-        for log_name in ("probe.log", "nsys.log", "warmup.log", "test.log"):
-            log_path = config.logs_dir() / log_name
-            if not log_path.exists():
-                log_path.write_text("offline analyze: no command log\n", encoding="utf-8")
-        config.schema_path().write_text(
-            json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-        )
-        (config.logs_dir() / "summary.log").write_text(
-            format_summary(result), encoding="utf-8"
-        )
+            for log_name in ("probe.log", "nsys.log", "warmup.log", "test.log"):
+                (staging / "logs" / log_name).write_text(
+                    "offline analyze: no command log\n", encoding="utf-8"
+                )
+            (staging / "runtime_capture.schema.json").write_text(
+                json.dumps(result, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            (staging / "logs" / "summary.log").write_text(
+                format_summary(result), encoding="utf-8"
+            )
+            shutil.rmtree(staging / "_inject", ignore_errors=True)
+            _publish(staging, destination)
+        except Exception:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
     return result
 
 
@@ -684,7 +685,9 @@ def capture_runtime(config: RuntimeCaptureConfig) -> dict[str, Any]:
         raise RuntimeError(f"workdir does not exist: {config.workdir}")
     if not config.target_file.is_file():
         raise RuntimeError(f"target.file does not exist: {config.target_file}")
-    staging = config.output_dir.parent / f".{config.output_dir.name}.kid-{uuid.uuid4().hex}"
+    destination = config.cli_dir()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    staging = destination.parent / f".{destination.name}.kid-{uuid.uuid4().hex}"
     _prepare_layout(staging)
     created_at = time.time()
     retention = str(config.profiling["trace_retention"])
@@ -734,7 +737,7 @@ def capture_runtime(config: RuntimeCaptureConfig) -> dict[str, Any]:
             stale_report.unlink(missing_ok=True)
         if retention == "never":
             shutil.rmtree(staging / "trace", ignore_errors=True)
-        _publish(staging, config.output_dir)
+        _publish(staging, destination)
         raise
-    _publish(staging, config.output_dir)
+    _publish(staging, destination)
     return result

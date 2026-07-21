@@ -151,13 +151,7 @@ def select_invocations(
     )
     skip = int(selection.get("skip_invocations", 0))
     after_skip = chronological[skip:]
-    allowed_stages = list(selection.get("stages") or [])
-    eligible = [
-        item
-        for item in after_skip
-        if not allowed_stages
-        or str(item.get("high_level", {}).get("stage", "unknown")) in allowed_stages
-    ]
+    eligible = after_skip
     strategy = str(selection.get("sampling", "unique_decomposition"))
     try:
         sampler = SAMPLERS[strategy]

@@ -8,9 +8,6 @@
   },
   "invocation_selection": {
     "skip_invocations": 0,
-    "stages": [
-      "unknown"
-    ],
     "sample_count_per_stage": 1,
     "sampling": "single",
     "aggregation": "single"
@@ -1759,7 +1756,7 @@
     "execution_range_count": 36,
     "capture_event_count": 36,
     "capture_event_files": [
-      "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/cli_log/nsys_poc/capture_events/events_2274295.jsonl"
+      "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/nsys_poc/cli_log/capture_events/events_2274295.jsonl"
     ],
     "cuda_api_event_count": 2238,
     "trace_kernel_count": 58,

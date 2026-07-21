@@ -103,9 +103,10 @@ class TestCaptureWindow(unittest.TestCase):
         test_command: str,
         ready: dict[str, Any] | None,
     ) -> tuple[dict[str, Any], Path]:
-        output = root / backend
+        output = root / "output"
+        cli_dir = output / backend / "cli_log"
         config = {
-            "schema_version": "kid-runtime-config/v2",
+            "schema_version": "kid-runtime-config/v3",
             "backend_name": backend,
             "workdir": str(REPO_ROOT.parent),
             "output_dir": str(output),
@@ -121,7 +122,6 @@ class TestCaptureWindow(unittest.TestCase):
             "env": {},
             "selection": {
                 "skip_invocations": 0,
-                "stages": ["unknown"],
                 "sample_count_per_stage": 1,
                 "sampling": "single",
                 "aggregation": "single",
@@ -153,14 +153,14 @@ class TestCaptureWindow(unittest.TestCase):
             self.fail(
                 f"capture {backend} failed with {completed.returncode}\n"
                 f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}\n"
-                f"{_failure_logs(output)}"
+                f"{_failure_logs(cli_dir)}"
             )
         payload = json.loads(
-            (output / "runtime_capture.schema.json").read_text(encoding="utf-8")
+            (cli_dir / "runtime_capture.schema.json").read_text(encoding="utf-8")
         )
-        validator = RuntimeArtifactValidator(output)
+        validator = RuntimeArtifactValidator(cli_dir)
         self.assertTrue(validator.validate(), msg="; ".join(validator.errors))
-        return payload, output
+        return payload, cli_dir
 
     def test_server_startup_target_calls_are_excluded(self) -> None:
         self.assertIsNotNone(shutil.which("nsys"), "nsys is not installed")

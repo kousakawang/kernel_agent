@@ -1,9 +1,9 @@
 """Private deterministic tools used by the source-locate Agent.
 
 This module intentionally is not wired into ``source_location.cli``.  The two
-public commands remain ``locate`` and ``extract``; these helpers only provide
-read-only context/search plus mechanical finalization and golden evaluation for
-the Prompt-driven Agent.
+public commands remain ``locate`` and ``extract``; these helpers provide config
+preflight, read-only context/search, mechanical finalization/evaluation, and
+complete-workspace validation for the Prompt-driven Agent.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Iterable
 
+from .agent_config import load_agent_config
 from .agent_contracts import stripped_layers, validate_decisions
 from .contracts import (
     CANDIDATE_AMBIGUOUS,
@@ -194,6 +195,35 @@ def _root_owner(path: Path, roots: list[SearchRoot]) -> SearchRoot | None:
                 continue
         owners.append(root)
     return max(owners, key=lambda item: len(item.path.parts), default=None)
+
+
+def prepare_agent_run(config_path: Path) -> dict[str, Any]:
+    """Validate one config, create its workspace layout, and expose run paths."""
+
+    config = load_agent_config(config_path)
+    kid_schema = load_json_object(config.kid_schema, label="KID schema")
+    entries = validate_kid_schema(kid_schema)
+    roots, skipped = load_search_roots(
+        config.third_party_manifest, config.sglang_repo_root
+    )
+    owner = _root_owner(config.run.workspace, roots)
+    if owner is not None:
+        raise AgentHelperError(
+            "Agent config workspace must not be inside source root "
+            f"{owner.path}: {config.run.workspace}"
+        )
+    config.run.create_directories()
+    report = config.to_dict()
+    report.update(
+        {
+            "kernels": [entry["low_level_id"] for entry in entries],
+            "search_roots": [
+                {"name": root.name, "path": str(root.path)} for root in roots
+            ],
+            "search_roots_skipped": skipped,
+        }
+    )
+    return report
 
 
 def _source_context(path: Path, line: int, *, max_lines: int) -> dict[str, Any]:
@@ -718,6 +748,122 @@ def evaluate_agent_result(
     }
 
 
+def validate_agent_run(config_path: Path) -> dict[str, Any]:
+    """Validate the complete config-driven locate→Agent→extract workspace."""
+
+    config = load_agent_config(config_path)
+    roots, skipped = load_search_roots(
+        config.third_party_manifest, config.sglang_repo_root
+    )
+    owner = _root_owner(config.run.workspace, roots)
+    if owner is not None:
+        raise AgentHelperError(
+            "Agent config workspace must not be inside source root "
+            f"{owner.path}: {config.run.workspace}"
+        )
+
+    kid = load_json_object(config.kid_schema, label="KID schema")
+    kid_entries = validate_kid_schema(kid)
+    candidate = load_json_object(
+        config.run.candidate_schema, label="locate candidate schema"
+    )
+    candidate_entries = _validate_candidate_schema(candidate)
+    decisions_payload = load_json_object(config.run.decisions, label="decisions")
+    kernel_ids = [entry["low_level_id"] for entry in kid_entries]
+    decisions = validate_decisions(
+        decisions_payload, expected_kernel_ids=kernel_ids
+    )
+    located = load_json_object(config.run.located_schema, label="located schema")
+    located_entries = validate_agent_schema(located)
+    extracted = load_json_object(
+        config.run.extracted_schema, label="extracted schema"
+    )
+    extracted_entries = validate_agent_schema(extracted)
+
+    projection = kid_projection(kid)
+    for label, payload in (
+        ("candidate", candidate),
+        ("located", located),
+        ("extracted", extracted),
+    ):
+        if kid_projection(payload) != projection:
+            raise AgentHelperError(f"{label} schema changed KID-owned fields")
+
+    if [entry["low_level_id"] for entry in candidate_entries] != kernel_ids:
+        raise AgentHelperError("candidate schema changed KID kernel order")
+    if [entry["low_level_id"] for entry in located_entries] != kernel_ids:
+        raise AgentHelperError("located schema changed KID kernel order")
+    if [entry["low_level_id"] for entry in extracted_entries] != kernel_ids:
+        raise AgentHelperError("extracted schema changed KID kernel order")
+
+    for entry in located_entries:
+        kernel_id = entry["low_level_id"]
+        expected_layers = _materialize_layers(decisions[kernel_id], roots=roots)
+        if entry["source_locations"]["layers"] != expected_layers:
+            raise AgentHelperError(
+                f"{kernel_id}: located layers differ from finalized decisions"
+            )
+        if "kernel_sources_dir" in entry:
+            raise AgentHelperError(
+                f"{kernel_id}: located schema must not contain kernel_sources_dir"
+            )
+
+    expected_extracted = copy.deepcopy(located)
+    expected_by_id = {
+        entry["low_level_id"]: entry for entry in kernel_entries(expected_extracted)
+    }
+    for kernel_id in kernel_ids:
+        expected_dir = config.run.kernel_sources / kernel_id
+        expected_by_id[kernel_id]["kernel_sources_dir"] = str(expected_dir)
+    if extracted != expected_extracted:
+        raise AgentHelperError(
+            "extracted schema must equal located schema plus kernel_sources_dir"
+        )
+
+    if not config.run.notes.is_file():
+        raise AgentHelperError(f"Agent notes not found: {config.run.notes}")
+    try:
+        notes_text = config.run.notes.read_text(encoding="utf-8")
+    except UnicodeError as exc:
+        raise AgentHelperError(f"Agent notes are not valid UTF-8: {config.run.notes}") from exc
+    if not notes_text.strip():
+        raise AgentHelperError(f"Agent notes are empty: {config.run.notes}")
+
+    for kernel_id in kernel_ids:
+        target_dir = config.run.kernel_sources / kernel_id
+        required = (
+            target_dir / "interface_definition.py",
+            target_dir / "kernel_impl",
+            target_dir / "py_cpp_binding",
+            target_dir / "kernel_header",
+            target_dir / "read_hints.txt",
+        )
+        for path in required:
+            if not path.exists():
+                raise AgentHelperError(
+                    f"{kernel_id}: extracted artifact missing: {path}"
+                )
+
+    layer_status_counts: dict[str, int] = {}
+    for entry in located_entries:
+        for layer in entry["source_locations"]["layers"].values():
+            status = layer["status"]
+            layer_status_counts[status] = layer_status_counts.get(status, 0) + 1
+    extracted_files = sum(
+        1 for path in config.run.kernel_sources.rglob("*") if path.is_file()
+    )
+    return {
+        "ok": True,
+        "config": str(config.path),
+        "testcase_id": config.testcase_id,
+        "kernels": len(kernel_ids),
+        "layer_status_counts": layer_status_counts,
+        "extracted_files": extracted_files,
+        "artifacts": config.run.to_dict(),
+        "search_roots_skipped": skipped,
+    }
+
+
 def _cmd_inspect_target(args: argparse.Namespace) -> int:
     report = inspect_target(
         args.schema,
@@ -726,6 +872,12 @@ def _cmd_inspect_target(args: argparse.Namespace) -> int:
         sglang_repo_root=args.sglang_repo_root,
         max_lines=args.max_lines,
     )
+    print(json.dumps(report, indent=2, ensure_ascii=False))
+    return 0
+
+
+def _cmd_prepare_run(args: argparse.Namespace) -> int:
+    report = prepare_agent_run(args.config)
     print(json.dumps(report, indent=2, ensure_ascii=False))
     return 0
 
@@ -767,12 +919,22 @@ def _cmd_evaluate(args: argparse.Namespace) -> int:
     return 0 if report["ok"] else 1
 
 
+def _cmd_validate_run(args: argparse.Namespace) -> int:
+    report = validate_agent_run(args.config)
+    print(json.dumps(report, indent=2, ensure_ascii=False))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python3 -m framework_engineer.source_location.agent_helper",
         description="Private deterministic tools for the Prompt-driven source-locate Agent.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    prepare = subparsers.add_parser("prepare-run")
+    prepare.add_argument("--config", type=Path, required=True)
+    prepare.set_defaults(func=_cmd_prepare_run)
 
     inspect = subparsers.add_parser("inspect-target")
     inspect.add_argument("--schema", type=Path, required=True)
@@ -806,6 +968,10 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--manifest", type=Path, required=True)
     evaluate.add_argument("--sglang-repo-root", type=Path, required=True)
     evaluate.set_defaults(func=_cmd_evaluate)
+
+    validate = subparsers.add_parser("validate-run")
+    validate.add_argument("--config", type=Path, required=True)
+    validate.set_defaults(func=_cmd_validate_run)
     return parser
 
 

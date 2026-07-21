@@ -12,25 +12,25 @@ nsys_poc_kid_golden/
 ├── config/nsys_poc/
 │   ├── runtime_capture_config.json
 │   └── semantic_resolver_config.json
-├── cli_log/nsys_poc/
-│   ├── environment_probe.json
-│   ├── runtime_capture.schema.json
-│   ├── capture_events/events_2274295.jsonl
-│   ├── trace/profile.sqlite
-│   └── logs/{probe,nsys,test,summary}.log
-├── output/nsys_poc/decomposition.schema.json
-├── ref/nsys_poc/
-│   ├── semantic_resolver_context.json
-│   ├── semantic_resolver_decisions.json
-│   └── kid_semantic_resolver_notes.md
+├── nsys_poc/
+│   ├── cli_log/
+│   │   ├── environment_probe.json
+│   │   ├── runtime_capture.schema.json
+│   │   ├── capture_events/events_2274295.jsonl
+│   │   ├── trace/profile.sqlite
+│   │   └── logs/{probe,nsys,test,summary}.log
+│   ├── output/decomposition.schema.json
+│   └── ref/
+│       ├── semantic_resolver_context.json
+│       ├── semantic_resolver_decisions.json
+│       └── kid_semantic_resolver_notes.md
 ├── ARTIFACT_GUIDE.md
 └── README.md
 ```
 
-`config/` 是用户或上层编排器提供的单-backend 输入；`cli_log/` 是 Runtime
-Capture CLI 的证据和规范化结果；`output/` 是 KID 对外发布的最终产物；
-`ref/` 是 Semantic Resolver 的内部分析证据和自由格式记录。四个目录中的
-`nsys_poc` 必须一一对应。
+`config/` 是用户或上层编排器提供的单-backend 输入；`nsys_poc/cli_log` 是 Runtime
+Capture CLI 的证据和规范化结果；`nsys_poc/output` 是 KID 对外发布的最终产物；
+`nsys_poc/ref` 是 Semantic Resolver 的内部分析证据和自由格式记录。
 
 ## KID Agent 数据流
 
@@ -44,7 +44,7 @@ KID 的正式入口是 `framework_engineer/prompts/start_kid.md`，输入为
 2. Semantic Resolver helper 的 `prepare` 把 direct kernel owner、调用栈边、源码片段
    和仓库线索整理为 context。Agent 只填写 decisions 与 notes；`finalize` 再从 Runtime
    事实确定性计算 representative kernel、耗时、share、rank、coverage 和最终 archetype。
-3. `source_locate` 只消费 `output/nsys_poc/decomposition.schema.json`，不读取
+3. `source_locate` 只消费 `nsys_poc/output/decomposition.schema.json`，不读取
 Runtime Capture 的 JSONL、SQLite 或 Agent notes。KID 最终产物只交付 semantic
    interface、调用位置和运行时归因；接口定义、binding 与 kernel implementation
    的源码位置由 `source_locate` 在后续阶段补充。

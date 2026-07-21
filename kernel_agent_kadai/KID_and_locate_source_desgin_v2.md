@@ -331,14 +331,16 @@ KID schema 每条 entry 表示一个最终 semantic low-level target。保留现
   Nsight-owned helper 连续运行两次相同 `test_cmd`，第一次关闭采集作为 warmup；
 - `unique_decomposition` 为默认策略：按最底层 execution owner、嵌套深度、完整调用路径和未归因
   kernel 数量分组，每组保留时间上最后一次；stage、耗时、运行时 ID、kernel 名称/次数不参与分组；
-- `all` 保留全部 eligible invocation；`last_n` 对每个 stage 选择末尾 N 次，`single` 等价于末尾 1 次；
+- `all` 保留全部 eligible invocation；`last_n` 对 Runtime 自动识别的每个 stage 选择末尾 N 次，
+  `single` 等价于末尾 1 次；stage 只作为诊断证据，v3 配置不允许用户提供 `selection.stages`；
 - JSONL 保存全部 invocation，只有 `runtime_capture.schema.json` 收敛为代表调用；SQLite
   仅是 analyze 临时输入，生产默认成功后删除、失败时保留，golden/debug 可显式永久保留；
 - Semantic Resolver 对多个代表拆分做 semantic target 并集，不由 Runtime CLI 跨 invocation 聚合耗时；
 - 并集 identity 只按 semantic `interface`：跨 stage/call site 的同接口合并，最终 call site、
   archetype 和 representative kernel 取最热 contributing member，`sample_count` 记录出现该 target
   的代表 invocation 数；share 分母为全部代表 invocation 的 GPU kernel duration 总和；
-- 一份 `kid-runtime-config/v2` 只 profile 一个 backend 和一个 `test_cmd`；多 backend 由上层串行执行多份配置；
+- 一份 `kid-runtime-config/v3` 只 profile 一个 backend 和一个 `test_cmd`；`output_dir` 是一级
+  产物根，KID 写入 `<output_dir>/<backend>/{cli_log,ref,output}`；多 backend 由上层串行执行多份配置；
 - 强制 eager/禁用 CUDA Graph，避免 replay 绕过 Python capture；
 - Nsight 默认只 trace `cuda,nvtx`，不采集 KID parser 不使用且体积较大的 `osrt`；
 - 多 backend 的排序与后续 workspace 选择不改变单次 KID 归因逻辑。
@@ -386,7 +388,8 @@ source_locate Agent
 
 ### 4.4 Agent workflow
 
-对每个 semantic target：
+用户只提供一个 `source-locate-agent-config/v1`。入口 Prompt 先调用 `prepare-run` 校验 KID、
+manifest、源码根和独立 workspace，再在内部执行公开 locate CLI。随后对每个 semantic target：
 
 1. 从 `interface + runtime_event.call_site` 出发定位 `interface_definition`；
 2. 阅读接口实现，沿真实调用链向下追踪；
@@ -398,10 +401,12 @@ source_locate Agent
 8. 写 `source-locate-agent-decisions/v1` decisions，逐 hit 保留 symbol/reason；
 9. 调私有 finalize helper 检查 repo、文件、行号和层结构，生成完整 `source_locations` 与
    `ref/locate_agent_notes.md`；
-10. 在 extract 之前结束。外层工作流随后显式调用 extract CLI。
+10. 保留 located schema，并对其副本调用公开 extract CLI；
+11. 调用 `validate-run` 校验完整 workspace，只有 `ok=true` 才结束。
 
-source_locate Agent 对四层结果负唯一责任。即使 interface locator CLI 或 symbol helper 返回候选，
-是否采纳、如何排序 hits、是否继续追踪仍由 Agent 决定。
+source_locate Agent 对四层结果负唯一责任，并负责把两个公开 CLI 串成完整 workflow。即使
+interface locator CLI 或 symbol helper 返回候选，是否采纳、如何排序 hits、是否继续追踪仍由
+Agent 决定。
 
 ### 4.5 interface locator CLI/helper
 
@@ -502,12 +507,12 @@ extract 由 source_locate Agent 之后的外层工作流调用，不再称为 La
 
 ```text
 <workspace>/
-  source_locate_decisions.json           # Agent 内部工作合同；非下游固定契约
-  decomposition_<backend>.schema.json    # 已写入四层 source_locations；无 kernel_sources_dir
-  ref/locate_agent_notes.md              # 证据、未定位项和人工建议；非下游固定契约
-
-# 随后的外层 extract 输出
-  kernel_sources/<low_level_id>/
+  locate/locate_candidates.schema.json
+  agent/source_locate_decisions.json      # Agent 内部工作合同；非下游固定契约
+  agent/located.schema.json               # 四层 source_locations；无 kernel_sources_dir
+  agent/ref/locate_agent_notes.md         # 证据、未定位项和人工建议
+  extract/decomposition.extracted.schema.json
+  extract/kernel_sources/<low_level_id>/
     interface_definition.py
     py_cpp_binding/
     kernel_impl/
@@ -611,7 +616,9 @@ third_party_manifest       source repositories
 
 ### 6.2 source_locate
 
-- [x] 实现 source_locate Skill 与入口 Prompt，使其对四层定位负唯一责任，并在 extract 前结束。
+- [x] 实现 source_locate Skill 与单配置入口 Prompt，使其对四层定位负唯一责任并自主编排 extract。
+- [x] 实现 `source-locate-agent-config/v1`、`prepare-run` 和 `validate-run`，固定 testcase
+  workspace 并校验完整流程产物。
 - [x] 将现有 locator 收缩为 `locate` interface 候选 CLI；删除 archetype/provider 分派。
 - [x] 不再实现 Layer 1 的 `py_cpp_binding` provider registry。
 - [x] 将 symbol/registration/JIT/build 搜索实现成 Agent 可调用的通用候选 helper；不直接
@@ -698,6 +705,6 @@ resolve-third-party
 
 **KID 用 common-interface capture 和 Nsight correlation 得到 execution 事实，再由 Semantic
 Resolver Agent 从 high→execution 调用树中选择 semantic low-level target；source_locate 是独立的
-自主 Agent，借助 locator 与私有 inspect/search/finalize helper 完成全部四层源码定位，并在
-extract 前结束。最终 schema 只保留下游真正消费的 target、capture 类别、可选 provider、耗时、
-call_site 和定位结果，所有分析中间信息留在 raw events/ref。**
+自主 Agent，用户只提供一个 config；它借助 locator 与私有 helper 完成全部四层源码定位，随后
+调用 extract 并验证完整 workspace。最终 schema 只保留下游真正消费的 target、capture 类别、
+可选 provider、耗时、call_site 和定位结果，所有分析中间信息留在 raw events/ref。**

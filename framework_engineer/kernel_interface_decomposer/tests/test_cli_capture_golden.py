@@ -155,7 +155,7 @@ class TestCaptureCliGolden(unittest.TestCase):
         self.assertTrue(torch.cuda.is_available(), "PyTorch CUDA is unavailable")
 
         golden_root = REPO_ROOT / "example_kernels/nsys_poc_kid_golden"
-        golden_cli = golden_root / "cli_log/nsys_poc"
+        golden_cli = golden_root / "nsys_poc/cli_log"
         golden = json.loads(
             (golden_cli / "runtime_capture.schema.json").read_text(encoding="utf-8")
         )
@@ -170,7 +170,8 @@ class TestCaptureCliGolden(unittest.TestCase):
         cases = base_config["test_cmd"].split("--cases", 1)[1].strip()
 
         with _capture_temp_root() as temp_root:
-            output_dir = temp_root / "nsys_poc"
+            output_dir = temp_root / "output"
+            cli_dir = output_dir / "nsys_poc/cli_log"
             config_path = temp_root / "runtime_capture_config.json"
             base_config["workdir"] = str(REPO_ROOT.parent)
             base_config["output_dir"] = str(output_dir)
@@ -206,15 +207,15 @@ class TestCaptureCliGolden(unittest.TestCase):
                     f"capture CLI exited with {completed.returncode}\n"
                     f"stdout:\n{completed.stdout}\n"
                     f"stderr:\n{completed.stderr}\n"
-                    f"{_failure_logs(output_dir)}"
+                    f"{_failure_logs(cli_dir)}"
                 )
 
             actual = json.loads(
-                (output_dir / "runtime_capture.schema.json").read_text(
+                (cli_dir / "runtime_capture.schema.json").read_text(
                     encoding="utf-8"
                 )
             )
-            validator = RuntimeArtifactValidator(output_dir)
+            validator = RuntimeArtifactValidator(cli_dir)
             self.assertTrue(validator.validate(), msg="; ".join(validator.errors))
             self.assertEqual(
                 _stable_capture_signature(actual),

@@ -1,0 +1,8 @@
+{
+  "schema_version": "source-locate-agent-config/v1",
+  "testcase_id": "all_backends",
+  "kid_schema": "../../input/all_backends/decomposition.kid.schema.json",
+  "third_party_manifest": "third_party_manifest.json",
+  "sglang_repo_root": "/Users/bytedance/Desktop/infra_agent/sglang",
+  "workspace": "../../workspaces/all_backends"
+}

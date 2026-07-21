@@ -124,6 +124,7 @@ class TestCaptureCliConvergence(unittest.TestCase):
         poc_path = REPO_ROOT / "framework_engineer/kernel_interface_decomposer/nsys_poc.py"
         self.assertEqual(config["target"]["line"], _target_line(poc_path, "high_level"))
         output_dir = Path(config["output_dir"])
+        cli_dir = output_dir / config["backend_name"] / "cli_log"
         env = os.environ.copy()
         env["PYTHONPATH"] = os.pathsep.join(
             value for value in (str(REPO_ROOT), env.get("PYTHONPATH")) if value
@@ -154,16 +155,16 @@ class TestCaptureCliConvergence(unittest.TestCase):
                 f"capture CLI exited with {return_code}\n"
                 f"stdout:\n{stdout}\n"
                 f"stderr:\n{stderr}\n"
-                f"{_failure_logs(output_dir)}"
+                f"{_failure_logs(cli_dir)}"
             )
         payload = json.loads(
-            (output_dir / "runtime_capture.schema.json").read_text(encoding="utf-8")
+            (cli_dir / "runtime_capture.schema.json").read_text(encoding="utf-8")
         )
-        validator = RuntimeArtifactValidator(output_dir)
+        validator = RuntimeArtifactValidator(cli_dir)
         self.assertTrue(validator.validate(), msg="; ".join(validator.errors))
-        self.assertEqual(_raw_high_count(output_dir / "trace/profile.sqlite"), 2)
+        self.assertEqual(_raw_high_count(cli_dir / "trace/profile.sqlite"), 2)
         self.assertEqual(payload["diagnostics"]["observed_invocation_count"], 2)
-        return payload, output_dir
+        return payload, cli_dir
 
     def test_repeated_and_distinct_invocations_converge(self) -> None:
         config_root = Path(__file__).resolve().parent / "configs"
@@ -191,7 +192,7 @@ class TestCaptureCliConvergence(unittest.TestCase):
         existing_golden = json.loads(
             (
                 REPO_ROOT
-                / "example_kernels/nsys_poc_kid_golden/cli_log/nsys_poc/"
+                / "example_kernels/nsys_poc_kid_golden/nsys_poc/cli_log/"
                 "runtime_capture.schema.json"
             ).read_text(encoding="utf-8")
         )

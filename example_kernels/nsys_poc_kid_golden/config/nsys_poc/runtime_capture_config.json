@@ -1,8 +1,8 @@
 {
-  "schema_version": "kid-runtime-config/v2",
+  "schema_version": "kid-runtime-config/v3",
   "backend_name": "nsys_poc",
   "workdir": "/Users/bytedance/Desktop/infra_agent",
-  "output_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/cli_log/nsys_poc",
+  "output_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden",
   "target": {
     "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
     "line": 1119,
@@ -15,9 +15,6 @@
   "env": {},
   "selection": {
     "skip_invocations": 0,
-    "stages": [
-      "unknown"
-    ],
     "sample_count_per_stage": 1,
     "sampling": "single",
     "aggregation": "single"

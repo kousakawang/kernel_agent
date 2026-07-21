@@ -1,6 +1,8 @@
 {
   "ok": true,
   "testcase_id": "all_backends",
+  "agent_config": "../../../config/all_backends/source_locate_config.json",
+  "config_driven_entry": true,
   "workspace_contract": true,
   "kid_projection_preserved": true,
   "workspace_outputs_are_canonical": true,
@@ -19,8 +21,8 @@
     "placeholder_files_written": 13
   },
   "unit_tests": {
-    "command": "python3 -m unittest framework_engineer.tests.test_source_location_locate framework_engineer.tests.test_source_location_extract framework_engineer.tests.test_source_location_agent_helper",
-    "passed": 35,
+    "command": "python3 -m unittest framework_engineer.tests.test_source_location_agent_config framework_engineer.tests.test_source_location_agent_helper framework_engineer.tests.test_source_location_locate framework_engineer.tests.test_source_location_extract",
+    "passed": 40,
     "failed": 0
   }
 }
