@@ -1,6 +1,13 @@
 from __future__ import annotations
 
 import io
+import json
+import os
+import shlex
+import subprocess
+import sys
+import tempfile
+import time
 import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
@@ -8,9 +15,9 @@ from types import SimpleNamespace
 
 from framework_engineer.kernel_interface_decomposer.cli import _build_parser
 from framework_engineer.kernel_interface_decomposer.runner import (
+    _direct_launcher_command,
     _eager_command,
     _nsys_launch_command,
-    _nsys_profile_command,
     _nsys_start_command,
     _nsys_stop_command,
 )
@@ -43,16 +50,19 @@ class TestCliRunnerContract(unittest.TestCase):
         unrelated = "python workload.py"
         self.assertEqual(_eager_command(unrelated), unrelated)
 
-    def test_nsys_systems_command_does_not_use_ncu_target_processes(self) -> None:
-        config = SimpleNamespace(profiling={"nsys_bin": "nsys"})
-        command = _nsys_profile_command(
+    def test_direct_mode_uses_a_two_phase_launcher(self) -> None:
+        config = SimpleNamespace(
+            workdir=Path("/tmp/work"), test_command="python workload.py"
+        )
+        command = _direct_launcher_command(
             config,  # type: ignore[arg-type]
             Path("/tmp/kid-output"),
-            "python workload.py",
+            30,
         )
-        self.assertNotIn("--target-processes=all", command)
-        self.assertIn("--trace-fork-before-exec=true", command)
-        self.assertEqual(command[-3:], ["bash", "-lc", "python workload.py"])
+        self.assertIn("direct_launcher", command)
+        self.assertIn("python workload.py", command)
+        self.assertIn("warmup.ready", command)
+        self.assertIn("recording.enabled", command)
 
     def test_service_uses_paused_interactive_nsys_session(self) -> None:
         config = SimpleNamespace(profiling={"nsys_bin": "nsys"})
@@ -72,12 +82,81 @@ class TestCliRunnerContract(unittest.TestCase):
         )
         self.assertEqual(launch[1], "launch")
         self.assertIn("--session-new=KIDsession", launch)
-        self.assertIn("--trace=cuda,nvtx,osrt", launch)
+        self.assertIn("--trace=cuda,nvtx", launch)
+        self.assertNotIn("osrt", " ".join(launch))
+        self.assertNotIn("--target-processes=all", launch)
         self.assertNotIn("profile", launch)
         self.assertEqual(start[1], "start")
         self.assertIn("--session=KIDsession", start)
         self.assertIn("--output=/tmp/kid-output/_profile", start)
         self.assertEqual(stop, ["nsys", "stop", "--session=KIDsession"])
+
+    def test_direct_launcher_runs_warmup_then_profiled_command(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            script = root / "workload.py"
+            counter = root / "counter.txt"
+            script.write_text(
+                "from pathlib import Path\n"
+                "import sys\n"
+                "path = Path(sys.argv[1])\n"
+                "value = int(path.read_text() or '0') if path.exists() else 0\n"
+                "path.write_text(str(value + 1))\n"
+                "print(f'run={value + 1}')\n",
+                encoding="utf-8",
+            )
+            warmup_ready = root / "warmup.ready"
+            gate = root / "recording.enabled"
+            done = root / "test.done.json"
+            shutdown = root / "shutdown.requested"
+            command = shlex.join([sys.executable, str(script), str(counter)])
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "framework_engineer.kernel_interface_decomposer.direct_launcher",
+                    "--command",
+                    command,
+                    "--workdir",
+                    str(root),
+                    "--warmup-log",
+                    str(root / "warmup.log"),
+                    "--test-log",
+                    str(root / "test.log"),
+                    "--warmup-ready-file",
+                    str(warmup_ready),
+                    "--recording-gate-file",
+                    str(gate),
+                    "--test-done-file",
+                    str(done),
+                    "--shutdown-file",
+                    str(shutdown),
+                    "--timeout-sec",
+                    "10",
+                ],
+                env=os.environ.copy(),
+            )
+
+            deadline = time.monotonic() + 10
+            while not warmup_ready.exists() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertTrue(warmup_ready.exists())
+            self.assertEqual(counter.read_text(encoding="utf-8"), "1")
+
+            gate.touch()
+            deadline = time.monotonic() + 10
+            while not done.exists() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertTrue(done.exists())
+            self.assertEqual(
+                json.loads(done.read_text(encoding="utf-8")),
+                {"phase": "test", "returncode": 0},
+            )
+            self.assertEqual(counter.read_text(encoding="utf-8"), "2")
+            shutdown.touch()
+            self.assertEqual(process.wait(timeout=10), 0)
+            self.assertIn("run=1", (root / "warmup.log").read_text())
+            self.assertIn("run=2", (root / "test.log").read_text())
 
 
 if __name__ == "__main__":

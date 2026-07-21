@@ -60,7 +60,8 @@ snapshot / problem_translate / task_pack
   - 支持单-backend 启动命令、多 invocation、warmup 排除和默认
     `unique_decomposition`（另保留 `all/last_n/single`）选择。
 - **输入**：单-backend `kid-runtime-config/v2`：`cmd`、`test_cmd`、`target`、profiling/selection。
-- **输出**：raw events、Nsight SQLite 和 `kid-runtime-capture/v1`；多 backend 由上层串行执行多份配置。
+- **输出**：raw events 和 `kid-runtime-capture/v1`；Nsight SQLite 是 analyze 临时文件，默认
+  成功删除、失败保留，golden/debug 可显式保留。多 backend 由上层串行执行多份配置。
 
 ### 已完成
 
@@ -80,12 +81,14 @@ snapshot / problem_translate / task_pack
   `example_kernels/nsys_poc_kid_golden/`。
 - [x] 正式 CLI 已切换为 `capture/analyze`，不再调用 KID 内部 SourceResolver 或生成最终 semantic schema。
 - [x] 正式 high-level instrumentation、完整 Python 调用链、七类 adapter、nested capture 和 Runtime/Driver correlation 已接入。
-- [x] 实现默认 `unique_decomposition` 收敛与 `all/last_n/single` 可扩展采样；原始 SQLite/JSONL
+- [x] 实现默认 `unique_decomposition` 收敛与 `all/last_n/single` 可扩展采样；JSONL
   保留全量 invocation，Runtime schema 每种拆分保留末次代表。
 - [x] 增加 repeat/softmax 双 invocation PoC、结构 golden、Runtime-only validator，以及
   golden/synthetic 无 GPU 回归测试。
 - [x] service 模式改为 paused Nsight session：服务启动并通过 ready 后才开启 Nsight 和
   Runtime event 记录；轻量 GPU E2E 已验证 ready 前 3 次 target 调用不会进入 trace。
+- [x] direct 模式统一为 paused session：同一 `test_cmd` 先关闭采集 warmup、再开启采集正式
+  执行；Nsight trace 缩减为 `cuda,nvtx`，SQLite 默认仅失败时保留。
 
 ### TODO
 

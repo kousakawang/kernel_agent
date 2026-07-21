@@ -33,7 +33,12 @@ RUN_GPU_E2E = os.environ.get("KID_RUN_GPU_E2E") == "1" or FORCE_GPU_E2E
 
 def _failure_logs(output: Path) -> str:
     sections: list[str] = []
-    for relative in ("logs/nsys.log", "logs/test.log", "logs/probe.log"):
+    for relative in (
+        "logs/warmup.log",
+        "logs/nsys.log",
+        "logs/test.log",
+        "logs/probe.log",
+    ):
         path = output / relative
         if path.is_file():
             sections.append(f"===== {relative} =====\n{path.read_text(encoding='utf-8')}")
@@ -126,6 +131,7 @@ class TestCaptureWindow(unittest.TestCase):
                 "max_runtime_sec": 300,
                 "disable_cuda_graph": True,
                 "min_capture_coverage": 1.0,
+                "trace_retention": "always",
             },
         }
         config_path = root / f"{backend}.json"

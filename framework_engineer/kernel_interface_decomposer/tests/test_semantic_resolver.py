@@ -96,7 +96,7 @@ class TestSemanticResolverGolden(SemanticResolverFixture):
         validator = ArtifactValidator(self.golden)
         self.assertTrue(validator.validate(), msg="; ".join(validator.errors))
 
-    def test_prepare_context_has_owner_evidence_and_frozen_source(self) -> None:
+    def test_prepare_context_has_owner_evidence_and_current_source(self) -> None:
         with tempfile.TemporaryDirectory(prefix="kid-semantic-") as temporary:
             _, config = self.make_workspace(Path(temporary))
             context = SemanticResolver(config).prepare()
@@ -116,10 +116,11 @@ class TestSemanticResolverGolden(SemanticResolverFixture):
             edge = next(
                 item
                 for item in matmul["stack_edges"]
-                if item["call_site"]["line"] == 810
+                if item["call_site"]["line"] == 818
             )
             self.assertEqual(edge["call_expression"], "torch.matmul(a, b)")
-            self.assertTrue(edge["analysis_file"].endswith("nsys_poc.trace_snapshot.json"))
+            self.assertTrue(edge["analysis_file"].endswith("nsys_poc.py"))
+            self.assertNotIn("source_snapshot", edge["analysis_file"])
             serialized = json.dumps(context)
             self.assertNotIn("low_level_id", serialized)
             self.assertNotIn("normalized_kernel_name", serialized)
@@ -129,13 +130,19 @@ class TestSemanticResolverGolden(SemanticResolverFixture):
             root = Path(temporary)
             analysis_source = root / "trace_source.py"
             analysis_source.write_text(
-                "\n" * 809 + "value = torch.matmul(a, b)\n", encoding="utf-8"
+                "\n" * 817 + "value = torch.matmul(a, b)\n", encoding="utf-8"
             )
             config_path, _ = self.make_workspace(root)
             raw = json.loads(config_path.read_text(encoding="utf-8"))
-            raw["analysis_source_overrides"][0]["analysis_path"] = str(
-                analysis_source
-            )
+            raw["analysis_source_overrides"] = [
+                {
+                    "published_path": str(
+                        self.repo_root
+                        / "framework_engineer/kernel_interface_decomposer/nsys_poc.py"
+                    ),
+                    "analysis_path": str(analysis_source),
+                }
+            ]
             config_path.write_text(
                 json.dumps(raw, indent=2) + "\n", encoding="utf-8"
             )
@@ -148,7 +155,7 @@ class TestSemanticResolverGolden(SemanticResolverFixture):
                 if capture["member_ref"]["capture_id"] == "1"
             )
             edge = next(
-                item for item in matmul["stack_edges"] if item["call_site"]["line"] == 810
+                item for item in matmul["stack_edges"] if item["call_site"]["line"] == 818
             )
             self.assertEqual(edge["call_expression"], "torch.matmul(a, b)")
 

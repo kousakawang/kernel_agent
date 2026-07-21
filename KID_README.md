@@ -19,9 +19,11 @@ Runtime Capture CLI 和需要源码判断的 Semantic Resolution 两个阶段。
 覆盖 golden；复制配置并把 `workdir`、`output_dir`、Runtime/local path mapping、源码根目录和
 各输出路径改到新的 workspace。
 
-Runtime 配置中的 `target` 是用户指定的 high-level Python 接口。`cmd=null` 时直接 profile
-`test_cmd`；有服务命令时，CLI 等待 `ready` 后才开始 Nsight 和 Runtime capture。当前必须禁用
-CUDA Graph，推荐 `selection.sampling=unique_decomposition`。
+Runtime 配置中的 `target` 是用户指定的 high-level Python 接口。所有模式都遵循“启动命令 →
+warmup/ready → Nsight start → 正式测试 → Nsight stop”。`cmd=null` 时 CLI 会在关闭采集的情况下
+先执行一次 `test_cmd` 预热，再开启采集执行第二次，因此命令必须可重复、幂等；有服务命令时则以
+`ready` 作为预热完成边界。当前必须禁用 CUDA Graph，推荐
+`selection.sampling=unique_decomposition`。
 
 ## 2. 启动 KID Agent
 
@@ -64,7 +66,6 @@ python kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py \
 ├── cli_log/<backend>/
 │   ├── runtime_capture.schema.json
 │   ├── capture_events/events_<pid>.jsonl
-│   ├── trace/profile.sqlite
 │   └── logs/...
 ├── ref/<backend>/
 │   ├── semantic_resolver_context.json
@@ -76,6 +77,10 @@ python kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py \
 任务只有在 Runtime artifact 自校验通过、所有 direct kernel owner 被唯一分配且 Semantic
 Resolver `validate` 返回 0 后才算完成。`source_locate` 只读取最终
 `output/<backend>/decomposition.schema.json`。
+
+Nsight `.nsys-rep` 和导出的 SQLite 默认只是 analyze 的临时文件：成功后删除，capture 失败时
+保留 SQLite 供排障。需要开发 parser 或生成 golden 时，可显式配置
+`profiling.trace_retention="always"`。
 
 ## 5. 分阶段排错
 

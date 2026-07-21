@@ -34,13 +34,12 @@ def _write_injection(config: RuntimeCaptureConfig, root: Path) -> Path:
     inject = root / "_inject"
     runtime_config = config.runtime_config(events_dir=root / "capture_events")
     runtime_config["output_dir"] = str(root)
-    if config.command is not None:
-        runtime_config["recording_gate_file"] = str(
-            root / "_inject" / "recording.enabled"
-        )
-        runtime_config["active_ranges_dir"] = str(
-            root / "_inject" / "active_ranges"
-        )
+    runtime_config["recording_gate_file"] = str(
+        root / "_inject" / "recording.enabled"
+    )
+    runtime_config["active_ranges_dir"] = str(
+        root / "_inject" / "active_ranges"
+    )
     runtime_path = inject / "runtime_config.json"
     runtime_path.write_text(
         json.dumps(runtime_config, indent=2, ensure_ascii=False) + "\n",
@@ -167,22 +166,6 @@ def _eager_command(command: str) -> str:
     return command
 
 
-def _nsys_profile_command(
-    config: RuntimeCaptureConfig, root: Path, profiled_command: str
-) -> list[str]:
-    return [
-        str(config.profiling["nsys_bin"]),
-        "profile",
-        "--force-overwrite=true",
-        "--trace=cuda,nvtx,osrt",
-        "--trace-fork-before-exec=true",
-        f"--output={root / '_profile'}",
-        "bash",
-        "-lc",
-        profiled_command,
-    ]
-
-
 def _nsys_launch_command(
     config: RuntimeCaptureConfig,
     session_name: str,
@@ -194,7 +177,7 @@ def _nsys_launch_command(
         str(config.profiling["nsys_bin"]),
         "launch",
         f"--session-new={session_name}",
-        "--trace=cuda,nvtx,osrt",
+        "--trace=cuda,nvtx",
         "--trace-fork-before-exec=true",
         "--show-output=true",
         "--wait=all",
@@ -306,6 +289,64 @@ def _wait_recording_drain(
     raise TimeoutError(f"KID high-level ranges did not drain: {active}")
 
 
+def _wait_for_marker(
+    marker: Path,
+    process: subprocess.Popen[Any],
+    timeout: float,
+    description: str,
+    *,
+    failure_marker: Path | None = None,
+) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if marker.exists():
+            return
+        if failure_marker is not None and failure_marker.exists():
+            status = json.loads(failure_marker.read_text(encoding="utf-8"))
+            raise RuntimeError(
+                f"direct workload failed during {status.get('phase')} with exit code "
+                f"{status.get('returncode')}"
+            )
+        if process.poll() is not None:
+            raise RuntimeError(
+                f"Nsight-owned process exited before {description} with code "
+                f"{process.returncode}"
+            )
+        time.sleep(0.05)
+    raise TimeoutError(f"timed out waiting for {description}: {marker}")
+
+
+def _direct_launcher_command(
+    config: RuntimeCaptureConfig, root: Path, timeout: float
+) -> str:
+    inject = root / "_inject"
+    return shlex.join(
+        [
+            sys.executable,
+            "-m",
+            "framework_engineer.kernel_interface_decomposer.direct_launcher",
+            "--command",
+            config.test_command,
+            "--workdir",
+            str(config.workdir),
+            "--warmup-log",
+            str(root / "logs" / "warmup.log"),
+            "--test-log",
+            str(root / "logs" / "test.log"),
+            "--warmup-ready-file",
+            str(inject / "warmup.ready"),
+            "--recording-gate-file",
+            str(inject / "recording.enabled"),
+            "--test-done-file",
+            str(inject / "test.done.json"),
+            "--shutdown-file",
+            str(inject / "shutdown.requested"),
+            "--timeout-sec",
+            str(timeout),
+        ]
+    )
+
+
 def _run_nsys_control(
     command: list[str],
     *,
@@ -328,67 +369,80 @@ def _run_nsys_control(
 
 def _run_profile(config: RuntimeCaptureConfig, root: Path, env: dict[str, str]) -> Path:
     nsys_log_path = root / "logs" / "nsys.log"
+    warmup_log_path = root / "logs" / "warmup.log"
     test_log_path = root / "logs" / "test.log"
     timeout = float(config.profiling["max_runtime_sec"])
-    if config.command is None:
-        profiled = (
-            "{ "
-            + config.test_command
-            + "; } > "
-            + shlex.quote(str(test_log_path))
-            + " 2>&1"
-        )
-        command = _nsys_profile_command(config, root, profiled)
-        with nsys_log_path.open("w", encoding="utf-8") as nsys_log:
-            nsys_log.write("command: " + shlex.join(command) + "\n")
-            nsys_log.flush()
-            result = subprocess.run(
+    session_name = "KID" + uuid.uuid4().hex
+    gate_path = root / "_inject" / "recording.enabled"
+    active_dir = root / "_inject" / "active_ranges"
+    active_dir.mkdir(parents=True, exist_ok=True)
+    direct_mode = config.command is None
+    application_command = (
+        _direct_launcher_command(config, root, timeout)
+        if direct_mode
+        else _eager_command(config.command or "")
+    )
+    command = _nsys_launch_command(config, session_name, application_command)
+    profiled_process: subprocess.Popen[Any] | None = None
+    collection_started = False
+    failure: BaseException | None = None
+    shutdown_path = root / "_inject" / "shutdown.requested"
+    with nsys_log_path.open("w", encoding="utf-8") as nsys_log:
+        nsys_log.write("command: " + shlex.join(command) + "\n")
+        nsys_log.flush()
+        try:
+            profiled_process = subprocess.Popen(
                 command,
                 cwd=config.workdir,
                 env=env,
                 stdout=nsys_log,
                 stderr=subprocess.STDOUT,
                 text=True,
+                start_new_session=True,
+            )
+            if direct_mode:
+                _wait_for_marker(
+                    root / "_inject" / "warmup.ready",
+                    profiled_process,
+                    timeout,
+                    "direct workload warmup",
+                    failure_marker=root / "_inject" / "test.done.json",
+                )
+            else:
+                _wait_ready(config, profiled_process)
+                warmup_log_path.write_text(
+                    "service startup/readiness completed outside Nsight collection\n",
+                    encoding="utf-8",
+                )
+
+            start_result = _run_nsys_control(
+                _nsys_start_command(config, root, session_name),
+                config=config,
+                log=nsys_log,
                 timeout=timeout,
             )
-        if result.returncode != 0:
-            raise RuntimeError(f"profiled test failed with exit code {result.returncode}")
-    else:
-        service_command = _eager_command(config.command)
-        session_name = "KID" + uuid.uuid4().hex
-        command = _nsys_launch_command(config, session_name, service_command)
-        gate_path = root / "_inject" / "recording.enabled"
-        active_dir = root / "_inject" / "active_ranges"
-        active_dir.mkdir(parents=True, exist_ok=True)
-        service_process: subprocess.Popen[Any] | None = None
-        collection_started = False
-        failure: BaseException | None = None
-        with nsys_log_path.open("w", encoding="utf-8") as nsys_log:
-            nsys_log.write("command: " + shlex.join(command) + "\n")
-            nsys_log.flush()
-            try:
-                service_process = subprocess.Popen(
-                    command,
-                    cwd=config.workdir,
-                    env=env,
-                    stdout=nsys_log,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    start_new_session=True,
+            if start_result.returncode != 0:
+                raise RuntimeError(
+                    f"nsys start failed with exit code {start_result.returncode}"
                 )
-                _wait_ready(config, service_process)
-                start_result = _run_nsys_control(
-                    _nsys_start_command(config, root, session_name),
-                    config=config,
-                    log=nsys_log,
-                    timeout=timeout,
+            collection_started = True
+            gate_path.touch()
+
+            if direct_mode:
+                done_path = root / "_inject" / "test.done.json"
+                _wait_for_marker(
+                    done_path,
+                    profiled_process,
+                    timeout,
+                    "profiled direct workload",
                 )
-                if start_result.returncode != 0:
+                status = json.loads(done_path.read_text(encoding="utf-8"))
+                if status.get("phase") != "test" or status.get("returncode") != 0:
                     raise RuntimeError(
-                        f"nsys start failed with exit code {start_result.returncode}"
+                        f"direct workload failed during {status.get('phase')} with "
+                        f"exit code {status.get('returncode')}"
                     )
-                collection_started = True
-                gate_path.touch()
+            else:
                 with test_log_path.open("w", encoding="utf-8") as test_log:
                     test_result = subprocess.run(
                         ["bash", "-lc", config.test_command],
@@ -403,39 +457,45 @@ def _run_profile(config: RuntimeCaptureConfig, root: Path, env: dict[str, str]) 
                     raise RuntimeError(
                         f"test command failed with exit code {test_result.returncode}"
                     )
-            except BaseException as exc:
-                failure = exc
-            finally:
-                gate_path.unlink(missing_ok=True)
-                if collection_started and service_process is not None:
-                    try:
-                        _wait_recording_drain(root, service_process, timeout)
-                    except BaseException as exc:
-                        if failure is None:
-                            failure = exc
-                    try:
-                        stop_result = _run_nsys_control(
-                            _nsys_stop_command(config, session_name),
-                            config=config,
-                            log=nsys_log,
-                            timeout=timeout,
+        except BaseException as exc:
+            failure = exc
+        finally:
+            gate_path.unlink(missing_ok=True)
+            if collection_started and profiled_process is not None:
+                try:
+                    _wait_recording_drain(root, profiled_process, timeout)
+                except BaseException as exc:
+                    if failure is None:
+                        failure = exc
+                try:
+                    stop_result = _run_nsys_control(
+                        _nsys_stop_command(config, session_name),
+                        config=config,
+                        log=nsys_log,
+                        timeout=timeout,
+                    )
+                    if stop_result.returncode != 0 and failure is None:
+                        failure = RuntimeError(
+                            "nsys stop failed with exit code "
+                            f"{stop_result.returncode}"
                         )
-                        if stop_result.returncode != 0 and failure is None:
-                            failure = RuntimeError(
-                                "nsys stop failed with exit code "
-                                f"{stop_result.returncode}"
-                            )
-                    except BaseException as exc:
-                        if failure is None:
-                            failure = exc
-                if service_process is not None:
-                    _stop_process_group(service_process, config)
+                except BaseException as exc:
+                    if failure is None:
+                        failure = exc
+            shutdown_path.touch()
+            if profiled_process is not None:
+                if not direct_mode:
+                    _stop_process_group(profiled_process, config)
+                try:
+                    profiled_process.wait(timeout=60)
+                except subprocess.TimeoutExpired:
+                    _stop_process_group(profiled_process, config)
                     try:
-                        service_process.wait(timeout=60)
+                        profiled_process.wait(timeout=10)
                     except subprocess.TimeoutExpired:
-                        service_process.kill()
-            if failure is not None:
-                raise failure
+                        profiled_process.kill()
+        if failure is not None:
+            raise failure
     report = root / "_profile.nsys-rep"
     if not report.exists():
         alternatives = sorted(root.glob("_profile*.nsys-rep"))
@@ -475,12 +535,14 @@ def export_sqlite(
 
 
 def _add_artifact_metadata(
-    result: dict[str, Any], *, created_at: float | None = None
+    result: dict[str, Any],
+    *,
+    created_at: float | None = None,
+    sqlite_retained: bool = True,
 ) -> dict[str, Any]:
-    result["artifacts"] = {
+    artifacts: dict[str, Any] = {
         "environment_probe": "environment_probe.json",
         "capture_events": "capture_events/events_*.jsonl",
-        "sqlite": "trace/profile.sqlite",
         "logs": {
             "probe": "logs/probe.log",
             "nsys": "logs/nsys.log",
@@ -488,6 +550,9 @@ def _add_artifact_metadata(
             "summary": "logs/summary.log",
         },
     }
+    if sqlite_retained:
+        artifacts["sqlite"] = "trace/profile.sqlite"
+    result["artifacts"] = artifacts
     result["run"] = {
         "run_id": uuid.uuid4().hex,
         "created_at_unix": created_at if created_at is not None else time.time(),
@@ -558,17 +623,26 @@ def analyze_existing_trace(
     events_dir: Path,
     write_output: bool = True,
 ) -> dict[str, Any]:
+    retain_sqlite = config.profiling["trace_retention"] == "always"
     result = _add_artifact_metadata(
-        RuntimeTraceParser(config).parse(sqlite_path.resolve(), events_dir.resolve())
+        RuntimeTraceParser(config).parse(sqlite_path.resolve(), events_dir.resolve()),
+        sqlite_retained=retain_sqlite,
     )
     if write_output:
         config.output_dir.mkdir(parents=True, exist_ok=True)
         config.events_dir().mkdir(parents=True, exist_ok=True)
-        config.trace_dir().mkdir(parents=True, exist_ok=True)
         config.logs_dir().mkdir(parents=True, exist_ok=True)
-        destination_sqlite = config.sqlite_path()
-        if sqlite_path.resolve() != destination_sqlite.resolve():
-            shutil.copy2(sqlite_path, destination_sqlite)
+        if retain_sqlite:
+            config.trace_dir().mkdir(parents=True, exist_ok=True)
+            destination_sqlite = config.sqlite_path()
+            if sqlite_path.resolve() != destination_sqlite.resolve():
+                shutil.copy2(sqlite_path, destination_sqlite)
+        elif sqlite_path.resolve() != config.sqlite_path().resolve():
+            config.sqlite_path().unlink(missing_ok=True)
+            try:
+                config.trace_dir().rmdir()
+            except OSError:
+                pass
         for source_event in sorted(events_dir.glob("events_*.jsonl")):
             destination_event = config.events_dir() / source_event.name
             if source_event.resolve() != destination_event.resolve():
@@ -592,7 +666,7 @@ def analyze_existing_trace(
                 + "\n",
                 encoding="utf-8",
             )
-        for log_name in ("probe.log", "nsys.log", "test.log"):
+        for log_name in ("probe.log", "nsys.log", "warmup.log", "test.log"):
             log_path = config.logs_dir() / log_name
             if not log_path.exists():
                 log_path.write_text("offline analyze: no command log\n", encoding="utf-8")
@@ -613,6 +687,8 @@ def capture_runtime(config: RuntimeCaptureConfig) -> dict[str, Any]:
     staging = config.output_dir.parent / f".{config.output_dir.name}.kid-{uuid.uuid4().hex}"
     _prepare_layout(staging)
     created_at = time.time()
+    retention = str(config.profiling["trace_retention"])
+    retain_on_success = retention == "always"
     try:
         probe_environment(config, staging)
         runtime_config_path = _write_injection(config, staging)
@@ -630,6 +706,7 @@ def capture_runtime(config: RuntimeCaptureConfig) -> dict[str, Any]:
         result = _add_artifact_metadata(
             RuntimeTraceParser(config).parse(sqlite_path, staging / "capture_events"),
             created_at=created_at,
+            sqlite_retained=retain_on_success,
         )
         (staging / "runtime_capture.schema.json").write_text(
             json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
@@ -644,11 +721,19 @@ def capture_runtime(config: RuntimeCaptureConfig) -> dict[str, Any]:
             raise RuntimeError(
                 "Runtime artifact validation failed: " + "; ".join(validator.errors)
             )
+        if not retain_on_success:
+            sqlite_path.unlink(missing_ok=True)
+            try:
+                (staging / "trace").rmdir()
+            except OSError:
+                pass
         shutil.rmtree(staging / "_inject", ignore_errors=True)
     except Exception:
         shutil.rmtree(staging / "_inject", ignore_errors=True)
         for stale_report in staging.rglob("*.nsys-rep"):
             stale_report.unlink(missing_ok=True)
+        if retention == "never":
+            shutil.rmtree(staging / "trace", ignore_errors=True)
         _publish(staging, config.output_dir)
         raise
     _publish(staging, config.output_dir)

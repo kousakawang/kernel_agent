@@ -98,6 +98,7 @@ class TestConfigAndSampling(unittest.TestCase):
             self.assertIsNone(config.command)
             self.assertEqual(config.selection["sampling"], "unique_decomposition")
             self.assertEqual(config.profiling["min_capture_coverage"], 1.0)
+            self.assertEqual(config.profiling["trace_retention"], "on_failure")
 
     def test_invalid_legacy_or_cuda_graph_config_fails(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

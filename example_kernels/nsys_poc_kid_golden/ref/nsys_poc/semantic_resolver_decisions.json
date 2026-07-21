@@ -14,7 +14,7 @@
           "capture_id": "1",
           "semantic_call_site": {
             "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-            "line": 810
+            "line": 818
           }
         }
       ]
@@ -31,7 +31,7 @@
           "capture_id": "3",
           "semantic_call_site": {
             "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-            "line": 820
+            "line": 839
           }
         }
       ]
@@ -48,7 +48,7 @@
           "capture_id": "4",
           "semantic_call_site": {
             "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-            "line": 834
+            "line": 853
           }
         }
       ]
@@ -65,7 +65,7 @@
           "capture_id": "6",
           "semantic_call_site": {
             "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-            "line": 856
+            "line": 875
           }
         }
       ]
@@ -82,7 +82,7 @@
           "capture_id": "7",
           "semantic_call_site": {
             "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-            "line": 868
+            "line": 887
           }
         }
       ]
@@ -99,7 +99,7 @@
           "capture_id": "9",
           "semantic_call_site": {
             "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-            "line": 879
+            "line": 898
           }
         }
       ]
@@ -116,7 +116,7 @@
           "capture_id": "21",
           "semantic_call_site": {
             "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-            "line": 891
+            "line": 910
           }
         }
       ]
@@ -133,7 +133,7 @@
           "capture_id": "23",
           "semantic_call_site": {
             "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-            "line": 912
+            "line": 931
           }
         }
       ]
@@ -150,7 +150,7 @@
           "capture_id": "24",
           "semantic_call_site": {
             "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-            "line": 933
+            "line": 952
           }
         }
       ]
@@ -167,7 +167,7 @@
           "capture_id": "35",
           "semantic_call_site": {
             "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-            "line": 947
+            "line": 966
           }
         }
       ]
@@ -184,7 +184,7 @@
           "capture_id": "36",
           "semantic_call_site": {
             "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-            "line": 962
+            "line": 981
           }
         }
       ]

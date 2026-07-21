@@ -4,15 +4,15 @@
   "target": {
     "interface": "high_level",
     "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-    "line": 1095
+    "line": 1119
   },
   "coverage_report": {
     "per_invocation": [
       {
         "call_id": "1",
         "stage": "unknown",
-        "covered_us": 48.096,
-        "total_gpu_us": 48.096000000000004,
+        "covered_us": 48.097,
+        "total_gpu_us": 48.097,
         "coverage": 1.0,
         "unattributed_kernel_ids": []
       }
@@ -34,8 +34,8 @@
       "archetype": "pytorch_dispatch",
       "provider": "pytorch",
       "metrics": {
-        "duration_us": 21.536,
-        "share_in_invocation": 0.447771124417831
+        "duration_us": 21.6,
+        "share_in_invocation": 0.44909245898912614
       },
       "measurement": {
         "metric": "gpu_kernel_duration_us",
@@ -45,7 +45,7 @@
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-          "line": 810
+          "line": 818
         },
         "attribution": {
           "method": "python_stack+execution_capture+cuda_correlation_id",
@@ -64,8 +64,8 @@
       "archetype": "pytorch_dispatch",
       "provider": "sgl-attn",
       "metrics": {
-        "duration_us": 9.408,
-        "share_in_invocation": 0.19560878243512972
+        "duration_us": 9.345,
+        "share_in_invocation": 0.19429486246543445
       },
       "measurement": {
         "metric": "gpu_kernel_duration_us",
@@ -75,7 +75,7 @@
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-          "line": 834
+          "line": 853
         },
         "attribution": {
           "method": "python_stack+execution_capture+cuda_correlation_id",
@@ -95,7 +95,7 @@
       "provider": "flashinfer",
       "metrics": {
         "duration_us": 4.576,
-        "share_in_invocation": 0.09514304723885561
+        "share_in_invocation": 0.0951410690895482
       },
       "measurement": {
         "metric": "gpu_kernel_duration_us",
@@ -105,7 +105,7 @@
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-          "line": 891
+          "line": 910
         },
         "attribution": {
           "method": "python_stack+execution_capture+cuda_correlation_id",
@@ -124,8 +124,8 @@
       "archetype": "triton_launch",
       "provider": "sglang",
       "metrics": {
-        "duration_us": 2.272,
-        "share_in_invocation": 0.04723885562208915
+        "duration_us": 2.208,
+        "share_in_invocation": 0.04590722914111067
       },
       "measurement": {
         "metric": "gpu_kernel_duration_us",
@@ -135,7 +135,7 @@
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-          "line": 856
+          "line": 875
         },
         "attribution": {
           "method": "python_stack+execution_capture+cuda_correlation_id",
@@ -155,7 +155,7 @@
       "provider": "deepgemm",
       "metrics": {
         "duration_us": 2.176,
-        "share_in_invocation": 0.04524284763805722
+        "share_in_invocation": 0.0452419069796453
       },
       "measurement": {
         "metric": "gpu_kernel_duration_us",
@@ -165,7 +165,7 @@
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-          "line": 933
+          "line": 952
         },
         "attribution": {
           "method": "python_stack+execution_capture+cuda_correlation_id",
@@ -184,8 +184,8 @@
       "archetype": "tilelang_launch",
       "provider": "sglang",
       "metrics": {
-        "duration_us": 1.92,
-        "share_in_invocation": 0.039920159680638716
+        "duration_us": 1.952,
+        "share_in_invocation": 0.04058465184938769
       },
       "measurement": {
         "metric": "gpu_kernel_duration_us",
@@ -195,7 +195,7 @@
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-          "line": 947
+          "line": 966
         },
         "attribution": {
           "method": "python_stack+execution_capture+cuda_correlation_id",
@@ -214,8 +214,8 @@
       "archetype": "triton_launch",
       "provider": "flashinfer",
       "metrics": {
-        "duration_us": 1.568,
-        "share_in_invocation": 0.03260146373918829
+        "duration_us": 1.6,
+        "share_in_invocation": 0.0332661080732686
       },
       "measurement": {
         "metric": "gpu_kernel_duration_us",
@@ -225,7 +225,7 @@
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-          "line": 868
+          "line": 887
         },
         "attribution": {
           "method": "python_stack+execution_capture+cuda_correlation_id",
@@ -244,8 +244,8 @@
       "archetype": "cute_dsl_launch",
       "provider": "sglang",
       "metrics": {
-        "duration_us": 1.504,
-        "share_in_invocation": 0.03127079174983367
+        "duration_us": 1.472,
+        "share_in_invocation": 0.030604819427407115
       },
       "measurement": {
         "metric": "gpu_kernel_duration_us",
@@ -255,7 +255,7 @@
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-          "line": 912
+          "line": 931
         },
         "attribution": {
           "method": "python_stack+execution_capture+cuda_correlation_id",
@@ -275,7 +275,7 @@
       "provider": "sgl-kernel",
       "metrics": {
         "duration_us": 1.312,
-        "share_in_invocation": 0.027278775781769793
+        "share_in_invocation": 0.027278208620080256
       },
       "measurement": {
         "metric": "gpu_kernel_duration_us",
@@ -285,7 +285,7 @@
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-          "line": 820
+          "line": 839
         },
         "attribution": {
           "method": "python_stack+execution_capture+cuda_correlation_id",
@@ -305,7 +305,7 @@
       "provider": "sglang",
       "metrics": {
         "duration_us": 0.96,
-        "share_in_invocation": 0.019960079840319358
+        "share_in_invocation": 0.01995966484396116
       },
       "measurement": {
         "metric": "gpu_kernel_duration_us",
@@ -315,7 +315,7 @@
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-          "line": 962
+          "line": 981
         },
         "attribution": {
           "method": "python_stack+execution_capture+cuda_correlation_id",
@@ -334,8 +334,8 @@
       "archetype": "tvm_ffi_call",
       "provider": "sglang",
       "metrics": {
-        "duration_us": 0.864,
-        "share_in_invocation": 0.017964071856287425
+        "duration_us": 0.896,
+        "share_in_invocation": 0.018629020521030416
       },
       "measurement": {
         "metric": "gpu_kernel_duration_us",
@@ -345,7 +345,7 @@
       "runtime_event": {
         "call_site": {
           "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-          "line": 879
+          "line": 898
         },
         "attribution": {
           "method": "python_stack+execution_capture+cuda_correlation_id",

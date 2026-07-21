@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import math
 import sqlite3
@@ -113,7 +114,6 @@ class RuntimeArtifactValidator:
         for relative in (
             "runtime_capture.schema.json",
             "environment_probe.json",
-            "trace/profile.sqlite",
         ):
             self._require_file(self.cli_dir / relative)
         event_paths = sorted((self.cli_dir / "capture_events").glob("events_*.jsonl"))
@@ -161,6 +161,13 @@ class RuntimeArtifactValidator:
     def _validate_tree_and_metrics(self) -> None:
         self.require(self.runtime.get("schema_version") == RUNTIME_SCHEMA, "runtime schema_version mismatch")
         self.require(self.environment.get("schema_version") == ENVIRONMENT_SCHEMA, "environment schema_version mismatch")
+        declared_sqlite = self.runtime.get("artifacts", {}).get("sqlite")
+        if declared_sqlite is not None:
+            self.require(
+                declared_sqlite == "trace/profile.sqlite",
+                f"unexpected Runtime SQLite artifact path: {declared_sqlite}",
+            )
+            self._require_file(self.cli_dir / str(declared_sqlite))
         raw_by_key: dict[tuple[Any, str], dict[str, Any]] = {}
         raw_by_call: Counter[str] = Counter()
         for event in self.raw_events:
@@ -303,6 +310,8 @@ class RuntimeArtifactValidator:
 
     def _validate_sqlite(self) -> None:
         sqlite_path = self.cli_dir / "trace/profile.sqlite"
+        if not sqlite_path.is_file():
+            return
         try:
             connection = sqlite3.connect(f"file:{sqlite_path}?mode=ro", uri=True)
             connection.row_factory = sqlite3.Row
@@ -492,6 +501,27 @@ class ArtifactValidator:
 
         self.require(runtime_config.get("schema_version") == CONFIG_RUNTIME_SCHEMA, "runtime config version mismatch")
         self.require(resolver.get("schema_version") == CONFIG_RESOLVER_SCHEMA, "resolver config version mismatch")
+        target_config = runtime_config.get("target") or {}
+        target_path = Path(str(target_config.get("file", "")))
+        target_name = str(target_config.get("qualified_name") or "").rsplit(".", 1)[-1]
+        target_line = target_config.get("line")
+        self.require(target_path.is_file(), f"runtime target source does not exist: {target_path}")
+        if target_path.is_file():
+            try:
+                tree = ast.parse(target_path.read_text(encoding="utf-8"), filename=str(target_path))
+                matching_lines = {
+                    node.lineno
+                    for node in ast.walk(tree)
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and (not target_name or node.name == target_name)
+                }
+                self.require(
+                    target_line in matching_lines,
+                    f"runtime target line {target_line} does not match current source {target_path}; "
+                    f"candidate definition lines={sorted(matching_lines)}",
+                )
+            except (OSError, SyntaxError, UnicodeError) as exc:
+                self.errors.append(f"cannot inspect runtime target source {target_path}: {exc}")
         for label, value in (
             ("runtime config", runtime_config.get("backend_name")),
             ("resolver config", resolver.get("backend_name")),

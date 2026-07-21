@@ -5,7 +5,7 @@
   "output_dir": "/Users/bytedance/Desktop/infra_agent/kernel_agent/example_kernels/nsys_poc_kid_golden/cli_log/nsys_poc",
   "target": {
     "file": "/Users/bytedance/Desktop/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
-    "line": 1095,
+    "line": 1119,
     "qualified_name": "high_level"
   },
   "cmd": null,
@@ -25,6 +25,8 @@
   "profiling": {
     "nsys_bin": "nsys",
     "max_runtime_sec": 1800,
-    "disable_cuda_graph": true
+    "disable_cuda_graph": true,
+    "min_capture_coverage": 1.0,
+    "trace_retention": "always"
   }
 }

@@ -4,19 +4,19 @@ Backend: nsys_poc
 GPU metric: sum of correlated Nsight kernel activity durations.
 
 Invocation 1: high_level call_id=1 stage=unknown
-  CPU NVTX=6164.228 us | GPU sum=48.096 us | coverage=100.00%
-  #1 pytorch_dispatch aten.mm.default: direct=21.536 us inclusive=21.536 us
-  #2 pytorch_dispatch sgl_kernel.fwd.default: direct=9.408 us inclusive=9.408 us
+  CPU NVTX=6095.532 us | GPU sum=48.097 us | coverage=100.00%
+  #1 pytorch_dispatch aten.mm.default: direct=21.600 us inclusive=21.600 us
+  #2 pytorch_dispatch sgl_kernel.fwd.default: direct=9.345 us inclusive=9.345 us
   #3 tvm_ffi_call flashinfer_jit.sampling.min_p_sampling_from_probs: direct=4.576 us inclusive=4.576 us
-  #4 triton_launch _rms_norm_tiled_onepass: direct=2.272 us inclusive=2.272 us
+  #4 triton_launch _rms_norm_tiled_onepass: direct=2.208 us inclusive=2.208 us
   #5 python_binding deep_gemm.bf16_gemm_nt: direct=2.176 us inclusive=2.176 us
-  #6 tilelang_launch JITKernel: direct=1.920 us inclusive=1.920 us
-  #7 triton_launch rms_norm_kernel: direct=1.568 us inclusive=1.568 us
-  #8 cute_dsl_launch ScaleResidualNormScaleShift: direct=1.504 us inclusive=1.504 us
+  #6 tilelang_launch JITKernel: direct=1.952 us inclusive=1.952 us
+  #7 triton_launch rms_norm_kernel: direct=1.600 us inclusive=1.600 us
+  #8 cute_dsl_launch ScaleResidualNormScaleShift: direct=1.472 us inclusive=1.472 us
   #9 pytorch_dispatch sgl_kernel.silu_and_mul.default: direct=1.312 us inclusive=1.312 us
   #10 inductor_launch triton_poi_fused_copy__div_lt_mul_where_0: direct=0.960 us inclusive=0.960 us
-  #11 tvm_ffi_call sglang_jit.add_constant.add_constant: direct=0.864 us inclusive=0.864 us
-  #12 pytorch_dispatch sglang.triton_one_pass_rms_norm_cuda.default: direct=0.000 us inclusive=2.272 us
-  #13 pytorch_dispatch sglang.fused_norm_scale_shift.default: direct=0.000 us inclusive=1.504 us
+  #11 tvm_ffi_call sglang_jit.add_constant.add_constant: direct=0.896 us inclusive=0.896 us
+  #12 pytorch_dispatch sglang.triton_one_pass_rms_norm_cuda.default: direct=0.000 us inclusive=2.208 us
+  #13 pytorch_dispatch sglang.fused_norm_scale_shift.default: direct=0.000 us inclusive=1.472 us
 
 Observed/eligible/selected invocations: 1/1/1

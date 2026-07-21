@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import unittest
 from pathlib import Path
@@ -36,8 +37,19 @@ class TestRuntimeGolden(unittest.TestCase):
         self.assertEqual(len(invocation["execution_captures"]), 13)
         self.assertEqual(invocation["capture_without_kernel_count"], 23)
         self.assertEqual(len(self.actual["kernels"]), 12)
-        self.assertAlmostEqual(invocation["high_level"]["gpu_kernel_sum_us"], 48.096)
+        self.assertAlmostEqual(invocation["high_level"]["gpu_kernel_sum_us"], 48.097)
         self.assertEqual(invocation["coverage"], 1.0)
+
+    def test_target_line_matches_current_poc_source(self) -> None:
+        tree = ast.parse(self.config.target_file.read_text(encoding="utf-8"))
+        current_lines = {
+            node.lineno
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "high_level"
+        }
+        self.assertIn(self.config.target_line, current_lines)
+        self.assertEqual(self.expected["target"]["line"], self.config.target_line)
 
     def test_all_capture_archetypes_are_observed(self) -> None:
         observed = {
