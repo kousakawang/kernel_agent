@@ -8,8 +8,9 @@ source\_locations 填写标准（历史源码案例参考）
 > `kernel_sources_dir` 回填。本文其余内容仅保留为各仓库源码调用链案例，后续会按新 Agent
 > 工作流重写。Agent 的当前可执行规范见
 > `framework_engineer/skills/source_locate.md` 和
-> `framework_engineer/prompts/start_source_locate.md`；Agent 在生成 located schema/notes 后结束，
-> extract 由外层工作流显式调用。
+> `framework_engineer/prompts/start_source_locate.md`；用户只提供一个
+> `source-locate-agent-config/v1`，Agent 自主完成 locate、四层定位、finalize、extract 和最终
+> workspace 校验。
 >
 > 日期：2026-07-14
 

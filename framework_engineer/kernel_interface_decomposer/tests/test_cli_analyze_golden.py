@@ -52,7 +52,7 @@ class TestAnalyzeCliGolden(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.repo_root = Path(__file__).resolve().parents[3]
         cls.golden_root = cls.repo_root / "example_kernels/nsys_poc_kid_golden"
-        cls.golden_cli = cls.golden_root / "cli_log/nsys_poc"
+        cls.golden_cli = cls.golden_root / "nsys_poc/cli_log"
         cls.golden_config_path = (
             cls.golden_root / "config/nsys_poc/runtime_capture_config.json"
         )
@@ -65,7 +65,8 @@ class TestAnalyzeCliGolden(unittest.TestCase):
     def test_analyze_cli_reproduces_runtime_golden(self) -> None:
         with tempfile.TemporaryDirectory(prefix="kid-analyze-golden-") as tempdir:
             temp_root = Path(tempdir)
-            output_dir = temp_root / "nsys_poc"
+            output_dir = temp_root / "output"
+            cli_dir = output_dir / "nsys_poc/cli_log"
             config_path = temp_root / "runtime_capture_config.json"
 
             config = json.loads(self.golden_config_path.read_text(encoding="utf-8"))
@@ -118,7 +119,7 @@ class TestAnalyzeCliGolden(unittest.TestCase):
             self.assertEqual(cli_report["kernels"], 12)
             self.assertEqual(cli_report["raw_capture_events"], 36)
 
-            actual_path = output_dir / "runtime_capture.schema.json"
+            actual_path = cli_dir / "runtime_capture.schema.json"
             actual = json.loads(actual_path.read_text(encoding="utf-8"))
             self.assertRegex(actual["run"]["run_id"], r"^[0-9a-f]{32}$")
             self.assertGreater(actual["run"]["created_at_unix"], 0)
@@ -127,16 +128,16 @@ class TestAnalyzeCliGolden(unittest.TestCase):
                 _normalize_runtime(self.expected),
             )
 
-            validator = RuntimeArtifactValidator(output_dir)
+            validator = RuntimeArtifactValidator(cli_dir)
             self.assertTrue(validator.validate(), msg="; ".join(validator.errors))
             self.assertEqual(
-                (output_dir / "trace/profile.sqlite").stat().st_size,
+                (cli_dir / "trace/profile.sqlite").stat().st_size,
                 (self.golden_cli / "trace/profile.sqlite").stat().st_size,
             )
             self.assertEqual(
                 sorted(
                     path.name
-                    for path in (output_dir / "capture_events").glob("*.jsonl")
+                    for path in (cli_dir / "capture_events").glob("*.jsonl")
                 ),
                 sorted(
                     path.name
@@ -148,7 +149,8 @@ class TestAnalyzeCliGolden(unittest.TestCase):
         source_sqlite = self.golden_cli / "trace/profile.sqlite"
         with tempfile.TemporaryDirectory(prefix="kid-analyze-retention-") as tempdir:
             temp_root = Path(tempdir)
-            output_dir = temp_root / "nsys_poc"
+            output_dir = temp_root / "output"
+            cli_dir = output_dir / "nsys_poc/cli_log"
             config_path = temp_root / "runtime_capture_config.json"
             config = json.loads(self.golden_config_path.read_text(encoding="utf-8"))
             config["workdir"] = str(self.repo_root.parent)
@@ -187,12 +189,12 @@ class TestAnalyzeCliGolden(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, msg=result.stderr)
             runtime = json.loads(
-                (output_dir / "runtime_capture.schema.json").read_text(encoding="utf-8")
+                (cli_dir / "runtime_capture.schema.json").read_text(encoding="utf-8")
             )
             self.assertNotIn("sqlite", runtime["artifacts"])
-            self.assertFalse((output_dir / "trace/profile.sqlite").exists())
+            self.assertFalse((cli_dir / "trace/profile.sqlite").exists())
             self.assertTrue(source_sqlite.is_file())
-            validator = RuntimeArtifactValidator(output_dir)
+            validator = RuntimeArtifactValidator(cli_dir)
             self.assertTrue(validator.validate(), msg="; ".join(validator.errors))
 
 

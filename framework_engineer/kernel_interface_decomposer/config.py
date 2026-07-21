@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-RUNTIME_CONFIG_VERSION = "kid-runtime-config/v2"
+RUNTIME_CONFIG_VERSION = "kid-runtime-config/v3"
 SAMPLING_STRATEGIES = frozenset(
     {"all", "last_n", "single", "unique_decomposition"}
 )
@@ -190,10 +190,6 @@ class RuntimeCaptureConfig:
         output_dir = _resolve_path(
             raw.get("output_dir"), base=workdir, name="output_dir"
         )
-        if output_dir.name != backend_name:
-            raise ConfigError(
-                "output_dir must end with backend_name so config/cli_log/output/ref stay aligned"
-            )
 
         target = _mapping(raw.get("target"), "target") or {}
         target_file = _resolve_path(
@@ -224,9 +220,13 @@ class RuntimeCaptureConfig:
             env[str(key)] = str(value)
 
         selection = _mapping(raw.get("selection"), "selection") or {}
+        if "stages" in selection:
+            raise ConfigError(
+                "selection.stages was removed in kid-runtime-config/v3; "
+                "Runtime detects stage automatically"
+            )
         selection = {
             "skip_invocations": int(selection.get("skip_invocations", 0)),
-            "stages": list(selection.get("stages") or []),
             "sample_count_per_stage": int(selection.get("sample_count_per_stage", 1)),
             "sampling": str(selection.get("sampling", "unique_decomposition")),
             "aggregation": str(selection.get("aggregation", "single")),
@@ -243,9 +243,6 @@ class RuntimeCaptureConfig:
             raise ConfigError("selection.sampling=single requires sample_count_per_stage=1")
         if selection["aggregation"] != "single":
             raise ConfigError("Runtime Capture v1 only supports aggregation=single")
-        if not all(isinstance(item, str) and item for item in selection["stages"]):
-            raise ConfigError("selection.stages must contain non-empty strings")
-
         profiling = _mapping(raw.get("profiling"), "profiling") or {}
         profiling = {
             **profiling,
@@ -290,19 +287,31 @@ class RuntimeCaptureConfig:
         )
 
     def events_dir(self) -> Path:
-        return self.output_dir / "capture_events"
+        return self.cli_dir() / "capture_events"
+
+    def backend_dir(self) -> Path:
+        return self.output_dir / self.backend_name
+
+    def cli_dir(self) -> Path:
+        return self.backend_dir() / "cli_log"
+
+    def ref_dir(self) -> Path:
+        return self.backend_dir() / "ref"
+
+    def final_output_dir(self) -> Path:
+        return self.backend_dir() / "output"
 
     def trace_dir(self) -> Path:
-        return self.output_dir / "trace"
+        return self.cli_dir() / "trace"
 
     def logs_dir(self) -> Path:
-        return self.output_dir / "logs"
+        return self.cli_dir() / "logs"
 
     def sqlite_path(self) -> Path:
         return self.trace_dir() / "profile.sqlite"
 
     def schema_path(self) -> Path:
-        return self.output_dir / "runtime_capture.schema.json"
+        return self.cli_dir() / "runtime_capture.schema.json"
 
     def runtime_config(self, *, events_dir: Path | None = None) -> dict[str, Any]:
         return {

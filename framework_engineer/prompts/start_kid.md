@@ -31,7 +31,7 @@ capture 必须使用具备 CUDA 与 Nsight Systems 的 Python 执行环境；Sem
 发生以下情况时停止，不得继续发布或绕过 validator：
 
 - 两份配置缺失、backend 不一致或产物路径串到其他 backend；
-- Runtime capture/校验失败，或远端产物没有同步到 Resolver 配置引用的位置；
+- Runtime capture/校验失败，或远端产物没有同步到路径映射后自动派生的位置；
 - direct kernel owner 无法唯一分配；
 - semantic call site 不在保存的 Runtime stack edge 中；
 - confidence 低于 `medium`，或 provider 证据冲突；

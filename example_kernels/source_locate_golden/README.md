@@ -26,6 +26,7 @@ Prompt 和 Skill 属于 source-locate 的公共实现，不复制进单个 golde
 source_locate_golden/
 ├── config/
 │   └── all_backends/
+│       ├── source_locate_config.json        # 统一 Agent 入口配置
 │       └── third_party_manifest.json        # 允许成为正式 hit 的源码仓
 ├── input/
 │   └── all_backends/
@@ -75,46 +76,21 @@ workspaces/<testcase>/...
 
 ## 如何重放 all_backends testcase
 
-以下命令从 `kernel_agent/` 目录执行。源码位置记录在 `config/all_backends/third_party_manifest.json`；若工作区移动，需要先更新 manifest 和 decisions 中的绝对路径。
+用户只需向宿主 Agent 提供公共入口 Prompt 和一个配置文件：
 
-### 1. locate CLI
+```text
+请阅读并严格执行：
+  <kernel_agent>/framework_engineer/prompts/start_source_locate.md
 
-```bash
-python3 -m framework_engineer.source_location.cli locate \
-  --schema example_kernels/source_locate_golden/input/all_backends/decomposition.kid.schema.json \
-  --manifest example_kernels/source_locate_golden/config/all_backends/third_party_manifest.json \
-  --sglang-repo-root /Users/bytedance/Desktop/infra_agent/sglang \
-  --out example_kernels/source_locate_golden/workspaces/all_backends/locate/locate_candidates.schema.json
+配置文件：
+  <kernel_agent>/example_kernels/source_locate_golden/config/all_backends/source_locate_config.json
 ```
 
-### 2. source_locate Agent
+Agent 会自己完成 `prepare → locate → 四层源码搜索 → finalize → extract → validate`，所有产物写入
+`workspaces/all_backends/`。用户不需要逐条执行 CLI。
 
-使用公共 [`start_source_locate.md`](../../framework_engineer/prompts/start_source_locate.md) 启动 Agent。Agent 按公共 [`source_locate.md`](../../framework_engineer/skills/source_locate.md) 搜索源码，将工作决策写到当前 testcase workspace，然后调用 finalize：
-
-```bash
-python3 -m framework_engineer.source_location.agent_helper finalize \
-  --schema example_kernels/source_locate_golden/workspaces/all_backends/locate/locate_candidates.schema.json \
-  --decisions example_kernels/source_locate_golden/workspaces/all_backends/agent/source_locate_decisions.json \
-  --manifest example_kernels/source_locate_golden/config/all_backends/third_party_manifest.json \
-  --sglang-repo-root /Users/bytedance/Desktop/infra_agent/sglang \
-  --out example_kernels/source_locate_golden/workspaces/all_backends/agent/located.schema.json \
-  --notes-out example_kernels/source_locate_golden/workspaces/all_backends/agent/ref/locate_agent_notes.md
-```
-
-Agent 到这里结束，不调用 extract。
-
-### 3. extract CLI
-
-extract 会原地向输入 schema 写入 `kernel_sources_dir`。为了保留 Agent 的 located schema，先复制到 workspace 的 extract 阶段，再执行：
-
-```bash
-cp example_kernels/source_locate_golden/workspaces/all_backends/agent/located.schema.json \
-  example_kernels/source_locate_golden/workspaces/all_backends/extract/decomposition.extracted.schema.json
-
-python3 -m framework_engineer.source_location.cli extract \
-  --schema example_kernels/source_locate_golden/workspaces/all_backends/extract/decomposition.extracted.schema.json \
-  --workspace-out example_kernels/source_locate_golden/workspaces/all_backends/extract
-```
+若工作区移动，只需要修改 `source_locate_config.json` 中的 SGLang root，以及
+`third_party_manifest.json` 和已有 decisions 中的绝对源码路径。
 
 ## 边界说明
 

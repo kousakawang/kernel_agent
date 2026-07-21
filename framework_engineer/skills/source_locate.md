@@ -1,24 +1,40 @@
 # Source Locate Skill
 
-你负责在 KID 已经确定 semantic low-level target 后，阅读源码并定位四层 source locations。
-你不重新选择 semantic target，不修改任何 KID 字段，也不执行 extract。
+你负责在 KID 已经确定 semantic low-level target 后，读取一个 source-locate config，自主编排
+locate、四层源码定位、finalize 和 extract。你不重新选择 semantic target，也不修改任何 KID 字段。
 
 ## 输入与输出
 
-必需输入：
-
-- locate CLI 生成的 candidate schema；
-- `third_party_manifest.json`；
-- SGLang 源码根目录；
-- Agent decisions、最终 located schema 和 notes 的输出路径。
+用户只提供一个 `source-locate-agent-config/v1` JSON。配置包含 testcase ID、KID schema、
+third-party manifest、SGLang 源码根和独立 workspace。相对路径以配置文件所在目录解析；阶段输出路径
+由 `prepare-run` 根据 workspace 固定派生，不能由对话临时拼装。
 
 输出：
 
 - `source-locate-agent-decisions/v1` decisions JSON；
 - 删除 `locate_candidates`、写入四层 `source_locations` 的 schema；
-- `ref/locate_agent_notes.md`。
+- `ref/locate_agent_notes.md`；
+- 增加 `kernel_sources_dir` 的 extracted schema；
+- 每个 low-level target 的 `kernel_sources/` 和 `read_hints.txt`。
 
-最终 schema 不得包含 `kernel_sources_dir`。外层工作流会在你结束后显式调用 extract。
+located schema 不得包含 `kernel_sources_dir`；extract 必须处理它的副本，使 located 和 extracted 两份
+schema 同时保留。完整 workspace 最后必须通过 `validate-run`。
+
+配置只允许以下字段：
+
+```json
+{
+  "schema_version": "source-locate-agent-config/v1",
+  "testcase_id": "backend_name",
+  "kid_schema": "path/to/decomposition.kid.schema.json",
+  "third_party_manifest": "path/to/third_party_manifest.json",
+  "sglang_repo_root": "/absolute/path/to/sglang",
+  "workspace": "path/to/workspaces/backend_name"
+}
+```
+
+先调用 `prepare-run`，只使用它返回的绝对路径执行后续步骤。不要向用户索要 candidate、decisions、
+located、notes 或 extract 路径。
 
 ## 不变量
 
@@ -155,5 +171,6 @@ host entry → dtype/layout dispatch → launcher/template → core device kerne
 1. 每个 target 都有 decision，单个 target `missed` 不阻断其他 target。
 2. `finalize` 成功，输出 schema 无 `locate_candidates/kernel_sources_dir`。
 3. notes 含每层证据、gap 和人工建议。
-4. 若提供 Golden，`evaluate` 通过。
-5. 到此结束；不得调用 extract。
+4. extract 对 located schema 的副本执行成功，生成 extracted schema 与 `kernel_sources/`。
+5. `validate-run --config ...` 返回 `ok=true`。
+6. 若开发任务另外提供 Golden，`evaluate` 也必须通过。

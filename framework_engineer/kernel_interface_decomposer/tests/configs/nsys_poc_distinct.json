@@ -1,8 +1,8 @@
 {
-  "schema_version": "kid-runtime-config/v2",
+  "schema_version": "kid-runtime-config/v3",
   "backend_name": "nsys_poc_distinct",
   "workdir": "/mnt/infra_agent",
-  "output_dir": "/mnt/infra_agent/kid_cli_convergence_output/nsys_poc_distinct",
+  "output_dir": "/mnt/infra_agent/kid_cli_convergence_output",
   "target": {
     "file": "/mnt/infra_agent/kernel_agent/framework_engineer/kernel_interface_decomposer/nsys_poc.py",
     "line": 1119,
@@ -15,9 +15,6 @@
   "env": {},
   "selection": {
     "skip_invocations": 0,
-    "stages": [
-      "unknown"
-    ],
     "sample_count_per_stage": 1,
     "sampling": "unique_decomposition",
     "aggregation": "single"

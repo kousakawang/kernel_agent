@@ -8,14 +8,14 @@ directory instead of invoking the two stages as separate tasks.
 
 ## Configuration
 
-Each `kid-runtime-config/v2` file describes one backend and one test command:
+Each `kid-runtime-config/v3` file describes one backend and one test command:
 
 ```json
 {
-  "schema_version": "kid-runtime-config/v2",
+  "schema_version": "kid-runtime-config/v3",
   "backend_name": "triton",
   "workdir": "/workspace",
-  "output_dir": "/workspace/kid/cli_log/triton",
+  "output_dir": "/workspace/kid",
   "target": {
     "file": "/workspace/sglang/model_runner.py",
     "line": 500,
@@ -32,7 +32,6 @@ Each `kid-runtime-config/v2` file describes one backend and one test command:
   "env": {},
   "selection": {
     "skip_invocations": 0,
-    "stages": ["prefill", "decode", "unknown"],
     "sample_count_per_stage": 1,
     "sampling": "unique_decomposition",
     "aggregation": "single"
@@ -64,6 +63,8 @@ execution calls do not split a group. `last_n` selects the final N invocations
 independently per stage; `single` is the golden-compatible alias for `last_n`
 with N=1. JSONL retains every invocation. SQLite is a temporary analysis input
 by default and is retained only when capture fails.
+Stage is detected from Runtime state and emitted as diagnostic evidence; v3
+does not allow a user-supplied stage filter.
 
 ## Commands
 
@@ -83,10 +84,14 @@ command and direct semantic/source resolution are intentionally unsupported.
 
 ```text
 <output_dir>/
-├── environment_probe.json
-├── runtime_capture.schema.json
-├── capture_events/events_<pid>.jsonl
-└── logs/{probe,nsys,warmup,test,summary}.log
+└── <backend_name>/
+    ├── cli_log/
+    │   ├── environment_probe.json
+    │   ├── runtime_capture.schema.json
+    │   ├── capture_events/events_<pid>.jsonl
+    │   └── logs/{probe,nsys,warmup,test,summary}.log
+    ├── ref/
+    └── output/
 ```
 
 Both `profile.nsys-rep` and the exported SQLite are temporary on success. Set
@@ -149,7 +154,7 @@ Capture categories and adapter boundaries are defined in
 ## KID Agent semantic phase
 
 The KID Agent performs the second stage after Runtime capture. Internally it
-uses one `kid-semantic-resolver-config/v2` and the following deterministic
+uses one `kid-semantic-resolver-config/v3` and the following deterministic
 commands:
 
 ```bash
@@ -167,6 +172,11 @@ must assign every direct kernel owner exactly once to a semantic interface.
 `finalize` computes all metrics and publishes `kernel-interface-decomposition/v2`
 atomically. Context, decisions, and notes are internal evidence; source_locate
 consumes only the final decomposition.
+
+The Semantic config contains only `backend_name`, the third-party manifest,
+and optional Runtime-to-local path mappings. It loads the sibling
+`runtime_capture_config.json` and derives Runtime/context/decisions/notes/final
+paths from its top-level `output_dir`.
 
 Run its CPU-only regression with:
 

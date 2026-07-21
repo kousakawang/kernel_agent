@@ -9,9 +9,9 @@
 | 区域 | 主要填写者 | 定位 |
 |---|---|---|
 | `config/<backend>/` | 用户或上层编排器 | 单-backend 用户输入，不是 KID 运行产物。 |
-| `cli_log/<backend>/` | Runtime Capture CLI | 可复查的运行时事实、trace 和日志；不得包含 semantic oracle。 |
-| `output/<backend>/` | Semantic Resolver finalizer | KID 对外发布的固定 schema，也是 `source_locate` 的唯一 KID 输入。 |
-| `ref/<backend>/` | Helper、Agent、维护者 | Context、decisions 和 notes，仅供解析复现。 |
+| `<backend>/cli_log/` | Runtime Capture CLI | 可复查的运行时事实、trace 和日志；不得包含 semantic oracle。 |
+| `<backend>/output/` | Semantic Resolver finalizer | KID 对外发布的固定 schema，也是 `source_locate` 的唯一 KID 输入。 |
+| `<backend>/ref/` | Helper、Agent、维护者 | Context、decisions 和 notes，仅供解析复现。 |
 
 ## 配置输入
 
@@ -26,9 +26,11 @@
   末尾 N 次的 `last_n`、末尾一次的 `single`）；
   `profiling` 定义 Nsight、CUDA Graph 和 trace retention；无服务时同一 `test_cmd`
   会先关闭采集执行一次 warmup，再开启采集执行一次正式测试，因此必须可重复且幂等；
-  `output_dir` 指向 `cli_log/<backend>`。本 golden 为 parser 回归显式使用
+  `output_dir` 指向 KID 一级输出根；CLI 自动写入 `<output_dir>/<backend>/cli_log`。
+  本 golden 为 parser 回归显式使用
   `trace_retention=always`，生产默认是 `on_failure`。
-- **格式**：固定，`kid-runtime-config/v2`。
+- **格式**：固定，`kid-runtime-config/v3`；stage 由 Runtime 自动识别，配置中禁止
+  `selection.stages`。
 - **谁消费**：Runtime Capture CLI。
 - **失败处理**：路径、命令或 target 无效时在 profiling 前失败；不能自动猜测另一
   个 backend，也不能把多组命令隐式追加到该配置。
@@ -37,22 +39,22 @@
 
 - **谁填写**：用户或上层编排器；Agent 只读取，不修改输入合同。
 - **何时填写**：Semantic Resolver Agent 启动之前。
-- **如何填写**：引用同 backend 的 Runtime、context、decisions、最终 output 和 notes
-  路径；`sglang_repo_root`、`source_roots` 指向本地源码；`third_party_manifest`
-  只引用上游 `resolve-third-party` 的真实产物，本例为
+- **如何填写**：只填写 backend、`third_party_manifest` 与可选路径映射。Helper 读取同目录
+  `runtime_capture_config.json`，自动派生 Runtime、context、decisions、notes 和最终 output。
+  `third_party_manifest` 同时提供 SGLang 根和 `repos[].local_path`，只引用上游
+  `resolve-third-party` 的真实产物，本例为
   `kernel_agent/framework_engineer/source_location/example/third_party_manifest.json`，
   不复制进 KID；`runtime_to_local_path_mappings` 将容器、site-packages 路径映射到
-  Agent 可读的本地源码。`analysis_source_overrides` 可在 trace 行号与当前源码漂移时，将规范
-  发布路径指向冻结的分析快照；它不会改变最终 call site 路径。这些源码仅用于判断 semantic interface 和 provider，
+  Agent 可读的本地源码，最长前缀优先。这些源码仅用于判断 semantic interface 和 provider，
   Semantic Resolver 不输出接口定义、binding 或 kernel implementation 的源码位置。
-- **格式**：固定，`kid-semantic-resolver-config/v2`。
+- **格式**：固定，`kid-semantic-resolver-config/v3`。
 - **谁消费**：Semantic Resolver Agent。
-- **失败处理**：Runtime、manifest 或显式 source override 不存在时停止；普通 source root
-  缺失会记录在 context，若它阻止 semantic 判断则由 Agent 报告 blocker。
+- **失败处理**：同目录 Runtime 配置、派生的 Runtime schema 或 manifest 不存在时停止；
+  manifest 仓库路径缺失会记录在 context，若它阻止 semantic 判断则由 Agent 报告 blocker。
 
 ## Runtime Capture CLI 产物
 
-### `cli_log/<backend>/environment_probe.json`
+### `<backend>/cli_log/environment_probe.json`
 
 - **谁填写**：Runtime Capture CLI 的静态 probe 阶段；fixture 可附加 test 自身的 smoke 摘要。
 - **填写依据**：实际远端 Python、GPU、CUDA、Nsight、包版本/API 和 adapter 可用性。
@@ -65,7 +67,7 @@
   当 `cmd` 非空时，服务以暂停采集的 Nsight session 启动；CLI 在 `ready` 成功后才同时
   开启 Nsight collection 和 Runtime capture gate，因此启动期事件不属于本次产物。
 
-### `cli_log/<backend>/capture_events/events_<pid>.jsonl`
+### `<backend>/cli_log/capture_events/events_<pid>.jsonl`
 
 - **谁填写**：安装在通用执行入口上的 capture wrapper。
 - **填写依据**：每次 common-interface 进入时的进程/线程、capture parent、archetype、
@@ -78,7 +80,7 @@
 - **失败处理**：ID 重复、parent 缺失、stack 为空或事件数与 NVTX 不一致时，该轮
   capture 无效，必须重新运行而不是丢弃异常事件。
 
-### `cli_log/<backend>/trace/profile.sqlite`（golden/调试可选）
+### `<backend>/cli_log/trace/profile.sqlite`（golden/调试可选）
 
 - **谁填写**：Runtime Capture CLI 调用 `nsys export --type=sqlite` 生成。
 - **填写依据**：与上述 JSONL 同一次 profiling 的 NVTX、CUDA Runtime/Driver API
@@ -91,7 +93,7 @@
 - **失败处理**：SQLite 损坏、correlation 匹配失败或与 JSON 时间不一致时整轮失效并
   重新 profiling。
 
-### `cli_log/<backend>/runtime_capture.schema.json`
+### `<backend>/cli_log/runtime_capture.schema.json`
 
 - **谁填写**：Runtime Capture CLI 的 SQLite/JSONL join 与聚合阶段。
 - **填写依据**：high/execution NVTX、raw capture stack、CUDA launch API 与 GPU kernel
@@ -109,14 +111,14 @@
 - **失败处理**：coverage 不足、kernel 多 owner、direct/inclusive 聚合不守恒或 SQLite
   对不上时 CLI 失败；默认 `on_failure` 会保留 logs/SQLite 供定位。
 
-### `cli_log/<backend>/logs/probe.log`
+### `<backend>/cli_log/logs/probe.log`
 
 - **谁填写**：Runtime Capture CLI。
 - **内容**：环境 smoke/prewarm 的原始 stdout/stderr。
 - **格式/消费者**：自由文本，仅供开发者和 Agent 排错。
 - **失败处理**：probe 失败时它是首要诊断证据，不能用空文件占位。
 
-### `cli_log/<backend>/logs/nsys.log`
+### `<backend>/cli_log/logs/nsys.log`
 
 - **谁填写**：Runtime Capture CLI。
 - **内容**：所有模式的 `nsys launch/start/stop`、`nsys export` 命令和原始输出；正式
@@ -124,21 +126,21 @@
 - **格式/消费者**：自由文本，供开发者、validator 失败调查使用。
 - **失败处理**：Nsight 非零退出、导出失败或 report 路径异常时保留日志并终止。
 
-### `cli_log/<backend>/logs/warmup.log`
+### `<backend>/cli_log/logs/warmup.log`
 
 - **谁填写**：Runtime Capture CLI。
 - **内容**：`cmd=null` 时第一次 `test_cmd` 的输出；服务模式记录 ready 前启动阶段已经完成。
 - **格式/消费者**：自由文本，仅供排错，不进入 Runtime 或最终 schema。
 - **失败处理**：direct warmup 非零退出时不执行 `nsys start`，并以该日志为首要证据。
 
-### `cli_log/<backend>/logs/test.log`
+### `<backend>/cli_log/logs/test.log`
 
 - **谁填写**：被 profiling 的 test/worker 命令。
 - **内容**：该次执行的 workload、设备、依赖版本、checksum 与 adapter 状态摘要。
 - **格式/消费者**：自由文本，供 Runtime CLI 和开发者判断测试是否真正完成。
 - **失败处理**：命令非零退出或日志缺失时不得继续发布 Runtime schema。
 
-### `cli_log/<backend>/logs/summary.log`
+### `<backend>/cli_log/logs/summary.log`
 
 - **谁填写**：Runtime Capture CLI 聚合结束阶段。
 - **内容**：high-level 总耗时、coverage、raw/materialized capture 数、kernel 数及直接
@@ -148,7 +150,7 @@
 
 ## Semantic Resolver Agent 产物
 
-### `ref/<backend>/semantic_resolver_context.json`
+### `<backend>/ref/semantic_resolver_context.json`
 
 - **谁填写**：`semantic_resolver_tools prepare`，Agent 不手工编辑。
 - **填写依据**：Runtime 中所有被选 invocation 的 direct kernel owner、ancestor capture、完整
@@ -159,7 +161,7 @@
 - **失败处理**：Runtime hash 不一致、owner/parent 不完整或分析源码与 stack 行号不匹配时重新 prepare，
   不能沿用旧 context。
 
-### `ref/<backend>/semantic_resolver_decisions.json`
+### `<backend>/ref/semantic_resolver_decisions.json`
 
 - **谁填写**：Semantic Resolver Agent。
 - **填写依据**：Context 的真实 stack edge、源码与 provider/repository 证据。
@@ -169,7 +171,7 @@
 - **谁消费**：deterministic finalizer 和 validator，不交给 `source_locate`。
 - **失败处理**：非法 call site、重复/遗漏 owner、低置信度或 provider 冲突都会阻止发布。
 
-### `output/<backend>/decomposition.schema.json`
+### `<backend>/output/decomposition.schema.json`
 
 - **谁填写**：`semantic_resolver_tools finalize`；Agent 只填写 decisions 与 notes。
 - **填写依据**：通过验证的 decisions 与 Runtime kernel/capture 事实。
@@ -191,7 +193,7 @@
 - **失败处理**：无法可靠消歧时 Agent 在 notes 说明阻塞点并请求人工判断；不得用 execution
   interface 冒充 semantic interface。finalizer/validator 不通过时不得手工修正聚合字段。
 
-### `ref/<backend>/kid_semantic_resolver_notes.md`
+### `<backend>/ref/kid_semantic_resolver_notes.md`
 
 - **谁填写**：Semantic Resolver Agent。
 - **填写依据**：候选 stack、源码阅读、provider 证据、wrapper 消歧、多-kernel 合并和

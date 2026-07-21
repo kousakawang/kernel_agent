@@ -14,17 +14,19 @@ from pathlib import Path
 from typing import Any, Iterable
 
 try:
+    from .config import RuntimeCaptureConfig
     from .sampling import decomposition_signature_hash
     from .semantic_resolver import SemanticResolver, SemanticResolverConfig
 except ImportError:  # pragma: no cover - direct script execution fallback
+    from config import RuntimeCaptureConfig
     from sampling import decomposition_signature_hash
     from semantic_resolver import SemanticResolver, SemanticResolverConfig
 
 
 RUNTIME_SCHEMA = "kid-runtime-capture/v1"
 FINAL_SCHEMA = "kernel-interface-decomposition/v2"
-CONFIG_RUNTIME_SCHEMA = "kid-runtime-config/v2"
-CONFIG_RESOLVER_SCHEMA = "kid-semantic-resolver-config/v2"
+CONFIG_RUNTIME_SCHEMA = "kid-runtime-config/v3"
+CONFIG_RESOLVER_SCHEMA = "kid-semantic-resolver-config/v3"
 ENVIRONMENT_SCHEMA = "kid-runtime-environment/v1"
 CAPTURE_ARCHETYPES = {
     "pytorch_dispatch",
@@ -464,7 +466,8 @@ class ArtifactValidator:
         if len(backends) != 1:
             return False
         self.backend = backends[0]
-        cli_dir = self.root / "cli_log" / self.backend
+        backend_root = self.root / self.backend
+        cli_dir = backend_root / "cli_log"
         runtime_validator = RuntimeArtifactValidator(cli_dir)
         if not runtime_validator.validate():
             self.errors.extend(runtime_validator.errors)
@@ -474,10 +477,10 @@ class ArtifactValidator:
 
         runtime_config_path = config_root / self.backend / "runtime_capture_config.json"
         resolver_config_path = config_root / self.backend / "semantic_resolver_config.json"
-        final_path = self.root / "output" / self.backend / "decomposition.schema.json"
-        notes_path = self.root / "ref" / self.backend / "kid_semantic_resolver_notes.md"
-        context_path = self.root / "ref" / self.backend / "semantic_resolver_context.json"
-        decisions_path = self.root / "ref" / self.backend / "semantic_resolver_decisions.json"
+        final_path = backend_root / "output" / "decomposition.schema.json"
+        notes_path = backend_root / "ref" / "kid_semantic_resolver_notes.md"
+        context_path = backend_root / "ref" / "semantic_resolver_context.json"
+        decisions_path = backend_root / "ref" / "semantic_resolver_decisions.json"
         for path in (
             runtime_config_path,
             resolver_config_path,
@@ -501,6 +504,42 @@ class ArtifactValidator:
 
         self.require(runtime_config.get("schema_version") == CONFIG_RUNTIME_SCHEMA, "runtime config version mismatch")
         self.require(resolver.get("schema_version") == CONFIG_RESOLVER_SCHEMA, "resolver config version mismatch")
+        self.require(
+            "stages" not in (runtime_config.get("selection") or {}),
+            "runtime config must not contain removed selection.stages",
+        )
+        for field in ("ready", "stop", "env"):
+            self.require(field in runtime_config, f"golden runtime config omits optional field {field}")
+        for field in (
+            "skip_invocations",
+            "sample_count_per_stage",
+            "sampling",
+            "aggregation",
+        ):
+            self.require(
+                field in (runtime_config.get("selection") or {}),
+                f"golden runtime selection omits optional field {field}",
+            )
+        for field in (
+            "nsys_bin",
+            "max_runtime_sec",
+            "disable_cuda_graph",
+            "min_capture_coverage",
+            "trace_retention",
+        ):
+            self.require(
+                field in (runtime_config.get("profiling") or {}),
+                f"golden runtime profiling omits optional field {field}",
+            )
+        self.require(
+            set(resolver) == {"schema_version", "backend_name", "source_context"},
+            "golden semantic config contains removed or unknown top-level fields",
+        )
+        self.require(
+            set(resolver.get("source_context") or {})
+            == {"third_party_manifest", "runtime_to_local_path_mappings"},
+            "golden semantic source_context must explicitly contain only manifest and mappings",
+        )
         target_config = runtime_config.get("target") or {}
         target_path = Path(str(target_config.get("file", "")))
         target_name = str(target_config.get("qualified_name") or "").rsplit(".", 1)[-1]
@@ -533,6 +572,11 @@ class ArtifactValidator:
         self.require(manifest.is_file(), f"third-party manifest does not exist: {manifest}")
         self.require(not list(cli_dir.rglob("*.nsys-rep")), ".nsys-rep must not be retained")
         try:
+            parsed_runtime_config = RuntimeCaptureConfig.load(runtime_config_path)
+            self.require(
+                parsed_runtime_config.cli_dir() == cli_dir.resolve(),
+                "runtime config does not derive the golden backend cli_log directory",
+            )
             resolver_config = SemanticResolverConfig.load(resolver_config_path)
             self.require(
                 resolver_config.context_output == context_path.resolve(),
@@ -601,7 +645,10 @@ def _runtime_cli_dir(path: Path) -> Path:
     if config_root.is_dir():
         backends = sorted(item.name for item in config_root.iterdir() if item.is_dir())
         if len(backends) == 1:
-            return path / "cli_log" / backends[0]
+            return path / backends[0] / "cli_log"
+    candidates = sorted(path.glob("*/cli_log/runtime_capture.schema.json"))
+    if len(candidates) == 1:
+        return candidates[0].parent
     return path
 
 

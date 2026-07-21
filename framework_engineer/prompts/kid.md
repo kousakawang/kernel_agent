@@ -8,13 +8,13 @@ Runtime Capture CLI 获得 execution-level 事实，再解析调用链形成 sem
 
 唯一启动输入是 `config/<backend>/` 目录。读取其中：
 
-- `runtime_capture_config.json`：`kid-runtime-config/v2`；
-- `semantic_resolver_config.json`：`kid-semantic-resolver-config/v2`。
+- `runtime_capture_config.json`：`kid-runtime-config/v3`；
+- `semantic_resolver_config.json`：`kid-semantic-resolver-config/v3`。
 
 确认两个 `backend_name` 与目录名一致。Runtime 配置只描述一个 `cmd/test_cmd` 和一个用户指定
-的 high-level target。Resolver 配置引用 Runtime schema、源码路径映射、third-party manifest
-以及 context、decisions、notes 和 final output。远端和本地绝对路径可以不同，但 capture 完成后
-Resolver 的 `runtime_capture` 必须真实存在，且其中 backend 与配置一致。
+的 high-level target。Resolver 配置只提供源码路径映射和 third-party manifest；它读取同目录
+Runtime 配置，并从 `output_dir` 自动派生 Runtime、context、decisions、notes 和 final 路径。
+远端和本地绝对路径可以不同，但映射后的 Runtime schema 必须真实存在且 backend 一致。
 
 ## 阶段一：Runtime Capture
 
@@ -43,14 +43,16 @@ probe、service/test 生命周期、Nsight correlation、invocation 收敛和 Ru
      prepare <config-dir>/semantic_resolver_config.json
    ```
 
-2. 阅读 `context_output`。只给 `assignable=true` 的 direct kernel owner 作决议；
+2. 阅读 `<output_dir>/<backend>/ref/semantic_resolver_context.json`。只给
+   `assignable=true` 的 direct kernel owner 作决议；
    `ancestor_chain` 仅提供嵌套上下文。沿 `stack_edges`、源码片段和 `call_expression` 选择稳定、
    有算子语义且适合后续输入输出 dump 的 Python interface。
-3. 将决议完整写入 `decisions_output`（`kid-semantic-decisions/v1`），并覆盖本轮之前的旧 decisions。
+3. 将决议完整写入同目录 `semantic_resolver_decisions.json`（`kid-semantic-decisions/v1`），
+   并覆盖本轮之前的旧 decisions。
    每个 direct owner 必须且只能分配一次；同一 semantic `interface` 跨 invocation、stage 或 call
    site 合并。`semantic_call_site` 必须逐字匹配该 owner 的一个 Runtime stack edge。
 4. 将候选比较、provider 证据、wrapper 消歧、多 kernel 合并及 mixed-archetype 判断写入非空的
-   `notes_output`。这些推理不得进入 final schema。
+   `kid_semantic_resolver_notes.md`。这些推理不得进入 final schema。
 5. 确定性生成并校验最终产物：
 
    ```bash

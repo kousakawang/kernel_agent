@@ -21,11 +21,11 @@ class TestRuntimeGolden(unittest.TestCase):
             cls.root / "config/nsys_poc/runtime_capture_config.json"
         )
         cls.actual = RuntimeTraceParser(cls.config).parse(
-            cls.root / "cli_log/nsys_poc/trace/profile.sqlite",
-            cls.root / "cli_log/nsys_poc/capture_events",
+            cls.root / "nsys_poc/cli_log/trace/profile.sqlite",
+            cls.root / "nsys_poc/cli_log/capture_events",
         )
         cls.expected = json.loads(
-            (cls.root / "cli_log/nsys_poc/runtime_capture.schema.json").read_text(
+            (cls.root / "nsys_poc/cli_log/runtime_capture.schema.json").read_text(
                 encoding="utf-8"
             )
         )

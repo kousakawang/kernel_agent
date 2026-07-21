@@ -59,7 +59,8 @@ snapshot / problem_translate / task_pack
   - 用 CUDA Runtime/Driver correlation id 关联 GPU kernel；
   - 支持单-backend 启动命令、多 invocation、warmup 排除和默认
     `unique_decomposition`（另保留 `all/last_n/single`）选择。
-- **输入**：单-backend `kid-runtime-config/v2`：`cmd`、`test_cmd`、`target`、profiling/selection。
+- **输入**：单-backend `kid-runtime-config/v3`：`cmd`、`test_cmd`、`target`、profiling/selection；
+  `output_dir` 是一级产物根，backend-first 子目录由 KID 自动派生。
 - **输出**：raw events 和 `kid-runtime-capture/v1`；Nsight SQLite 是 analyze 临时文件，默认
   成功删除、失败保留，golden/debug 可显式保留。多 backend 由上层串行执行多份配置。
 
@@ -136,16 +137,15 @@ snapshot / problem_translate / task_pack
 
 ### 已完成
 
-- [x] 固化 `kid-semantic-resolver-config/v2`、`kid-semantic-context/v1` 和
+- [x] 固化精简的 `kid-semantic-resolver-config/v3`、`kid-semantic-context/v1` 和
   `kid-semantic-decisions/v1` 内部合同。
 - [x] 新增统一 KID Agent Prompt：接收单-backend配置目录，先调用 Runtime Capture CLI，再执行
   `prepare/decisions/finalize/validate`；Agent 只在 semantic 阶段作判断。
   决议，指标、代表 kernel、rank、coverage 和最终 archetype 确定性生成。
 - [x] 实现 direct-owner exact-once、真实 stack-edge call site、confidence、provider 冲突、
   mixed-archetype notes 和最终禁止字段校验。
-- [x] Golden 增加 decisions、context 和 trace-version source snapshot；现有 11-target final
-  schema 可由 helper 精确复现。
-- [x] 增加跨 invocation interface 并集、sample count、AST/source override 和 Prompt contract
+- [x] Golden 增加 decisions 和 context；现有 11-target final schema 可由 helper 精确复现。
+- [x] 增加跨 invocation interface 并集、sample count、AST/path mapping 和 Prompt contract
   的 CPU-only 测试。
 
 ---
@@ -195,16 +195,18 @@ snapshot / problem_translate / task_pack
 - **类型**：一个自主 Agent，不再划分 locate Layer 1/2/3。
 - **载体**：`framework_engineer/skills/source_locate.md` 方法论 +
   `framework_engineer/prompts/start_source_locate.md` 入口 Prompt；不内置 LLM runner。
-- **职责**：读取 locate candidates、自主阅读源码，最终负责：
+- **职责**：读取一个 `source-locate-agent-config/v1`，自主编排 locate、源码阅读、finalize 和
+  extract，最终负责：
   - `interface_definition`
   - `kernel_impl`
   - `py_cpp_binding`
   - `kernel_header`
-- **输入**：KID schema、`third_party_manifest.json`/`missing_repos.md`、sglang/sgl-kernel/
-  third-party 源码。
+- **输入**：一个配置文件，引用 KID schema、`third_party_manifest.json`、sglang root 和独立
+  testcase workspace。
 - **输出**：`source-locate-agent-decisions/v1`、写入完整 `source_locations` 的 schema、
-  `ref/locate_agent_notes.md`。Agent 在 extract 前结束。
-- **私有 helper**：`inspect-target/search/finalize/evaluate`；不加入两个公开 CLI。
+  `ref/locate_agent_notes.md`、extracted schema 和 `kernel_sources/`。
+- **私有 helper**：`prepare-run/inspect-target/search/finalize/evaluate/validate-run`；不加入两个
+  公开 CLI。
 
 ### 设计约束
 
@@ -221,8 +223,10 @@ snapshot / problem_translate / task_pack
 1. decisions 严格合同：每 target/每层 rationale，每 hit symbol/reason，missed/best-effort 缺口说明。
 2. finalize：合法 repo、文件/行号、状态、KID projection 校验，自动 `repo_hint` 与 notes。
 3. evaluate：Golden 核心 hits 按序匹配，允许有证据的额外 helper hits。
-4. 当前十 target Golden 可由 decisions 经 finalize 精确复现；source-location 相关 35 个 CPU 测试通过。
-5. extract 仍是独立的后续公开 CLI，不属于 Agent 的完成边界。
+4. `prepare-run` 从单配置校验输入并派生固定 workspace；`validate-run` 校验完整
+   locate→Agent→extract 产物。
+5. 当前十 target Golden 可由单配置验证；source-location 相关 40 个 CPU 测试通过。
+6. `locate/extract` 仍是两个独立公开 CLI，但由入口 Prompt 内部编排，不要求用户手工串联。
 
 ---
 

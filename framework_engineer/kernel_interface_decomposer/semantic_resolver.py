@@ -18,12 +18,12 @@ from pathlib import Path
 from typing import Any, Iterable
 
 try:
-    from .config import ConfigError, load_mapping
+    from .config import ConfigError, RuntimeCaptureConfig, load_mapping
 except ImportError:  # pragma: no cover - direct script/tool fallback
-    from config import ConfigError, load_mapping
+    from config import ConfigError, RuntimeCaptureConfig, load_mapping
 
 
-RESOLVER_CONFIG_VERSION = "kid-semantic-resolver-config/v2"
+RESOLVER_CONFIG_VERSION = "kid-semantic-resolver-config/v3"
 CONTEXT_VERSION = "kid-semantic-context/v1"
 DECISIONS_VERSION = "kid-semantic-decisions/v1"
 FINAL_VERSION = "kernel-interface-decomposition/v2"
@@ -104,11 +104,11 @@ class PathMapping:
 class SemanticResolverConfig:
     path: Path
     backend_name: str
+    runtime_config: RuntimeCaptureConfig
+    output_root: Path
     runtime_capture: Path
-    source_roots: tuple[Path, ...]
     third_party_manifest: Path
     path_mappings: tuple[PathMapping, ...]
-    analysis_source_overrides: dict[str, Path]
     context_output: Path
     decisions_output: Path
     output: Path
@@ -127,23 +127,30 @@ class SemanticResolverConfig:
         if not backend or "/" in backend or "\\" in backend:
             raise ConfigError("backend_name must be a non-empty directory-safe name")
         base = config_path.parent
-        runtime_capture = _resolve_path(
-            raw.get("runtime_capture"), base=base, name="runtime_capture"
-        )
+        allowed_top_level = {"schema_version", "backend_name", "source_context"}
+        removed_top_level = sorted(set(raw) - allowed_top_level)
+        if removed_top_level:
+            raise ConfigError(
+                "unsupported kid-semantic-resolver-config/v3 fields: "
+                + ", ".join(removed_top_level)
+            )
         source_context = raw.get("source_context") or {}
         if not isinstance(source_context, dict):
             raise ConfigError("source_context must be a mapping")
+        allowed_source_fields = {
+            "third_party_manifest",
+            "runtime_to_local_path_mappings",
+        }
+        removed_source_fields = sorted(set(source_context) - allowed_source_fields)
+        if removed_source_fields:
+            raise ConfigError(
+                "unsupported source_context fields: "
+                + ", ".join(removed_source_fields)
+            )
         manifest = _resolve_path(
             source_context.get("third_party_manifest"),
             base=base,
             name="source_context.third_party_manifest",
-        )
-        roots_raw = source_context.get("source_roots") or []
-        if not isinstance(roots_raw, list):
-            raise ConfigError("source_context.source_roots must be a list")
-        source_roots = tuple(
-            _resolve_path(item, base=base, name="source_context.source_roots[]")
-            for item in roots_raw
         )
         mappings_raw = source_context.get("runtime_to_local_path_mappings") or []
         if not isinstance(mappings_raw, list):
@@ -160,47 +167,42 @@ class SemanticResolverConfig:
                 raise ConfigError(f"path mapping {index} requires both prefixes")
             mappings.append(PathMapping(runtime_prefix, local_prefix))
         mappings.sort(key=lambda item: len(item.runtime_prefix), reverse=True)
-
-        overrides_raw = raw.get("analysis_source_overrides") or []
-        if not isinstance(overrides_raw, list):
-            raise ConfigError("analysis_source_overrides must be a list")
-        overrides: dict[str, Path] = {}
-        for index, item in enumerate(overrides_raw):
-            if not isinstance(item, dict):
-                raise ConfigError(f"analysis_source_overrides[{index}] must be a mapping")
-            published = str(item.get("published_path", "")).strip()
-            if not published:
-                raise ConfigError(
-                    f"analysis_source_overrides[{index}].published_path is required"
-                )
-            analysis = _resolve_path(
-                item.get("analysis_path"),
-                base=base,
-                name=f"analysis_source_overrides[{index}].analysis_path",
+        runtime_config_path = base / "runtime_capture_config.json"
+        if not runtime_config_path.is_file():
+            raise ConfigError(
+                "semantic config requires sibling runtime_capture_config.json: "
+                f"{runtime_config_path}"
             )
-            if published in overrides:
-                raise ConfigError(f"duplicate analysis source override: {published}")
-            overrides[published] = analysis
+        runtime_config = RuntimeCaptureConfig.load(runtime_config_path)
+        if runtime_config.backend_name != backend:
+            raise ConfigError(
+                "semantic/runtime backend_name mismatch: "
+                f"{backend!r} != {runtime_config.backend_name!r}"
+            )
 
-        values = {
-            name: _resolve_path(raw.get(name), base=base, name=name)
-            for name in ("context_output", "decisions_output", "output", "notes_output")
-        }
-        for name, output_path in values.items():
-            if output_path.parent.name != backend:
-                raise ConfigError(f"{name} parent directory must be backend_name {backend!r}")
+        def map_path(value: str | Path) -> Path:
+            normalized = str(value).rstrip("/")
+            for mapping in mappings:
+                prefix = mapping.runtime_prefix
+                if normalized == prefix or normalized.startswith(prefix + "/"):
+                    suffix = normalized[len(prefix) :].lstrip("/")
+                    return (Path(mapping.local_prefix) / suffix).resolve()
+            return Path(value).expanduser().resolve()
+
+        output_root = map_path(runtime_config.output_dir)
+        backend_root = output_root / backend
         return cls(
             path=config_path,
             backend_name=backend,
-            runtime_capture=runtime_capture,
-            source_roots=source_roots,
+            runtime_config=runtime_config,
+            output_root=output_root,
+            runtime_capture=backend_root / "cli_log" / "runtime_capture.schema.json",
             third_party_manifest=manifest,
             path_mappings=tuple(mappings),
-            analysis_source_overrides=overrides,
-            context_output=values["context_output"],
-            decisions_output=values["decisions_output"],
-            output=values["output"],
-            notes_output=values["notes_output"],
+            context_output=backend_root / "ref" / "semantic_resolver_context.json",
+            decisions_output=backend_root / "ref" / "semantic_resolver_decisions.json",
+            output=backend_root / "output" / "decomposition.schema.json",
+            notes_output=backend_root / "ref" / "kid_semantic_resolver_notes.md",
         )
 
     def map_runtime_path(self, value: str) -> str:
@@ -223,25 +225,30 @@ class _SourceInspector:
 
     def _load_repo_hints(self) -> list[dict[str, Any]]:
         hints: list[dict[str, Any]] = []
-        for root in self.config.source_roots:
-            hints.append(
-                {
-                    "name": root.name,
-                    "local_path": str(root),
-                    "source": "source_root",
-                    "available": root.exists(),
-                }
-            )
         if self.config.third_party_manifest.is_file():
             manifest = _load_json(self.config.third_party_manifest, "third-party manifest")
+            sglang_root = manifest.get("sglang_repo_root")
+            if sglang_root:
+                mapped_root = Path(self.config.map_runtime_path(str(sglang_root)))
+                hints.append(
+                    {
+                        "name": "sglang",
+                        "local_path": str(mapped_root),
+                        "source": "third_party_manifest",
+                        "available": mapped_root.exists(),
+                    }
+                )
             for repo in manifest.get("repos", []):
                 if isinstance(repo, dict) and repo.get("local_path"):
+                    mapped_path = Path(
+                        self.config.map_runtime_path(str(repo.get("local_path")))
+                    )
                     hints.append(
                         {
                             "name": repo.get("name"),
-                            "local_path": str(repo.get("local_path")),
+                            "local_path": str(mapped_path),
                             "source": "third_party_manifest",
-                            "available": Path(str(repo.get("local_path"))).exists(),
+                            "available": mapped_path.exists(),
                             "status": repo.get("status"),
                         }
                     )
@@ -319,9 +326,7 @@ class _SourceInspector:
         runtime_file = str(edge.get("file", ""))
         line = int(edge.get("line", 0))
         published_file = self.config.map_runtime_path(runtime_file)
-        analysis_path = self.config.analysis_source_overrides.get(
-            published_file, Path(published_file)
-        )
+        analysis_path = Path(published_file)
         source_excerpt: str | None = None
         call_expression: str | None = None
         analysis_file: str | None = str(analysis_path) if analysis_path.exists() else None
@@ -379,11 +384,6 @@ class SemanticResolver:
             errors.append(
                 f"third-party manifest is missing: {self.config.third_party_manifest}"
             )
-        for published, analysis in self.config.analysis_source_overrides.items():
-            if not analysis.is_file():
-                errors.append(
-                    f"analysis source override is missing: {published} -> {analysis}"
-                )
         return errors
 
     @staticmethod
@@ -809,9 +809,6 @@ class SemanticResolver:
         ):
             if not path.is_file() or path.stat().st_size == 0:
                 errors.append(f"missing or empty {label}: {path}")
-        for published, analysis in self.config.analysis_source_overrides.items():
-            if not analysis.is_file():
-                errors.append(f"analysis source override is missing: {published} -> {analysis}")
         if errors:
             return errors
         try:

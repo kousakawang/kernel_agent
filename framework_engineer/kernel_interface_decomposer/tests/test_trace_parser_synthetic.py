@@ -20,7 +20,7 @@ class TestSyntheticTraceParser(unittest.TestCase):
             config_path.write_text(
                 json.dumps(
                     {
-                        "schema_version": "kid-runtime-config/v2",
+                        "schema_version": "kid-runtime-config/v3",
                         "backend_name": "synthetic",
                         "workdir": str(root),
                         "output_dir": str(root / "synthetic"),
@@ -36,7 +36,6 @@ class TestSyntheticTraceParser(unittest.TestCase):
                         "env": {},
                         "selection": {
                             "skip_invocations": 0,
-                            "stages": ["decode"],
                             "sample_count_per_stage": 1,
                             "sampling": "unique_decomposition",
                             "aggregation": "single",
