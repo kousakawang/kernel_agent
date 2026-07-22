@@ -57,6 +57,9 @@ validate_repeat = 5
 force = False
 
 # Multi-target recommended form. Each target becomes one independent task_pack.
+# For an installed third-party package, target_file/target_line may point to a
+# matching local checkout. run-phase1 resolves the effective site-packages file
+# and definition line with the current Python interpreter before instrumentation.
 targets = [
     {
         "task_id": "target_1",

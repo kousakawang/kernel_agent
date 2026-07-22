@@ -28,13 +28,18 @@ Kernel Engineer 的 `task_pack/`。
   Python 和服务子进程导入。
 - 配置内的相对路径按 CLI 当前工作目录解析，不按配置文件所在目录解析；因此推荐使用
   绝对路径。
-- target 文件和 forward boundary 文件必须存在、是可由 `ast.parse` 解析的 Python
-  文件，并且所给行号位于某个 `def`/`async def` 的定义范围内。行号可以是函数定义行，
-  也可以是函数体内的一行。
-- target 定义在 third-party/site-packages 时，`target_file` 和 `target_line` 直接指向运行时
-  实际导入的那份外部实现；不要改填框架中的 import 语句或调用点。框架侧包围这次调用的
-  函数仍通过 `forward_boundary_file` 和 `forward_boundary_line` 指定。如果环境里存在多份
-  同名安装，路径填到未被服务加载的副本时，probe 会因 `call_count == 0` 失败。
+- 配置中填写的 target 文件和 forward boundary 文件必须存在、是可由 `ast.parse` 解析的
+  Python 文件，并且所给行号位于某个 `def`/`async def` 的定义范围内。行号可以是函数定义
+  行，也可以是函数体内的一行。
+- third-party target 的 `target_file`/`target_line` 可以指向本地 checkout 中已经确认的定义，
+  不必手工改成 site-packages 路径。`run-phase1` 会先从本地文件解析 module/class/function，
+  再用当前 CLI 的 `sys.executable -c` 和 `extra_env` 查询该 module 在运行环境中实际解析到的
+  文件，并在安装副本中按同一函数身份重新确定定义行。它不依赖本地行号与安装副本之间的
+  固定偏移，也不会修改用户配置文件。
+- 上述自动转换要求本地 checkout 和安装副本都能从运行 `run-phase1` 的文件系统访问；CLI、
+  service 和 workload 应使用同一 Python/package 环境。转换后的 runtime 文件必须可写，因为
+  probe/capture 会临时插入 decorator。`forward_boundary_file`/`forward_boundary_line` 当前不做
+  这项转换，仍需直接指向运行时实际使用的框架文件。
 - 不需要提供额外的 import hint。静态路径解析只用于插入 instrumentation；decorator 执行时
   会以 callable 的 `fn.__module__` 和 `fn.__qualname__` 覆盖模块身份，并将其写入 probe/capture
   report 和生成的 harness。这样外部模块里的相对 import 会按真实包名加载。
@@ -111,8 +116,9 @@ python3 -m framework_engineer.cli validate-config --config /absolute/path/to/pha
 python3 -m framework_engineer.cli run-phase1 --config /absolute/path/to/phase1_config.py
 ```
 
-`run-phase1` 内部会再次加载并验证配置；单独先运行 `validate-config` 的目的是在启动服务前
-看到结构化的配置、路径和接口解析错误。
+`run-phase1` 内部会再次加载并验证配置；`validate-config` 也会执行同一个只读的 runtime target
+预处理，因此可以在启动服务前看到 configured → runtime 的路径/行号转换，以及结构化的配置
+和接口解析错误。
 
 CLI 输出默认使用 `--output-format auto`：直接在交互终端运行时显示人类可读的多行输出；
 stdout 被重定向或由脚本捕获时继续输出向后兼容的单行 JSON。也可以显式指定：
@@ -153,50 +159,60 @@ human 模式下，进度写到 stderr，最终摘要写到 stdout；失败步骤
    - 检查必填字段、output root 类型、target/forward boundary 文件是否存在。
    - 用 AST 确认每个行号位于函数范围内。
    - 如果 task pack 已存在且非空且 `force=False`，在创建输出前失败。
-2. **为所有 target 初始化 task pack**
+2. **`resolve-runtime-target-definition` 预处理**
+   - 从配置指向的源码用 AST 解析 module/class/function 身份。
+   - 对 regular Python package，使用当前 `sys.executable -c` 中的 `PathFinder` 查询运行环境
+     实际选择的 module 文件；这个查询不会导入 target module，也不需要 GPU。
+   - 在 runtime 文件中按同一 class/function 重新解析定义行，并以内存中的 runtime 路径和
+     行号替换后续步骤使用的 target。配置原值和转换结果都会保留在报告中。
+   - 不属于 regular package 的普通单文件 target 保持原值；一旦能够推断 package module，
+     但该 module 在当前 Python 中不可见，或其函数不存在/不唯一，就在启动 baseline/service
+     前失败。若 service 依靠额外的 `PYTHONPATH`，必须把它也写入 `extra_env` 供预处理使用。
+3. **为所有 target 初始化 task pack**
    - `force=True` 时先递归删除已有 target task pack。
-   - 创建 scaffold，并写入配置化的 `task.yaml` 和 `env_manifest.yaml`。
-3. **可选 group-level baseline**
+   - 创建 scaffold，并写入配置化的 `task.yaml`、`env_manifest.yaml`，以及
+     `docs/target_definition_resolution.json`。
+4. **可选 group-level baseline**
    - `run_baseline=True`（默认）时只在第一个成功 scaffold 的 task pack 上运行一次原始
      `service_cmd + workload_cmd`。
    - 把 `baseline_result.json` 和 `baseline_run_report.md` 复制到各 target。
    - 当前 baseline 的成功条件只看 workload return code 是否为 0；health 结果会记录，
      但不会单独决定返回码。报告包含 service 和 workload 的 stdout/stderr 尾部。
-4. **对当前 target 解析接口**
+5. **对当前 target 解析接口**
    - 依次执行内部步骤 `resolve-target` 和 `resolve-forward-boundary`。
    - 先按文件路径和 AST 得到用于插桩的静态接口；probe/capture 的 decorator 真正运行后，
      再以 callable 的 `__module__`/`__qualname__` 确定最终 qualified name。无需用户填写 import
      hint。
-5. **`probe-target-calls`**
+6. **`probe-target-calls`**
    - 用 non-cudagraph 服务再跑一次 workload。
    - 临时 instrument target 和 forward boundary，确认 workload return code 为 0 且
      `call_count > 0`。
    - 写入 `docs/target_call_probe.jsonl`、JSON/Markdown probe report。
-6. **`capture-snapshots`**
+7. **`capture-snapshots`**
    - 再启动一次 non-cudagraph 服务并运行 workload。
    - 保存真实 `pre_inputs.pt`、`post_inputs.pt`、`outputs.pt`，自动 diff 原地 mutation，
      并生成 `snapshots/raw_index.json` 和 capture timing/report。
    - 成功条件是 workload return code 为 0 且 `raw_sample_count > 0`。
-7. **`select-snapshots`**
+8. **`select-snapshots`**
    - 按 group 的 `total_hit_count` 降序选取有限个 group/sample。
    - 重建 `snapshots/selected/`，更新 `snapshots/manifest.json`、`shape_list.json` 和 selection
      report。
-8. **`generate-harness`**
+9. **`generate-harness`**
    - 生成 snapshot runtime、original/reference/candidate、correctness、benchmark 和脚本。
    - linked original 优先按 capture 得到的真实 module/qualname 导入；如果原实现或其运行依赖
      在验证环境不可用，初始 candidate 会退回 snapshot-golden，而不是让默认 correctness
      smoke 因 import 异常直接退出。
-9. **可选 `probe-env`**
+10. **可选 `probe-env`**
    - 仅当 `run_probe_env=True` 时执行，写入环境探测结果。
    - 单项工具不可用只会记录 `available=false`，不会让 `probe-env` 命令失败。
-10. **`validate-task-pack`**
+11. **`validate-task-pack`**
     - batch 总会运行 correctness smoke。
     - `run_benchmark_smoke=True` 时额外运行 benchmark smoke。
     - `skip_env_check=True`（默认）时跳过环境一致性；如果设为 `False`，必须同时先得到
       `docs/env_probe_result.json`，通常应设置 `run_probe_env=True`。
     - validation 期间自动应用 `DEVICE=validate_device`、`WARMUP=validate_warmup`、
       `REPEAT=validate_repeat` 和当前 `PYTHON`。
-11. **写总报告**
+12. **写总报告**
     - 所有 target 结束后写 `multi_target_report.json/md`。
 
 在默认 `run_baseline=True` 下，一个单 target 的完整成功流程通常会启动服务并跑 workload
@@ -297,6 +313,10 @@ validate-task-pack
 这些 subcommand 除 `validate-config` 外都接收直接参数，不会读取用户配置。当前没有
 `init-task-pack-from-config` 之类的细粒度公开命令，因此必须注意：
 
+- `resolve-runtime-target-definition` 是 `validate-config`/`run-phase1` 的内部预处理，不是独立
+  subcommand。third-party target 使用细粒度命令时，先从 `validate-config` 输出的
+  `target_file`/`target_line` 取得转换后的 runtime 值，再传给 `resolve-interface`、probe 和
+  capture；不要继续传 configured checkout 路径。
 - `extra_env` 不会自动应用；在 shell 中显式 `export`，或给每条命令传环境变量。
 - `scaffold-task-pack` 只写 `unknown_*` 模板，不会把 target/config metadata 写入
   `task.yaml`。仅存在这个模板也可能通过当前的文件存在性验证，所以不能把未补全 metadata
