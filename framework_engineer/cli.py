@@ -1405,16 +1405,18 @@ def _resolve_runtime_target_definition(
     )
     if probe.get("status") == "module_not_found":
         resolution = {
-            "status": "unchanged",
+            "status": "failed",
             "mapping_applied": False,
             "probe_kind": "python-c-pathfinder-ast",
-            "reason": f"module {module_name!r} is not visible to the runtime Python; using configured source",
             "configured": configured,
-            "runtime": {"file": str(target.target_file), "line": target.target_line},
             "identity": identity,
             "probe": probe,
         }
-        return replace(target, target_resolution=resolution), resolution, None
+        error = (
+            f"inferred runtime module {module_name!r}, but it is not visible to {sys.executable}; "
+            "run the CLI with the service Python environment and expose package paths through extra_env"
+        )
+        return replace(target, target_resolution=resolution), resolution, error
 
     if probe.get("status") != "found":
         resolution = {

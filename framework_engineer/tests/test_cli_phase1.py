@@ -438,6 +438,92 @@ class Phase1CliEndToEndTests(unittest.TestCase):
             self.assertTrue(original_manifest["executable"], original_manifest)
             self.assertEqual(original_manifest["target_info"]["module_name"], "external_ns.ops")
 
+    def test_run_phase1_maps_local_package_definition_to_installed_runtime_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            package_name = "_phase1_installed_mapping_pkg"
+            local_package = tmp_path / "local_checkout" / package_name
+            installed_root = tmp_path / "runtime_site_packages"
+            installed_package = installed_root / package_name
+            local_package.mkdir(parents=True)
+            installed_package.mkdir(parents=True)
+            (local_package / "__init__.py").write_text("", encoding="utf-8")
+            (installed_package / "__init__.py").write_text("", encoding="utf-8")
+
+            local_target = local_package / "ops.py"
+            local_target.write_text(
+                '"""Local checkout with different leading lines."""\n\n'
+                "LOCAL_ONLY = True\n\n\n"
+                "def external_target(value):\n"
+                "    return value + 7\n",
+                encoding="utf-8",
+            )
+            configured_line = self._line_for(local_target, "return value + 7")
+
+            runtime_target = installed_package / "ops.py"
+            runtime_target.write_text(
+                "def external_target(value):\n"
+                "    return value + 7\n\n"
+                "def forward(value):\n"
+                "    return external_target(value)\n",
+                encoding="utf-8",
+            )
+            runtime_original = runtime_target.read_text(encoding="utf-8")
+            workload_file = tmp_path / "workload.py"
+            workload_file.write_text(
+                f"from {package_name}.ops import forward\n"
+                "assert forward(5) == 12\n",
+                encoding="utf-8",
+            )
+            service_file = tmp_path / "service.py"
+            service_file.write_text("import time\ntime.sleep(60)\n", encoding="utf-8")
+
+            output_root = tmp_path / "output"
+            config_file = tmp_path / "phase1_config.py"
+            config_file.write_text(
+                textwrap.dedent(
+                    f"""
+                    output_root = {str(output_root)!r}
+                    service_cmd = {f"{sys.executable} {service_file}"!r}
+                    workload_cmd = {f"{sys.executable} {workload_file}"!r}
+                    forward_boundary_file = {str(runtime_target)!r}
+                    forward_boundary_line = 4
+                    startup_timeout = 1
+                    force = True
+                    validate_device = "cpu"
+                    extra_env = {{"PYTHONPATH": {str(installed_root)!r}}}
+                    targets = [
+                        {{"task_id": "external", "target_file": {str(local_target)!r}, "target_line": {configured_line}}},
+                    ]
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            validated = self._run_cli("validate-config", "--config", str(config_file))
+            self.assertEqual(validated["targets"][0]["target_file"], str(runtime_target.resolve()))
+            self.assertEqual(validated["targets"][0]["target_line"], 1)
+            self.assertEqual(validated["targets"][0]["target_resolution"]["status"], "mapped")
+
+            run = self._run_cli("run-phase1", "--config", str(config_file), timeout=240)
+            target_report = run["targets"][0]["target"]
+            self.assertEqual(target_report["configured_target_file"], str(local_target.resolve()))
+            self.assertEqual(target_report["configured_target_line"], configured_line)
+            self.assertEqual(target_report["target_file"], str(runtime_target.resolve()))
+            self.assertEqual(target_report["target_line"], 1)
+            self.assertEqual(target_report["target_resolution"]["status"], "mapped")
+            self.assertTrue(target_report["target_resolution"]["mapping_applied"])
+
+            resolution = json.loads(
+                (output_root / "external" / "docs" / "target_definition_resolution.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(resolution["identity"]["module_name"], f"{package_name}.ops")
+            self.assertEqual(resolution["runtime"]["file"], str(runtime_target.resolve()))
+            self.assertEqual(resolution["runtime"]["line"], 1)
+            self.assertEqual(runtime_target.read_text(encoding="utf-8"), runtime_original)
+
     def _run_cli(self, *args: str, extra_env: dict[str, str] | None = None, timeout: int = 120) -> dict:
         env = os.environ.copy()
         env["PYTHONPATH"] = os.pathsep.join([str(PROJECT_ROOT), env.get("PYTHONPATH", "")]).rstrip(os.pathsep)
