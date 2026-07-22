@@ -322,9 +322,14 @@ def _find_enclosing(
 
 def _load_capture_events(
     events_dir: Path,
-) -> tuple[dict[tuple[int | None, str], dict[str, Any]], list[Path]]:
+) -> tuple[
+    dict[tuple[int | None, str], dict[str, Any]],
+    dict[tuple[int | None, str], dict[str, Any]],
+    list[Path],
+]:
     paths = sorted(events_dir.glob("events_*.jsonl")) if events_dir.is_dir() else [events_dir]
-    events: dict[tuple[int | None, str], dict[str, Any]] = {}
+    execution_events: dict[tuple[int | None, str], dict[str, Any]] = {}
+    high_events: dict[tuple[int | None, str], dict[str, Any]] = {}
     for path in paths:
         if not path.exists():
             continue
@@ -335,14 +340,24 @@ def _load_capture_events(
                 event = json.loads(line)
             except json.JSONDecodeError as exc:
                 raise RuntimeError(f"invalid JSONL {path}:{line_number}: {exc}") from exc
-            if event.get("event") != "execution_capture":
+            event_type = event.get("event")
+            if event_type not in {"execution_capture", "high_invocation"}:
                 continue
-            capture_id = str(event.get("capture_id"))
-            key = (int(event["pid"]) if event.get("pid") is not None else None, capture_id)
-            if key in events:
-                raise RuntimeError(f"duplicate capture event id in process: {key}")
-            events[key] = event
-    return events, [path for path in paths if path.exists()]
+            identifier = str(
+                event.get("capture_id")
+                if event_type == "execution_capture"
+                else event.get("call_id")
+            )
+            if identifier in {"", "None"}:
+                raise RuntimeError(
+                    f"missing identifier for {event_type} event at {path}:{line_number}"
+                )
+            key = (int(event["pid"]) if event.get("pid") is not None else None, identifier)
+            destination = execution_events if event_type == "execution_capture" else high_events
+            if key in destination:
+                raise RuntimeError(f"duplicate {event_type} event id in process: {key}")
+            destination[key] = event
+    return execution_events, high_events, [path for path in paths if path.exists()]
 
 
 def _capture_event_for(
@@ -354,6 +369,20 @@ def _capture_event_for(
     if exact is not None:
         return exact
     matches = [event for (pid, cid), event in capture_events.items() if cid == capture_id]
+    if len(matches) == 1:
+        return matches[0]
+    return {}
+
+
+def _high_event_for(
+    high_events: dict[tuple[int | None, str], dict[str, Any]],
+    high: NvtxRange,
+) -> dict[str, Any]:
+    call_id = str(high.fields.get("call_id"))
+    exact = high_events.get((high.process_id, call_id))
+    if exact is not None:
+        return exact
+    matches = [event for (pid, cid), event in high_events.items() if cid == call_id]
     if len(matches) == 1:
         return matches[0]
     return {}
@@ -375,7 +404,7 @@ class RuntimeTraceParser:
         finally:
             conn.close()
 
-        capture_events, event_paths = _load_capture_events(events_dir)
+        capture_events, high_events, event_paths = _load_capture_events(events_dir)
         high_ranges = [item for item in ranges if item.fields.get("type") == "high"]
         execution_ranges = [item for item in ranges if item.fields.get("type") == "execution"]
         if not high_ranges:
@@ -464,6 +493,18 @@ class RuntimeTraceParser:
 
         invocations: list[dict[str, Any]] = []
         for high_position, high in enumerate(high_ranges):
+            high_event = _high_event_for(high_events, high)
+            if self.config.command is not None:
+                if not high_event:
+                    raise RuntimeError(
+                        "service capture is missing high_invocation evidence for "
+                        f"call_id={high.fields.get('call_id')} pid={high.process_id}"
+                    )
+                if not high_event.get("entry_python_stack"):
+                    raise RuntimeError(
+                        "service high_invocation has an empty entry_python_stack for "
+                        f"call_id={high.fields.get('call_id')}"
+                    )
             high_kernels = kernels_by_high.get(high_position, [])
             high_total_us = sum(item["duration_us"] for item in high_kernels)
             child_ranges = [
@@ -589,16 +630,24 @@ class RuntimeTraceParser:
                 for item in high_kernels
                 if item["kernel_id"] in attributed_ids
             )
+            high_level = {
+                "call_id": str(high.fields.get("call_id")),
+                "interface": high.fields.get("interface", "unknown"),
+                "nvtx_cpu_duration_us": high.duration_us,
+                "kernel_ids": [item["kernel_id"] for item in high_kernels],
+                "gpu_kernel_sum_us": high_total_us,
+                "stage": high.fields.get("stage", "unknown"),
+            }
+            if high_event:
+                high_level["instrumentation_mode"] = high_event.get(
+                    "instrumentation_mode", "unknown"
+                )
+                high_level["entry_python_stack"] = high_event.get(
+                    "entry_python_stack", []
+                )
             invocations.append(
                 {
-                    "high_level": {
-                        "call_id": str(high.fields.get("call_id")),
-                        "interface": high.fields.get("interface", "unknown"),
-                        "nvtx_cpu_duration_us": high.duration_us,
-                        "kernel_ids": [item["kernel_id"] for item in high_kernels],
-                        "gpu_kernel_sum_us": high_total_us,
-                        "stage": high.fields.get("stage", "unknown"),
-                    },
+                    "high_level": high_level,
                     "execution_captures": materialized,
                     "raw_capture_event_count": len(raw_for_call),
                     "capture_without_kernel_count": capture_without_kernel_count,
@@ -660,6 +709,11 @@ class RuntimeTraceParser:
                 "high_range_count": len(high_ranges),
                 "execution_range_count": len(execution_ranges),
                 "capture_event_count": len(capture_events),
+                **(
+                    {"high_invocation_event_count": len(high_events)}
+                    if self.config.command is not None or high_events
+                    else {}
+                ),
                 "capture_event_files": [str(path) for path in event_paths],
                 "cuda_api_event_count": len(api_events),
                 "trace_kernel_count": len(kernel_events),

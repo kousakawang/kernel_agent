@@ -82,7 +82,7 @@ kernel_agent/example_kernels/nsys_poc_kid_golden/
 | `metrics.duration_us` | 是 | 该 semantic target 下所有关联 GPU kernel duration 之和。 |
 | `metrics.share_in_invocation` | 是 | target 聚合耗时占全部被选代表 invocation GPU 总时间的比例；字段名为兼容保留。 |
 | `measurement` | 是 | 指标、聚合方式和包含该 target 的代表 invocation 数；不修改。 |
-| `runtime_event.call_site` | 是 | 推理调用链中调用 semantic interface 的源码位置。 |
+| `runtime_event.call_site` | 是 | 推理调用链中调用 semantic interface 的源码位置；service 模式下必定位于 SGLang。 |
 | `runtime_event.attribution` | 是 | KID semantic 归因方法和置信度。 |
 
 重要语义：`kernel.raw_name` 只是代表 kernel。一个 semantic target 可以关联多个 GPU
@@ -144,6 +144,12 @@ kernel 自身的 duration。
   }
 }
 ```
+
+正式 service 模式中，这个位置必须位于 Semantic Resolver 配置的 `sglang_repo_root`，表示
+kernel_agent 后续真正可以替换的 SGLang call expression。接口定义本身可以位于 PyTorch、
+FlashInfer、DeepGEMM 或其他仓库。若用户指定的 high-level target 只是第三方内部接口、没有
+被 SGLang 直接调用，KID 不发布 decomposition，而是要求改用 SGLang 实际调用的公开接口。
+Direct `test_cmd` 模式目前只要求 call site 来自真实 Runtime stack，不应用该生产限制。
 
 该位置不是 `deep_gemm.bf16_gemm_nt` 的定义位置，也不是 C++/CUDA kernel 的位置。
 `source_locate` 应以 semantic `interface` 为主要目标，以 call site 的 import、alias、对象来源

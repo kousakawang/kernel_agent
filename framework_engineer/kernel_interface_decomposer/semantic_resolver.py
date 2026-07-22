@@ -107,6 +107,7 @@ class SemanticResolverConfig:
     runtime_config: RuntimeCaptureConfig
     output_root: Path
     runtime_capture: Path
+    sglang_repo_root: Path | None
     third_party_manifest: Path
     path_mappings: tuple[PathMapping, ...]
     context_output: Path
@@ -138,6 +139,7 @@ class SemanticResolverConfig:
         if not isinstance(source_context, dict):
             raise ConfigError("source_context must be a mapping")
         allowed_source_fields = {
+            "sglang_repo_root",
             "third_party_manifest",
             "runtime_to_local_path_mappings",
         }
@@ -151,6 +153,16 @@ class SemanticResolverConfig:
             source_context.get("third_party_manifest"),
             base=base,
             name="source_context.third_party_manifest",
+        )
+        sglang_root_raw = source_context.get("sglang_repo_root")
+        sglang_root = (
+            None
+            if sglang_root_raw in {None, ""}
+            else _resolve_path(
+                sglang_root_raw,
+                base=base,
+                name="source_context.sglang_repo_root",
+            )
         )
         mappings_raw = source_context.get("runtime_to_local_path_mappings") or []
         if not isinstance(mappings_raw, list):
@@ -179,6 +191,16 @@ class SemanticResolverConfig:
                 "semantic/runtime backend_name mismatch: "
                 f"{backend!r} != {runtime_config.backend_name!r}"
             )
+        if runtime_config.command is not None:
+            if sglang_root is None:
+                raise ConfigError(
+                    "source_context.sglang_repo_root is required in service mode"
+                )
+            if not sglang_root.is_dir():
+                raise ConfigError(
+                    "source_context.sglang_repo_root is not an accessible directory: "
+                    f"{sglang_root}"
+                )
 
         def map_path(value: str | Path) -> Path:
             normalized = str(value).rstrip("/")
@@ -197,6 +219,7 @@ class SemanticResolverConfig:
             runtime_config=runtime_config,
             output_root=output_root,
             runtime_capture=backend_root / "cli_log" / "runtime_capture.schema.json",
+            sglang_repo_root=sglang_root,
             third_party_manifest=manifest,
             path_mappings=tuple(mappings),
             context_output=backend_root / "ref" / "semantic_resolver_context.json",
@@ -214,6 +237,10 @@ class SemanticResolverConfig:
                 return str(Path(mapping.local_prefix) / suffix)
         return str(value)
 
+    @property
+    def service_mode(self) -> bool:
+        return self.runtime_config.command is not None
+
 
 class _SourceInspector:
     def __init__(self, config: SemanticResolverConfig) -> None:
@@ -225,19 +252,17 @@ class _SourceInspector:
 
     def _load_repo_hints(self) -> list[dict[str, Any]]:
         hints: list[dict[str, Any]] = []
+        if self.config.sglang_repo_root is not None:
+            hints.append(
+                {
+                    "name": "sglang",
+                    "local_path": str(self.config.sglang_repo_root),
+                    "source": "semantic_resolver_config",
+                    "available": self.config.sglang_repo_root.is_dir(),
+                }
+            )
         if self.config.third_party_manifest.is_file():
             manifest = _load_json(self.config.third_party_manifest, "third-party manifest")
-            sglang_root = manifest.get("sglang_repo_root")
-            if sglang_root:
-                mapped_root = Path(self.config.map_runtime_path(str(sglang_root)))
-                hints.append(
-                    {
-                        "name": "sglang",
-                        "local_path": str(mapped_root),
-                        "source": "third_party_manifest",
-                        "available": mapped_root.exists(),
-                    }
-                )
             for repo in manifest.get("repos", []):
                 if isinstance(repo, dict) and repo.get("local_path"):
                     mapped_path = Path(
@@ -264,6 +289,13 @@ class _SourceInspector:
             if published_path == root or published_path.startswith(root + "/"):
                 candidates.append((len(root), str(hint.get("name"))))
         return max(candidates)[1] if candidates else None
+
+    def is_sglang_call_site(self, published_path: str) -> bool:
+        # Longest-root repository classification deliberately excludes nested
+        # third-party checkouts such as sgl-kernel from the SGLang boundary.
+        return self._repository_hint(
+            self.config.map_runtime_path(published_path)
+        ) == "sglang"
 
     def _snapshot_line(
         self, path: Path, line: int, published_file: str
@@ -363,6 +395,7 @@ class _SourceInspector:
             "source_excerpt": source_excerpt,
             "call_expression": call_expression,
             "repository_hint": self._repository_hint(published_file),
+            "call_site_in_sglang": self.is_sglang_call_site(published_file),
         }
 
 
@@ -383,6 +416,13 @@ class SemanticResolver:
         if not self.config.third_party_manifest.is_file():
             errors.append(
                 f"third-party manifest is missing: {self.config.third_party_manifest}"
+            )
+        if self.config.service_mode and (
+            self.config.sglang_repo_root is None
+            or not self.config.sglang_repo_root.is_dir()
+        ):
+            errors.append(
+                "service mode requires an accessible source_context.sglang_repo_root"
             )
         return errors
 
@@ -408,10 +448,29 @@ class SemanticResolver:
         kernel_by_id = {
             str(kernel.get("kernel_id")): kernel for kernel in runtime.get("kernels", [])
         }
+        runtime_target = runtime.get("target") or {}
+        target_interface = str(runtime_target.get("interface") or "unknown")
         invocations: list[dict[str, Any]] = []
+        invalid_service_call_ids: list[str] = []
         for invocation in runtime.get("invocations", []):
             high = invocation.get("high_level", {})
             call_id = str(high.get("call_id"))
+            entry_stack = high.get("entry_python_stack") or []
+            high_entry_edges = [
+                inspector.inspect_edge(
+                    frame,
+                    entry_stack[index + 1] if index + 1 < len(entry_stack) else None,
+                    target_interface,
+                    index,
+                )
+                for index, frame in enumerate(entry_stack)
+            ]
+            directly_called_from_sglang = bool(
+                high_entry_edges
+                and high_entry_edges[-1].get("call_site_in_sglang") is True
+            )
+            if self.config.service_mode and not directly_called_from_sglang:
+                invalid_service_call_ids.append(call_id)
             captures = invocation.get("execution_captures", [])
             capture_by_id = {str(item.get("capture_id")): item for item in captures}
             owner_contexts: list[dict[str, Any]] = []
@@ -479,6 +538,9 @@ class SemanticResolver:
                     "stage": high.get("stage"),
                     "total_gpu_us": high.get("gpu_kernel_sum_us"),
                     "runtime_coverage": invocation.get("coverage"),
+                    "instrumentation_mode": high.get("instrumentation_mode"),
+                    "high_entry_edges": high_entry_edges,
+                    "high_directly_called_from_sglang": directly_called_from_sglang,
                     "unattributed_kernel_ids": invocation.get(
                         "unattributed_kernel_ids", []
                     ),
@@ -491,9 +553,21 @@ class SemanticResolver:
         return {
             "schema_version": CONTEXT_VERSION,
             "backend_name": self.config.backend_name,
+            "execution_mode": "service" if self.config.service_mode else "direct",
             "runtime_capture": str(self.config.runtime_capture),
             "runtime_sha256": _sha256(self.config.runtime_capture),
             "target": target,
+            "target_validation": {
+                "required": self.config.service_mode,
+                "valid": not invalid_service_call_ids,
+                "invalid_call_ids": invalid_service_call_ids,
+                "rule": (
+                    "high-level target must be directly called from the configured "
+                    "SGLang repository"
+                    if self.config.service_mode
+                    else "not enforced in direct mode"
+                ),
+            },
             "repository_hints": inspector.repo_hints,
             "invocations": invocations,
         }
@@ -529,6 +603,15 @@ class SemanticResolver:
         }
         if context_refs != expected_refs:
             errors.append("semantic context direct-owner references differ from Runtime")
+        if self.config.service_mode:
+            validation = context.get("target_validation") or {}
+            if validation.get("required") is not True:
+                errors.append("service semantic context lacks target validation")
+            if validation.get("valid") is not True:
+                errors.append(
+                    "invalid high-level target: it was not directly called from SGLang "
+                    f"for call ids {validation.get('invalid_call_ids', [])}"
+                )
         return errors
 
     def _validate_decisions(
@@ -536,6 +619,14 @@ class SemanticResolver:
     ) -> tuple[list[str], dict[tuple[str, str], dict[str, Any]]]:
         errors: list[str] = []
         owners = self._owner_captures(runtime)
+        inspector = _SourceInspector(self.config)
+        high_by_call = {
+            str(invocation.get("high_level", {}).get("call_id")): invocation.get(
+                "high_level", {}
+            )
+            for invocation in runtime.get("invocations", [])
+        }
+        target_interface = str((runtime.get("target") or {}).get("interface") or "")
         if decisions.get("schema_version") != DECISIONS_VERSION:
             errors.append("semantic decisions schema_version mismatch")
         if decisions.get("backend_name") != self.config.backend_name:
@@ -611,7 +702,7 @@ class SemanticResolver:
                 assigned[key] = target
                 archetypes.add(str(capture.get("archetype")))
                 call_site = member.get("semantic_call_site") or {}
-                candidate_edges = {
+                descendant_edges = {
                     (
                         self.config.map_runtime_path(
                             str(frame.get("call_site_to_next", {}).get("file", ""))
@@ -621,7 +712,41 @@ class SemanticResolver:
                     for frame in capture.get("python_stack", [])
                 }
                 selected_edge = (call_site.get("file"), call_site.get("line"))
-                if selected_edge not in candidate_edges:
+                if self.config.service_mode:
+                    descendant_sglang_edges = {
+                        edge
+                        for edge in descendant_edges
+                        if inspector.is_sglang_call_site(str(edge[0]))
+                    }
+                    high = high_by_call.get(key[0], {})
+                    entry_stack = high.get("entry_python_stack") or []
+                    direct_entry_edge = None
+                    if entry_stack:
+                        entry_call_site = entry_stack[-1].get("call_site_to_next") or {}
+                        direct_entry_edge = (
+                            self.config.map_runtime_path(
+                                str(entry_call_site.get("file", ""))
+                            ),
+                            entry_call_site.get("line"),
+                        )
+                    if selected_edge in descendant_sglang_edges:
+                        pass
+                    elif (
+                        direct_entry_edge is not None
+                        and selected_edge == direct_entry_edge
+                        and inspector.is_sglang_call_site(str(selected_edge[0]))
+                    ):
+                        if interface != target_interface:
+                            errors.append(
+                                f"{member_label} uses the high entry call site but interface "
+                                f"{interface!r} differs from high target {target_interface!r}"
+                            )
+                    else:
+                        errors.append(
+                            f"{member_label}.semantic_call_site is not a Runtime-evidenced "
+                            f"SGLang replacement boundary: {selected_edge}"
+                        )
+                elif selected_edge not in descendant_edges:
                     errors.append(
                         f"{member_label}.semantic_call_site lacks Runtime stack evidence: {selected_edge}"
                     )

@@ -90,12 +90,27 @@ def decomposition_signature(invocation: Invocation) -> dict[str, Any]:
         )
         owner_rows[canonical_row] = row
 
-    return {
+    signature = {
         "kernel_owner_captures": [owner_rows[key] for key in sorted(owner_rows)],
         "unattributed_kernel_count": len(
             invocation.get("unattributed_kernel_ids") or []
         ),
     }
+    entry_stack = invocation.get("high_level", {}).get("entry_python_stack")
+    if entry_stack:
+        signature["high_entry_call_path"] = [
+            {
+                "file": frame.get("file"),
+                "definition_line": frame.get("definition_line"),
+                "qualname": frame.get("qualname") or frame.get("function"),
+                "call_site_to_next": {
+                    "file": (frame.get("call_site_to_next") or {}).get("file"),
+                    "line": (frame.get("call_site_to_next") or {}).get("line"),
+                },
+            }
+            for frame in entry_stack
+        ]
+    return signature
 
 
 def decomposition_signature_hash(invocation: Invocation) -> str:

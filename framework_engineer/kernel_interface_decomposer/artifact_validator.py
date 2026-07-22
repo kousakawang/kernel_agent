@@ -171,11 +171,29 @@ class RuntimeArtifactValidator:
             )
             self._require_file(self.cli_dir / str(declared_sqlite))
         raw_by_key: dict[tuple[Any, str], dict[str, Any]] = {}
+        high_by_key: dict[tuple[Any, str], dict[str, Any]] = {}
         raw_by_call: Counter[str] = Counter()
         for event in self.raw_events:
+            event_type = event.get("event")
+            if event_type == "high_invocation":
+                call_id = str(event.get("call_id"))
+                key = (event.get("pid"), call_id)
+                self.require(call_id not in {"", "None"}, f"invalid high call ID: {key}")
+                self.require(key not in high_by_key, f"duplicate high event key: {key}")
+                high_by_key[key] = event
+                self.require(
+                    event.get("instrumentation_mode") in {"import_patch", "sys_profile"},
+                    f"invalid high instrumentation mode: {key}",
+                )
+                self._validate_stack(
+                    event.get("entry_python_stack"), f"raw high invocation {key}"
+                )
+                continue
             capture_id = str(event.get("capture_id"))
             key = (event.get("pid"), capture_id)
-            self.require(event.get("event") == "execution_capture", f"invalid raw event type: {key}")
+            self.require(event_type == "execution_capture", f"invalid raw event type: {key}")
+            if event_type != "execution_capture":
+                continue
             self.require(capture_id not in {"", "None"}, f"invalid capture ID: {key}")
             self.require(key not in raw_by_key, f"duplicate capture key: {key}")
             raw_by_key[key] = event
@@ -188,9 +206,14 @@ class RuntimeArtifactValidator:
                 self.require((pid, str(parent)) in raw_by_key, f"missing capture parent: {(pid, parent)}")
         diagnostics = self.runtime.get("diagnostics", {})
         self.require(
-            diagnostics.get("capture_event_count") == len(self.raw_events),
+            diagnostics.get("capture_event_count") == len(raw_by_key),
             "diagnostics.capture_event_count mismatch",
         )
+        if high_by_key or "high_invocation_event_count" in diagnostics:
+            self.require(
+                diagnostics.get("high_invocation_event_count") == len(high_by_key),
+                "diagnostics.high_invocation_event_count mismatch",
+            )
         invocations = self.runtime.get("invocations", [])
         self.require(
             diagnostics.get("selected_invocation_count") == len(invocations),
@@ -245,6 +268,30 @@ class RuntimeArtifactValidator:
         for invocation in self.runtime.get("invocations", []):
             high = invocation.get("high_level", {})
             call_id = str(high.get("call_id"))
+            if "entry_python_stack" in high:
+                self._validate_stack(
+                    high.get("entry_python_stack"), f"high entry stack {call_id}"
+                )
+                matching_high_events = [
+                    event
+                    for (_, event_call_id), event in high_by_key.items()
+                    if event_call_id == call_id
+                ]
+                self.require(
+                    len(matching_high_events) == 1,
+                    f"high {call_id} does not have exactly one raw high event",
+                )
+                if len(matching_high_events) == 1:
+                    self.require(
+                        high.get("entry_python_stack")
+                        == matching_high_events[0].get("entry_python_stack"),
+                        f"high entry stack differs from raw event: {call_id}",
+                    )
+                    self.require(
+                        high.get("instrumentation_mode")
+                        == matching_high_events[0].get("instrumentation_mode"),
+                        f"high instrumentation mode differs from raw event: {call_id}",
+                    )
             high_ids = set(high.get("kernel_ids", []))
             self.require(high_ids <= set(kernel_by_id), f"high {call_id} references unknown kernels")
             captures = invocation.get("execution_captures", [])
@@ -344,7 +391,11 @@ class RuntimeArtifactValidator:
                 for fields in parsed
                 if fields.get("type") == "execution"
             }
-            raw_capture_ids = {str(event.get("capture_id")) for event in self.raw_events}
+            raw_capture_ids = {
+                str(event.get("capture_id"))
+                for event in self.raw_events
+                if event.get("event") == "execution_capture"
+            }
             self.require(sqlite_capture_ids == raw_capture_ids, "SQLite execution ranges do not match raw events")
             runtime_high_ids = {
                 str(item.get("high_level", {}).get("call_id"))
@@ -537,8 +588,12 @@ class ArtifactValidator:
         )
         self.require(
             set(resolver.get("source_context") or {})
-            == {"third_party_manifest", "runtime_to_local_path_mappings"},
-            "golden semantic source_context must explicitly contain only manifest and mappings",
+            == {
+                "sglang_repo_root",
+                "third_party_manifest",
+                "runtime_to_local_path_mappings",
+            },
+            "golden semantic source_context must explicitly contain SGLang root, manifest, and mappings",
         )
         target_config = runtime_config.get("target") or {}
         target_path = Path(str(target_config.get("file", "")))
@@ -621,12 +676,49 @@ class ArtifactValidator:
             for capture in invocation.get("execution_captures", [])
             for frame in capture.get("python_stack", [])
         }
+        stack_edges.update(
+            {
+                (
+                    self._map_runtime_path(
+                        frame["call_site_to_next"]["file"], resolver
+                    ),
+                    frame["call_site_to_next"]["line"],
+                )
+                for invocation in self.runtime.get("invocations", [])
+                for frame in invocation.get("high_level", {}).get(
+                    "entry_python_stack", []
+                )
+            }
+        )
+        service_mode = runtime_config.get("cmd") is not None
+        sglang_root_raw = (resolver.get("source_context") or {}).get(
+            "sglang_repo_root"
+        )
+        sglang_root = (
+            Path(str(sglang_root_raw)).expanduser().resolve()
+            if sglang_root_raw not in {None, ""}
+            else None
+        )
         for entry in entries:
             label = entry.get("low_level_id", "<unknown>")
             self.require(entry.get("archetype") in CAPTURE_ARCHETYPES, f"invalid final archetype: {label}")
             self.require(entry.get("kernel", {}).get("raw_name") in runtime_names, f"representative kernel absent from Runtime: {label}")
             call_site = entry.get("runtime_event", {}).get("call_site", {})
             self.require((call_site.get("file"), call_site.get("line")) in stack_edges, f"final call site lacks Runtime stack evidence: {label}")
+            if service_mode:
+                in_sglang = False
+                if sglang_root is not None and call_site.get("file"):
+                    try:
+                        Path(str(call_site["file"])).expanduser().resolve().relative_to(
+                            sglang_root
+                        )
+                        in_sglang = True
+                    except ValueError:
+                        pass
+                self.require(
+                    in_sglang,
+                    f"service final call site is outside SGLang: {label}",
+                )
             self.require(entry.get("metrics", {}).get("duration_us", 0) > 0, f"non-positive final duration: {label}")
 
         runtime_total = sum(
@@ -675,7 +767,8 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "KID Runtime artifact validation PASSED: "
             f"invocations={len(validator.runtime.get('invocations', []))} "
-            f"raw_captures={len(validator.raw_events)} "
+            "raw_captures="
+            f"{sum(event.get('event') == 'execution_capture' for event in validator.raw_events)} "
             f"gpu_kernels={len(validator.runtime.get('kernels', []))}"
         )
     else:

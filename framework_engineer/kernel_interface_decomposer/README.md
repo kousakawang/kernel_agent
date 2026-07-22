@@ -148,6 +148,9 @@ python kernel_agent/framework_engineer/kernel_interface_decomposer/tests/test_cl
 
 python kernel_agent/framework_engineer/kernel_interface_decomposer/tests/test_cli_capture_window.py \
   --gpu-e2e -v
+
+python kernel_agent/framework_engineer/kernel_interface_decomposer/tests/test_cli_capture_service_entry.py \
+  --gpu-e2e -v
 ```
 
 The first test runs all 11 mandatory PoC cases once. The convergence test runs
@@ -159,6 +162,8 @@ test-triggered call may appear in either trace. All three run the Runtime
 artifact validator and compare stable
 structure with golden data. Runtime IDs, durations, and optional
 `provider_hint` values are intentionally not fixed.
+The service-entry regression additionally verifies the service-only
+`high_invocation` event and its outer-caller-to-high `entry_python_stack`.
 
 Capture categories and adapter boundaries are defined in
 [CAPTURE_MECHANISMS.md](CAPTURE_MECHANISMS.md) and `capture_registry.py`.
@@ -185,8 +190,10 @@ must assign every direct kernel owner exactly once to a semantic interface.
 atomically. Context, decisions, and notes are internal evidence; source_locate
 consumes only the final decomposition.
 
-The Semantic config contains only `backend_name`, the third-party manifest,
-and optional Runtime-to-local path mappings. It loads the sibling
+The Semantic config contains `backend_name`, an explicit SGLang source root,
+the third-party manifest, and optional Runtime-to-local path mappings. Service
+mode requires the SGLang root and only publishes call sites inside that repository;
+direct mode may set it to `null`. It loads the sibling
 `runtime_capture_config.json` and derives Runtime/context/decisions/notes/final
 paths from its top-level `output_dir`.
 
