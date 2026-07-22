@@ -147,6 +147,10 @@ def _recording_enabled() -> bool:
     return gate in {None, ""} or Path(str(gate)).is_file()
 
 
+def _service_mode() -> bool:
+    return _CONFIG.get("execution_mode") == "service"
+
+
 def _active_marker(call_id: str) -> Path | None:
     state_dir = _CONFIG.get("active_ranges_dir")
     if state_dir in {None, ""}:
@@ -315,6 +319,8 @@ def _high_scope_details(
     boundary_code: Any,
     stage: str,
     forward_mode: str | None,
+    instrumentation_mode: str,
+    entry_python_stack: list[dict[str, Any]],
 ) -> Iterator[None]:
     call_id = _next_id("high")
     active_marker = _active_marker(call_id)
@@ -326,7 +332,22 @@ def _high_scope_details(
         "boundary_code": boundary_code,
         "stage": stage,
         "forward_mode": forward_mode,
+        "instrumentation_mode": instrumentation_mode,
+        "entry_python_stack": entry_python_stack,
     }
+    if _service_mode():
+        _write_capture_event(
+            {
+                "event": "high_invocation",
+                "call_id": call_id,
+                "interface": interface,
+                "file": file,
+                "definition_line": definition_line,
+                "instrumentation_mode": instrumentation_mode,
+                "entry_python_stack": entry_python_stack,
+                "cpu_capture_ns": time.monotonic_ns(),
+            }
+        )
     token = _CURRENT_HIGH.set(high)
     _nvtx_push(
         _label(
@@ -359,6 +380,10 @@ def _high_scope(frame: FrameType, interface: str) -> Iterator[None]:
         boundary_code=frame.f_code,
         stage=stage,
         forward_mode=forward_mode,
+        instrumentation_mode="sys_profile",
+        entry_python_stack=(
+            _capture_entry_python_stack(frame.f_back) if _service_mode() else []
+        ),
     ):
         yield
 
@@ -469,6 +494,36 @@ def _callable_code(value: Any) -> Any:
     return getattr(call, "__code__", None)
 
 
+def _target_boundary_code(value: Any) -> Any:
+    """Return the configured target's original code through decorator layers."""
+
+    configured_qualname, _ = _locate_target_definition()
+    configured_qualname = str(configured_qualname or _target().get("qualified_name") or "")
+    short_name = configured_qualname.rsplit(".", 1)[-1]
+    target_file = _target_file()
+    current = value
+    seen: set[int] = set()
+    matched = None
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        code = _callable_code(current)
+        if code is not None:
+            try:
+                same_file = Path(code.co_filename).expanduser().resolve() == target_file
+            except OSError:
+                same_file = False
+            code_qualname = str(getattr(code, "co_qualname", code.co_name))
+            name_matches = bool(short_name) and (
+                code.co_name == short_name
+                or code_qualname == configured_qualname
+                or code_qualname.endswith("." + configured_qualname)
+            )
+            if same_file and name_matches:
+                matched = code
+        current = getattr(current, "__wrapped__", None)
+    return matched
+
+
 def _high_target_callable(
     value: Callable[..., Any], interface: str
 ) -> Callable[..., Any] | None:
@@ -480,7 +535,7 @@ def _high_target_callable(
         or inspect.isasyncgenfunction(value)
     ):
         return None
-    boundary_code = _callable_code(value)
+    boundary_code = _target_boundary_code(value)
     if boundary_code is None:
         return None
     _, definition_line = _locate_target_definition()
@@ -492,6 +547,13 @@ def _high_target_callable(
         if not _recording_enabled():
             return value(*args, **kwargs)
         stage, forward_mode = _stage_from_values((*args, *kwargs.values()))
+        entry_python_stack: list[dict[str, Any]] = []
+        if _service_mode():
+            current = inspect.currentframe()
+            entry_python_stack = _capture_entry_python_stack(
+                current.f_back if current is not None else None
+            )
+            del current
         with _high_scope_details(
             interface=interface,
             file=target_file,
@@ -499,6 +561,8 @@ def _high_target_callable(
             boundary_code=boundary_code,
             stage=stage,
             forward_mode=forward_mode,
+            instrumentation_mode="import_patch",
+            entry_python_stack=entry_python_stack,
         ):
             return value(*args, **kwargs)
 
@@ -562,6 +626,16 @@ def _frame_record(frame: FrameType) -> dict[str, Any]:
             "line": frame.f_lineno,
         },
     }
+
+
+def _capture_entry_python_stack(frame: FrameType | None) -> list[dict[str, Any]]:
+    """Capture outer callers through the frame that directly invoked high."""
+
+    inner_to_outer: list[FrameType] = []
+    while frame is not None:
+        inner_to_outer.append(frame)
+        frame = frame.f_back
+    return [_frame_record(item) for item in reversed(inner_to_outer)]
 
 
 def _capture_python_stack(high: dict[str, Any]) -> list[dict[str, Any]]:

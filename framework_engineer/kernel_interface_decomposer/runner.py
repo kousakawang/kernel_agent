@@ -92,6 +92,9 @@ def _write_injection(config: RuntimeCaptureConfig, root: Path) -> Path:
     runtime_config["active_ranges_dir"] = str(
         root / "_inject" / "active_ranges"
     )
+    runtime_config["execution_mode"] = (
+        "service" if config.command is not None else "direct"
+    )
     runtime_path = inject / "runtime_config.json"
     runtime_path.write_text(
         json.dumps(runtime_config, indent=2, ensure_ascii=False) + "\n",

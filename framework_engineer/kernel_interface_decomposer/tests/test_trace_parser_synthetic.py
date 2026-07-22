@@ -193,6 +193,71 @@ class TestSyntheticTraceParser(unittest.TestCase):
             self.assertEqual(len(invocation["unattributed_kernel_ids"]), 1)
             self.assertAlmostEqual(invocation["coverage"], 70.0 / 90.0)
 
+            service_config = json.loads(config_path.read_text(encoding="utf-8"))
+            service_config["cmd"] = "python service.py"
+            service_config_path = root / "service_config.json"
+            service_config_path.write_text(
+                json.dumps(service_config), encoding="utf-8"
+            )
+            parsed_service_config = RuntimeCaptureConfig.load(service_config_path)
+            with self.assertRaisesRegex(RuntimeError, "missing high_invocation"):
+                RuntimeTraceParser(parsed_service_config).parse(sqlite_path, events)
+
+            entry_stack = [
+                {
+                    "file": str(target),
+                    "definition_line": 3,
+                    "function": "service_caller",
+                    "qualname": "service_caller",
+                    "call_site_to_next": {"file": str(target), "line": 4},
+                }
+            ]
+            with (events / "events_77.jsonl").open("a", encoding="utf-8") as stream:
+                for call_id in ("1", "2"):
+                    call_entry_stack = json.loads(json.dumps(entry_stack))
+                    call_entry_stack[0]["call_site_to_next"]["line"] = 3 + int(
+                        call_id
+                    )
+                    stream.write(
+                        json.dumps(
+                            {
+                                "event": "high_invocation",
+                                "call_id": call_id,
+                                "interface": "high",
+                                "instrumentation_mode": "import_patch",
+                                "entry_python_stack": call_entry_stack,
+                                "pid": 77,
+                            }
+                        )
+                        + "\n"
+                    )
+            service_result = RuntimeTraceParser(parsed_service_config).parse(
+                sqlite_path, events
+            )
+            self.assertEqual(
+                service_result["diagnostics"]["unique_decomposition_count"], 2
+            )
+            self.assertEqual(len(service_result["invocations"]), 2)
+            self.assertEqual(
+                service_result["diagnostics"]["high_invocation_event_count"], 2
+            )
+
+            with (events / "events_77.jsonl").open("a", encoding="utf-8") as stream:
+                stream.write(
+                    json.dumps(
+                        {
+                            "event": "high_invocation",
+                            "call_id": "2",
+                            "instrumentation_mode": "import_patch",
+                            "entry_python_stack": entry_stack,
+                            "pid": 77,
+                        }
+                    )
+                    + "\n"
+                )
+            with self.assertRaisesRegex(RuntimeError, "duplicate high_invocation"):
+                RuntimeTraceParser(parsed_service_config).parse(sqlite_path, events)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -123,14 +123,17 @@ Semantic 配置不重复填写 Runtime/output 路径；helper 自动读取同目
   "schema_version": "kid-semantic-resolver-config/v3",
   "backend_name": "flashinfer",
   "source_context": {
+    "sglang_repo_root": "/workspace/sglang",
     "third_party_manifest": "/workspace/third_party_manifest.json",
     "runtime_to_local_path_mappings": []
   }
 }
 ```
 
-`third_party_manifest` 是 `resolve-third-party` 的产物，提供 `sglang_repo_root` 和所有
-`repos[].local_path`；KID 只引用，不复制。Runtime 与 Resolver 共享文件系统时 mapping
+`sglang_repo_root` 是 Semantic Resolver 可直接访问的 SGLang 源码根；service 模式必填，
+direct 模式可显式填写 `null`。`third_party_manifest` 是 `resolve-third-party` 的产物，
+这里只提供 `repos[].local_path` 等第三方仓库信息；KID 不再从 manifest 推断 SGLang 根目录。
+Runtime 与 Resolver 共享文件系统时 mapping
 填 `[]` 或省略。远端 capture、本地解析时填写前缀映射；最长匹配优先，并同时作用于
 Runtime artifact 路径和 Python stack/source 路径：
 
@@ -146,6 +149,12 @@ Runtime artifact 路径和 Python stack/source 路径：
   }
 ]
 ```
+
+Service 模式下，最终 `runtime_event.call_site` 必须是 `sglang_repo_root` 内真实执行过的
+调用位置。high 以下存在多个可替换 SGLang 调用接口时分别拆分；high 本身是 SGLang 直接
+调用的第三方接口时可解析为 high 自身。若 high 只是第三方内部接口而没有被 SGLang 直接
+调用，Resolver 拒绝发布并要求用户改用 SGLang 实际调用的公开接口。Direct 模式暂不应用
+这项 SGLang 边界限制。
 
 v3 明确拒绝旧的 `runtime_capture`、`source_roots`、`analysis_source_overrides`、
 `context_output`、`decisions_output`、`notes_output` 和 `output` 字段。

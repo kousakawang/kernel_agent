@@ -39,9 +39,12 @@
 
 - **谁填写**：用户或上层编排器；Agent 只读取，不修改输入合同。
 - **何时填写**：Semantic Resolver Agent 启动之前。
-- **如何填写**：只填写 backend、`third_party_manifest` 与可选路径映射。Helper 读取同目录
+- **如何填写**：只填写 backend、显式 `sglang_repo_root`、`third_party_manifest` 与可选路径
+  映射。Helper 读取同目录
   `runtime_capture_config.json`，自动派生 Runtime、context、decisions、notes 和最终 output。
-  `third_party_manifest` 同时提供 SGLang 根和 `repos[].local_path`，只引用上游
+  `sglang_repo_root` 在 service 模式指向 Agent 可访问的 SGLang 源码根；direct 模式可为
+  `null`，本 PoC 即为 direct。`third_party_manifest` 只提供 `repos[].local_path` 等第三方信息，
+  只引用上游
   `resolve-third-party` 的真实产物，本例为
   `kernel_agent/framework_engineer/source_location/example/third_party_manifest.json`，
   不复制进 KID；`runtime_to_local_path_mappings` 将容器、site-packages 路径映射到
@@ -72,8 +75,10 @@
 - **谁填写**：安装在通用执行入口上的 capture wrapper。
 - **填写依据**：每次 common-interface 进入时的进程/线程、capture parent、archetype、
   execution interface、provider/implementation hint 与 high→execution Python stack。
-- **填写规则**：所有 capture 都保留，包括没有 kernel 的辅助调用；每行一个
-  `execution_capture`。`call_site_to_next` 表示当前 frame 调用下一 frame 的源码边，
+- **填写规则**：所有 capture 都保留，包括没有 kernel 的辅助调用；通常每行一个
+  `execution_capture`。Service 模式还为每个采样窗口内的 high invocation 写一条
+  `high_invocation`，保存 `instrumentation_mode` 和从外层 caller 到 high 直接 caller 的
+  `entry_python_stack`。`call_site_to_next` 表示当前 frame 调用下一 frame 的源码边，
   不能改写为 semantic call site；不得写 `workload_case` 或 `semantic_target_hint`。
 - **格式**：固定 JSONL 事件合同。
 - **谁消费**：Runtime Capture 聚合器、Semantic Resolver Agent、validator。
@@ -105,6 +110,7 @@
   - 每个 kernel 保存 correlation、原始名称、device/stream、GPU 时间戳、duration、
     launch API 与唯一 owner；
   - `coverage` 是 high-level 全部 kernel 中已归因 duration 的比例；
+  - service 模式的 `high_level.entry_python_stack` 提供 SGLang→high 的入口证据；
   - 只给出 `provider_hint`/`implementation_hint`，不提前决定 semantic interface。
 - **格式**：固定，`kid-runtime-capture/v1`。
 - **谁消费**：Semantic Resolver Agent 和 validator；不直接交给 `source_locate`。
@@ -177,7 +183,8 @@
 - **填写依据**：通过验证的 decisions 与 Runtime kernel/capture 事实。
 - **填写规则**：
   - `interface` 是适合后续输入输出 dump 和 kernel 优化的 semantic Python 接口；
-  - `runtime_event.call_site` 必须来自某条 runtime stack edge 映射后的本地文件/行号；
+  - `runtime_event.call_site` 必须来自某条 runtime stack edge 映射后的本地文件/行号；service
+    模式还必须位于显式配置的 SGLang 根目录，direct PoC 不应用该限制；
   - `archetype` 直接继承实际拥有 kernel 的最底层 capture mechanism；
   - `provider` 表示实现源码仓库，无法可靠确定时允许 `null`；
   - 一个 semantic target 下的多个 kernel 聚合为一个 `duration_us`，并选择其中最热

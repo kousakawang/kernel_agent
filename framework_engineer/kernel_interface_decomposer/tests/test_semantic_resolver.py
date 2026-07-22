@@ -57,6 +57,8 @@ class SemanticResolverFixture(unittest.TestCase):
         runtime: dict[str, Any] | None = None,
         decisions: dict[str, Any] | None = None,
         notes: str | None = None,
+        service: bool = False,
+        sglang_root: Path | None = None,
     ) -> tuple[Path, SemanticResolverConfig]:
         config_dir = root / "config/nsys_poc"
         backend_cli = root / "nsys_poc/cli_log"
@@ -86,6 +88,8 @@ class SemanticResolverFixture(unittest.TestCase):
             self.repo_root
             / "framework_engineer/kernel_interface_decomposer/nsys_poc.py"
         )
+        if service:
+            runtime_config["cmd"] = "python service.py"
         (config_dir / "runtime_capture_config.json").write_text(
             json.dumps(runtime_config, indent=2) + "\n", encoding="utf-8"
         )
@@ -102,6 +106,9 @@ class SemanticResolverFixture(unittest.TestCase):
             encoding="utf-8",
         )
         config_path = config_dir / "semantic_resolver_config.json"
+        config["source_context"]["sglang_repo_root"] = (
+            str(sglang_root or self.repo_root) if service else None
+        )
         config_path.write_text(
             json.dumps(config, indent=2) + "\n", encoding="utf-8"
         )
@@ -143,7 +150,7 @@ class TestSemanticResolverGolden(SemanticResolverFixture):
             self.assertNotIn("normalized_kernel_name", serialized)
             self.assertEqual(
                 {hint["name"] for hint in context["repository_hints"]},
-                {"sglang", "flashinfer", "flash_attn", "deep_gemm"},
+                {"flashinfer", "flash_attn", "deep_gemm"},
             )
             self.assertTrue(
                 all(
@@ -326,6 +333,108 @@ class TestSemanticResolverGolden(SemanticResolverFixture):
             resolver.prepare()
             with self.assertRaisesRegex(SemanticResolverError, "mixed-archetype"):
                 resolver.build_final()
+
+    def test_service_requires_sglang_root_and_enforces_replacement_boundary(self) -> None:
+        runtime = json.loads(
+            (
+                self.golden
+                / "nsys_poc/cli_log/runtime_capture.schema.json"
+            ).read_text(encoding="utf-8")
+        )
+        entry_stack = [
+            {
+                "file": str(
+                    self.repo_root
+                    / "framework_engineer/kernel_interface_decomposer/nsys_poc.py"
+                ),
+                "definition_line": 1,
+                "function": "sglang_caller",
+                "qualname": "sglang_caller",
+                "call_site_to_next": {
+                    "file": str(
+                        self.repo_root
+                        / "framework_engineer/kernel_interface_decomposer/nsys_poc.py"
+                    ),
+                    "line": 1120,
+                },
+            }
+        ]
+        runtime["invocations"][0]["high_level"].update(
+            {
+                "instrumentation_mode": "import_patch",
+                "entry_python_stack": entry_stack,
+            }
+        )
+
+        with tempfile.TemporaryDirectory(prefix="kid-semantic-service-") as temporary:
+            root = Path(temporary)
+            config_path, config = self.make_workspace(
+                root, runtime=runtime, service=True, sglang_root=self.repo_root
+            )
+            resolver = SemanticResolver(config)
+            context = resolver.prepare()
+            self.assertEqual(context["execution_mode"], "service")
+            self.assertTrue(context["target_validation"]["valid"])
+            self.assertTrue(context["invocations"][0]["high_entry_edges"])
+            resolver.build_final()
+
+            outside = copy.deepcopy(self.golden_decisions)
+            outside["targets"][0]["members"][0]["semantic_call_site"] = {
+                "file": "/usr/local/lib/python3.12/dist-packages/torch/_compile.py",
+                "line": 54,
+            }
+            config.decisions_output.write_text(
+                json.dumps(outside, indent=2) + "\n", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(
+                SemanticResolverError, "SGLang replacement boundary"
+            ):
+                resolver.build_final()
+
+            raw_config = json.loads(config_path.read_text(encoding="utf-8"))
+            raw_config["source_context"]["sglang_repo_root"] = None
+            config_path.write_text(json.dumps(raw_config), encoding="utf-8")
+            with self.assertRaisesRegex(ConfigError, "sglang_repo_root is required"):
+                SemanticResolverConfig.load(config_path)
+
+    def test_service_rejects_high_not_directly_called_from_sglang(self) -> None:
+        runtime = json.loads(
+            (
+                self.golden
+                / "nsys_poc/cli_log/runtime_capture.schema.json"
+            ).read_text(encoding="utf-8")
+        )
+        runtime["invocations"][0]["high_level"].update(
+            {
+                "instrumentation_mode": "import_patch",
+                "entry_python_stack": [
+                    {
+                        "file": "/third_party/public_api.py",
+                        "definition_line": 1,
+                        "function": "public_api",
+                        "qualname": "public_api",
+                        "call_site_to_next": {
+                            "file": "/third_party/public_api.py",
+                            "line": 9,
+                        },
+                    }
+                ],
+            }
+        )
+        with tempfile.TemporaryDirectory(prefix="kid-semantic-invalid-high-") as temporary:
+            _, config = self.make_workspace(
+                Path(temporary),
+                runtime=runtime,
+                service=True,
+                sglang_root=self.repo_root,
+            )
+            resolver = SemanticResolver(config)
+            context = resolver.prepare()
+            self.assertFalse(context["target_validation"]["valid"])
+            with self.assertRaisesRegex(
+                SemanticResolverError, "invalid high-level target"
+            ):
+                resolver.finalize()
 
 
 class TestSemanticResolverMultiInvocation(SemanticResolverFixture):

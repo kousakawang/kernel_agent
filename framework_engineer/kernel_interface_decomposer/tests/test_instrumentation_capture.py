@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import functools
 import inspect
 import json
 import sys
@@ -15,6 +16,19 @@ from framework_engineer.kernel_interface_decomposer import runtime_instrumentati
 
 
 def _import_patch_target(callback: object) -> object:
+    return callback()  # type: ignore[operator]
+
+
+def _transparent_api_wrapper(function: object) -> object:
+    @functools.wraps(function)  # type: ignore[arg-type]
+    def api_logging_wrapper(*args: object, **kwargs: object) -> object:
+        return function(*args, **kwargs)  # type: ignore[operator]
+
+    return api_logging_wrapper
+
+
+@_transparent_api_wrapper
+def _decorated_import_patch_target(callback: object) -> object:
     return callback()  # type: ignore[operator]
 
 
@@ -219,6 +233,47 @@ class TestRuntimeInstrumentation(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]["execution_interface"], "patched_kernel")
         self.assertTrue(events[0]["parent_call_id"])
+        self.assertEqual(events[0]["event"], "execution_capture")
+
+    def test_service_patch_records_entry_and_unwraps_decorated_target(self) -> None:
+        module = types.ModuleType("fake_decorated_target_module")
+        module.__file__ = __file__
+        module._decorated_import_patch_target = _decorated_import_patch_target
+        original = _decorated_import_patch_target.__wrapped__
+        ri._CONFIG.update(
+            {
+                "execution_mode": "service",
+                "target": {
+                    "file": __file__,
+                    "line": original.__code__.co_firstlineno,
+                    "qualified_name": "_decorated_import_patch_target",
+                },
+            }
+        )
+
+        self.assertTrue(ri._patch_high_target(module))
+
+        def workload() -> None:
+            with ri.execution_capture(
+                archetype="triton_launch", execution_interface="decorated_kernel"
+            ):
+                pass
+
+        module._decorated_import_patch_target(workload)
+        high_event, execution_event = self.events()
+        self.assertEqual(high_event["event"], "high_invocation")
+        self.assertEqual(high_event["instrumentation_mode"], "import_patch")
+        self.assertTrue(high_event["entry_python_stack"])
+        self.assertEqual(
+            high_event["entry_python_stack"][-1]["function"],
+            "test_service_patch_records_entry_and_unwraps_decorated_target",
+        )
+        self.assertEqual(execution_event["event"], "execution_capture")
+        functions = [
+            frame["function"] for frame in execution_event["python_stack"]
+        ]
+        self.assertEqual(functions[0], "_decorated_import_patch_target")
+        self.assertNotIn("api_logging_wrapper", functions)
 
     def test_import_patch_preserves_classmethod_descriptor(self) -> None:
         module = types.ModuleType("fake_class_target_module")
