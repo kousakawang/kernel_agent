@@ -130,6 +130,31 @@ def _node_end_line(node: ast.AST) -> int:
     return int(getattr(node, "end_lineno", getattr(node, "lineno", 0)))
 
 
+def _decorator_leaf(node: ast.AST) -> str | None:
+    """Return the final name in a decorator expression."""
+
+    while isinstance(node, ast.Call):
+        node = node.func
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
+def _is_overload_definition(node: ast.AST) -> bool:
+    decorators = getattr(node, "decorator_list", ())
+    return any(_decorator_leaf(decorator) == "overload" for decorator in decorators)
+
+
+def _prefer_concrete_over_overloads(nodes: list[ast.AST]) -> list[ast.AST]:
+    """Drop overload declarations when a concrete implementation is present."""
+
+    overloads = [node for node in nodes if _is_overload_definition(node)]
+    concrete = [node for node in nodes if not _is_overload_definition(node)]
+    return concrete if overloads and concrete else nodes
+
+
 def _module_scope_nodes(tree: ast.Module) -> Iterator[ast.AST]:
     """Yield module statements, descending through control flow but not defs."""
 
@@ -338,11 +363,16 @@ class PythonSourceIndex:
         tree = self.tree(path)
         if tree is None:
             return []
-        return [
-            Candidate(str(_absolute(path)), int(node.lineno))
+        definitions = [
+            node
             for node in _module_scope_nodes(tree)
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
             and node.name == symbol
+        ]
+        definitions = _prefer_concrete_over_overloads(definitions)
+        return [
+            Candidate(str(_absolute(path)), int(node.lineno))
+            for node in definitions
         ]
 
     def resolve_symbol(
@@ -464,11 +494,15 @@ class PythonSourceIndex:
                 if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
                 and child.name == method_name
             ]
-            # Overload declarations plus their implementation form one public
-            # interface; anchor the first declaration deterministically.
+            methods = _prefer_concrete_over_overloads(methods)
+            # An overload set plus a concrete implementation is one public
+            # interface.  The executable implementation is the source-locate
+            # anchor; an overload declaration is only a fallback when no
+            # implementation exists in the available source.
             if methods:
-                candidates.append(
-                    Candidate(str(definition.file), int(methods[0].lineno))
+                candidates.extend(
+                    Candidate(str(definition.file), int(method.lineno))
+                    for method in methods
                 )
         return _dedupe(candidates)
 

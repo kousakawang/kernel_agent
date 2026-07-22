@@ -126,10 +126,28 @@ class TestRangeCompletion(ExtractFixture):
         self.assertEqual(_end_line_python(lines, 3), 5)
         self.assertEqual(_end_line_python(lines, 7), 8)
 
+        decorated = [
+            "@triton.autotune(configs=[])\n",
+            "@triton.jit\n",
+            "def kernel(x):\n",
+            "    return x\n",
+        ]
+        self.assertEqual(_end_line_python(decorated, 1), 4)
+        self.assertEqual(_end_line_python(decorated, 3), 4)
+
     def test_c_family_braces_prototype_comments_and_strings(self) -> None:
         lines = self.cu.read_text().splitlines(keepends=True)
         self.assertEqual(_end_line_c_family(lines, 2), 5)
         self.assertEqual(_end_line_c_family(lines, 6), 6)
+
+        templated = [
+            "template <typename T>\n",
+            "__global__ void kernel(T* out) {\n",
+            "  out[0] = T{};\n",
+            "}\n",
+        ]
+        self.assertEqual(_end_line_c_family(templated, 1), 4)
+        self.assertEqual(_end_line_c_family(templated, 2), 4)
 
         tricky = self.tmp / "tricky.cu"
         tricky.write_text(

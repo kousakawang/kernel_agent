@@ -22,7 +22,7 @@ import tempfile
 import textwrap
 import time
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 from urllib.request import urlopen
@@ -37,6 +37,104 @@ PACKAGE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_ROOT.parent
 TEMPLATE_DIR = PACKAGE_ROOT / "templates"
 OUTPUT_FORMATS = ("auto", "human", "json")
+
+
+_RUNTIME_TARGET_PROBE_CODE = r'''
+import ast
+import importlib.machinery
+import json
+import sys
+from pathlib import Path
+
+
+request = json.loads(sys.argv[1])
+module_name = request["module_name"]
+function_name = request["function_name"]
+expected_class_path = request.get("class_path") or []
+
+
+def emit(payload):
+    print(json.dumps(payload, sort_keys=True))
+
+
+try:
+    parts = module_name.split(".")
+    search_path = None
+    spec = None
+    for index in range(len(parts)):
+        fullname = ".".join(parts[: index + 1])
+        spec = importlib.machinery.PathFinder.find_spec(fullname, search_path)
+        if spec is None:
+            emit({"status": "module_not_found", "module_name": module_name})
+            raise SystemExit(0)
+        if index < len(parts) - 1:
+            locations = spec.submodule_search_locations
+            if not locations:
+                emit({"status": "module_not_found", "module_name": module_name})
+                raise SystemExit(0)
+            search_path = list(locations)
+
+    origin = getattr(spec, "origin", None)
+    if not origin or origin in {"built-in", "frozen"}:
+        emit({
+            "status": "unsupported_origin",
+            "module_name": module_name,
+            "origin": origin,
+        })
+        raise SystemExit(0)
+
+    runtime_file = Path(origin).expanduser().resolve()
+    source = runtime_file.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(runtime_file))
+    matches = []
+
+    def visit(node, class_path):
+        if isinstance(node, ast.ClassDef):
+            for child in node.body:
+                visit(child, [*class_path, node.name])
+            return
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name == function_name and class_path == expected_class_path:
+                matches.append({
+                    "line": int(node.lineno),
+                    "end_line": getattr(node, "end_lineno", None),
+                })
+            for child in node.body:
+                visit(child, class_path)
+            return
+        for child in ast.iter_child_nodes(node):
+            visit(child, class_path)
+
+    visit(tree, [])
+    if len(matches) != 1:
+        emit({
+            "status": "definition_not_unique",
+            "module_name": module_name,
+            "runtime_file": str(runtime_file),
+            "function_name": function_name,
+            "class_path": expected_class_path,
+            "matches": matches,
+        })
+        raise SystemExit(0)
+
+    emit({
+        "status": "found",
+        "module_name": module_name,
+        "runtime_file": str(runtime_file),
+        "function_name": function_name,
+        "class_path": expected_class_path,
+        "line": matches[0]["line"],
+        "end_line": matches[0]["end_line"],
+    })
+except SystemExit:
+    raise
+except Exception as exc:
+    emit({
+        "status": "probe_error",
+        "module_name": module_name,
+        "error": repr(exc),
+    })
+'''
 
 
 @dataclass(frozen=True)
@@ -73,6 +171,9 @@ class TargetConfig:
     backend: str
     layer_id: str
     candidate_function: str
+    configured_target_file: Path
+    configured_target_line: int
+    target_resolution: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -442,6 +543,13 @@ def _execution_result_summary(result: dict[str, Any]) -> dict[str, Any]:
 
 def cmd_validate_config(args: argparse.Namespace) -> int:
     cfg, errors = _load_phase1_config(args.config)
+    resolution_steps: list[dict[str, Any]] = []
+    if cfg is not None and not errors:
+        cfg, resolution_steps, resolution_errors = _preprocess_runtime_targets(
+            cfg,
+            progress=_use_human_output(args),
+        )
+        errors.extend(resolution_errors)
     report = {
         "valid": not errors,
         "config": str(args.config),
@@ -449,6 +557,7 @@ def cmd_validate_config(args: argparse.Namespace) -> int:
         "task_group_id": cfg.task_group_id if cfg else None,
         "output_root": str(cfg.output_root) if cfg else None,
         "targets": [_target_report(target) for target in cfg.targets] if cfg else [],
+        "target_resolution_steps": resolution_steps,
     }
     _emit_result(args, report, title="Configuration validation")
     return 0 if not errors else 1
@@ -465,6 +574,22 @@ def cmd_run_phase1(args: argparse.Namespace) -> int:
         return 1
 
     progress = _use_human_output(args)
+    cfg, resolution_steps, resolution_errors = _preprocess_runtime_targets(cfg, progress=progress)
+    if resolution_errors:
+        _emit_result(
+            args,
+            {
+                "valid": False,
+                "stage": "resolve-runtime-target-definition",
+                "config": str(args.config),
+                "errors": resolution_errors,
+                "targets": [_target_report(target) for target in cfg.targets],
+                "target_resolution_steps": resolution_steps,
+            },
+            title="Phase 1.2 target preprocessing error",
+        )
+        return 1
+
     _terminal_log(
         f"config={cfg.config_path} targets={len(cfg.targets)} output_root={cfg.output_root}",
         enabled=progress,
@@ -480,7 +605,7 @@ def cmd_run_phase1(args: argparse.Namespace) -> int:
     }
 
     with _temporary_env(cfg.extra_env):
-        for target in cfg.targets:
+        for target, resolution_step in zip(cfg.targets, resolution_steps):
             if cfg.force and target.task_pack.exists():
                 shutil.rmtree(target.task_pack)
             step = _run_step(
@@ -490,11 +615,19 @@ def cmd_run_phase1(args: argparse.Namespace) -> int:
                 context=target.task_id,
                 progress=progress,
             )
-            target_report = {"target": _target_report(target), "steps": [step], "status": "running"}
+            target_report = {
+                "target": _target_report(target),
+                "steps": [resolution_step, step],
+                "status": "running",
+            }
             report["targets"].append(target_report)
             if step["returncode"] != 0:
                 target_report["status"] = "failed"
             else:
+                _write_json(
+                    target.task_pack / "docs" / "target_definition_resolution.json",
+                    target.target_resolution,
+                )
                 _write_task_contract(target.task_pack, cfg, target)
 
         if cfg.run_baseline and any(item["status"] != "failed" for item in report["targets"]):
@@ -1116,6 +1249,12 @@ def _load_phase1_config(path: Path) -> tuple[Phase1Config | None, list[str]]:
                 backend=str(raw.get("backend", get("target_backend", "")) or ""),
                 layer_id=str(raw.get("layer_id", get("target_layer_id", "")) or ""),
                 candidate_function=str(raw.get("candidate_function", shared_candidate)),
+                configured_target_file=target_file,
+                configured_target_line=int(target_line),
+                target_resolution={
+                    "status": "pending",
+                    "configured": {"file": str(target_file), "line": int(target_line)},
+                },
             )
         )
 
@@ -1154,6 +1293,286 @@ def _load_phase1_config(path: Path) -> tuple[Phase1Config | None, list[str]]:
     )
     errors.extend(_validate_phase1_config(cfg))
     return cfg, errors
+
+
+def _preprocess_runtime_targets(
+    cfg: Phase1Config,
+    *,
+    progress: bool = False,
+) -> tuple[Phase1Config, list[dict[str, Any]], list[str]]:
+    """Resolve configured source definitions to files imported by the runtime Python."""
+    resolved_targets: list[TargetConfig] = []
+    steps: list[dict[str, Any]] = []
+    errors: list[str] = []
+
+    for target in cfg.targets:
+        started = time.time()
+        _terminal_log(
+            f"START resolve-runtime-target-definition target={target.task_id}",
+            enabled=progress,
+        )
+        resolved_target, resolution, error = _resolve_runtime_target_definition(
+            target,
+            extra_env=cfg.extra_env,
+        )
+        elapsed = time.time() - started
+        returncode = 1 if error else 0
+        step = {
+            "step": "resolve-runtime-target-definition",
+            "returncode": returncode,
+            "elapsed_sec": elapsed,
+            "stdout_tail": "",
+            "stderr_tail": "",
+            "summary": resolution,
+            "error": error,
+            "traceback_tail": None,
+        }
+        steps.append(step)
+        resolved_targets.append(resolved_target)
+
+        if error:
+            errors.append(f"{target.task_id}: {error}")
+            _terminal_log(
+                f"FAIL  resolve-runtime-target-definition target={target.task_id} "
+                f"({elapsed:.2f}s, rc=1)",
+                enabled=progress,
+            )
+            _terminal_detail("error", error, enabled=progress)
+            _terminal_detail("resolution", resolution, enabled=progress)
+            continue
+
+        _terminal_log(
+            f"OK    resolve-runtime-target-definition target={target.task_id} ({elapsed:.2f}s)",
+            enabled=progress,
+        )
+        if resolution.get("mapping_applied"):
+            configured = resolution["configured"]
+            runtime = resolution["runtime"]
+            _terminal_log(
+                f"  mapped {configured['file']}:{configured['line']} -> "
+                f"{runtime['file']}:{runtime['line']}",
+                enabled=progress,
+            )
+
+    return replace(cfg, targets=resolved_targets), steps, errors
+
+
+def _resolve_runtime_target_definition(
+    target: TargetConfig,
+    *,
+    extra_env: dict[str, str],
+) -> tuple[TargetConfig, dict[str, Any], str | None]:
+    configured_file = target.configured_target_file
+    configured_line = target.configured_target_line
+    configured_interface = _resolve_source_interface(
+        file=configured_file,
+        line=configured_line,
+        function_name=None,
+        qualified_name=None,
+        role=f"{target.task_id} configured target",
+    )
+    configured = {
+        "file": str(configured_file),
+        "line": configured_line,
+        "definition_line": configured_interface.line,
+        "end_line": configured_interface.end_line,
+    }
+    module_name = _regular_package_module_name(configured_file)
+    identity = {
+        "module_name": module_name or configured_interface.module_name,
+        "class_path": configured_interface.class_path,
+        "function_name": configured_interface.function_name,
+        "qualified_name": configured_interface.qualified_name,
+    }
+
+    if module_name is None:
+        resolution = {
+            "status": "unchanged",
+            "mapping_applied": False,
+            "probe_kind": "python-c-pathfinder-ast",
+            "reason": "configured file is not inside a regular Python package; runtime module cannot be inferred safely",
+            "configured": configured,
+            "runtime": {"file": str(target.target_file), "line": target.target_line},
+            "identity": identity,
+        }
+        return replace(target, target_resolution=resolution), resolution, None
+
+    probe = _probe_installed_target_definition(
+        module_name=module_name,
+        function_name=configured_interface.function_name,
+        class_path=configured_interface.class_path,
+        extra_env=extra_env,
+    )
+    if probe.get("status") == "module_not_found":
+        resolution = {
+            "status": "unchanged",
+            "mapping_applied": False,
+            "probe_kind": "python-c-pathfinder-ast",
+            "reason": f"module {module_name!r} is not visible to the runtime Python; using configured source",
+            "configured": configured,
+            "runtime": {"file": str(target.target_file), "line": target.target_line},
+            "identity": identity,
+            "probe": probe,
+        }
+        return replace(target, target_resolution=resolution), resolution, None
+
+    if probe.get("status") != "found":
+        resolution = {
+            "status": "failed",
+            "mapping_applied": False,
+            "probe_kind": "python-c-pathfinder-ast",
+            "configured": configured,
+            "identity": identity,
+            "probe": probe,
+        }
+        error = (
+            f"runtime module {module_name!r} was detected, but its target definition could not be resolved: "
+            f"status={probe.get('status')!r}, detail={probe.get('error') or probe.get('matches')!r}"
+        )
+        return replace(target, target_resolution=resolution), resolution, error
+
+    runtime_file = Path(str(probe["runtime_file"])).expanduser().resolve()
+    runtime_line = int(probe["line"])
+    if not runtime_file.exists():
+        resolution = {
+            "status": "failed",
+            "mapping_applied": False,
+            "probe_kind": "python-c-pathfinder-ast",
+            "configured": configured,
+            "identity": identity,
+            "probe": probe,
+        }
+        error = f"runtime Python resolved {module_name!r} to an inaccessible file: {runtime_file}"
+        return replace(target, target_resolution=resolution), resolution, error
+
+    try:
+        runtime_interface = _resolve_source_interface(
+            file=runtime_file,
+            line=runtime_line,
+            function_name=configured_interface.function_name,
+            qualified_name=None,
+            role=f"{target.task_id} runtime target",
+        )
+    except SystemExit as exc:
+        resolution = {
+            "status": "failed",
+            "mapping_applied": False,
+            "probe_kind": "python-c-pathfinder-ast",
+            "configured": configured,
+            "identity": identity,
+            "probe": probe,
+        }
+        return replace(target, target_resolution=resolution), resolution, str(exc)
+
+    if runtime_interface.class_path != configured_interface.class_path:
+        resolution = {
+            "status": "failed",
+            "mapping_applied": False,
+            "probe_kind": "python-c-pathfinder-ast",
+            "configured": configured,
+            "identity": identity,
+            "probe": probe,
+        }
+        error = (
+            "runtime target class path does not match configured definition: "
+            f"configured={configured_interface.class_path!r}, runtime={runtime_interface.class_path!r}"
+        )
+        return replace(target, target_resolution=resolution), resolution, error
+
+    mapping_applied = runtime_file != configured_file or runtime_interface.line != configured_line
+    runtime = {
+        "file": str(runtime_file),
+        "line": runtime_interface.line,
+        "end_line": runtime_interface.end_line,
+        "module_name": module_name,
+        "class_path": runtime_interface.class_path,
+        "function_name": runtime_interface.function_name,
+        "qualified_name": runtime_interface.qualified_name,
+    }
+    resolution = {
+        "status": "mapped" if mapping_applied else "unchanged",
+        "mapping_applied": mapping_applied,
+        "probe_kind": "python-c-pathfinder-ast",
+        "python_executable": sys.executable,
+        "configured": configured,
+        "runtime": runtime,
+        "identity": identity,
+    }
+    resolved = replace(
+        target,
+        target_file=runtime_file,
+        target_line=runtime_interface.line,
+        target_resolution=resolution,
+    )
+    return resolved, resolution, None
+
+
+def _probe_installed_target_definition(
+    *,
+    module_name: str,
+    function_name: str,
+    class_path: list[str],
+    extra_env: dict[str, str],
+) -> dict[str, Any]:
+    request = json.dumps(
+        {
+            "module_name": module_name,
+            "function_name": function_name,
+            "class_path": class_path,
+        },
+        sort_keys=True,
+    )
+    env = _subprocess_env()
+    env.update(extra_env)
+    command = [sys.executable, "-c", _RUNTIME_TARGET_PROBE_CODE, request]
+    try:
+        proc = subprocess.run(
+            command,
+            cwd=Path.cwd(),
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=30,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "status": "probe_timeout",
+            "command": f"{sys.executable} -c <runtime-target-probe>",
+            "stdout_tail": _subprocess_text(exc.stdout)[-2000:],
+            "stderr_tail": _subprocess_text(exc.stderr)[-2000:],
+        }
+    except Exception as exc:
+        return {
+            "status": "probe_launch_error",
+            "command": f"{sys.executable} -c <runtime-target-probe>",
+            "error": repr(exc),
+        }
+
+    payload: dict[str, Any] | None = None
+    for line in reversed(proc.stdout.splitlines()):
+        try:
+            candidate = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(candidate, dict) and candidate.get("status"):
+            payload = candidate
+            break
+    if payload is None:
+        payload = {
+            "status": "invalid_probe_output",
+            "returncode": proc.returncode,
+        }
+    payload["command"] = f"{sys.executable} -c <runtime-target-probe>"
+    payload["returncode"] = proc.returncode
+    if proc.stdout.strip():
+        payload["stdout_tail"] = proc.stdout[-2000:]
+    if proc.stderr.strip():
+        payload["stderr_tail"] = proc.stderr[-2000:]
+    if proc.returncode != 0 and payload.get("status") == "found":
+        payload["status"] = "probe_process_failed"
+    return payload
 
 
 def _load_config_module(path: Path) -> Any:
@@ -1197,6 +1616,9 @@ def _target_report(target: TargetConfig) -> dict[str, Any]:
         "task_pack": str(target.task_pack),
         "target_file": str(target.target_file),
         "target_line": target.target_line,
+        "configured_target_file": str(target.configured_target_file),
+        "configured_target_line": target.configured_target_line,
+        "target_resolution": target.target_resolution,
         "drop_first_arg": target.drop_first_arg,
     }
 
@@ -1278,8 +1700,11 @@ objective: |
   {cfg.objective.replace(chr(10), chr(10) + "  ")}
 
 source_entrypoints:
+  configured_target_file: "{target.configured_target_file}"
+  configured_target_line: {target.configured_target_line}
   target_file: "{target.target_file}"
   target_line: {target.target_line}
+  target_resolution: "{target.target_resolution.get('status', 'unknown')}"
   forward_boundary_file: "{cfg.forward_boundary_file}"
   forward_boundary_line: {cfg.forward_boundary_line}
 
@@ -1665,13 +2090,9 @@ def _function_candidates(file: Path, source: str, module_name: str) -> list[Sour
 
 
 def _infer_module_name(file: Path) -> str:
-    package_parts = [] if file.stem == "__init__" else [file.stem]
-    parent = file.parent
-    while (parent / "__init__.py").exists():
-        package_parts.insert(0, parent.name)
-        parent = parent.parent
-    if len(package_parts) > (0 if file.stem == "__init__" else 1):
-        return ".".join(package_parts)
+    package_module = _regular_package_module_name(file)
+    if package_module is not None:
+        return package_module
 
     parts = list(file.with_suffix("").parts)
     if "python" in parts:
@@ -1680,6 +2101,19 @@ def _infer_module_name(file: Path) -> str:
         if module_parts:
             return ".".join(module_parts)
     return file.stem
+
+
+def _regular_package_module_name(file: Path) -> str | None:
+    package_parts = [] if file.stem == "__init__" else [file.stem]
+    parent = file.parent
+    package_parent_count = 0
+    while (parent / "__init__.py").exists():
+        package_parts.insert(0, parent.name)
+        parent = parent.parent
+        package_parent_count += 1
+    if package_parent_count > 0 and package_parts:
+        return ".".join(package_parts)
+    return None
 
 
 def _instrumentation_context(

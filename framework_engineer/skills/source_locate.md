@@ -43,7 +43,8 @@ located、notes 或 extract 路径。
 2. `archetype/provider` 只是提示，不是规则分派 key；二者为空也必须继续定位。
 3. 只允许把 SGLang root、其中的 sgl-kernel，以及 manifest 中 `status=ok` 的 repo 文件写成 hit。
    site-packages、临时 build 目录和未列入 manifest 的源码不能成为正式 hit。
-4. 每个 hit 只写绝对路径和 `def_line`。`end_line` 由 extract 计算，只进入 `read_hints.txt`。
+4. 每个 hit 只写绝对路径和 `def_line`。它表示该定位单元的阅读范围起点，不保证是带有
+   `def` 关键字的行；`end_line` 由 extract 计算，只进入 `read_hints.txt`。
 5. `interface_definition` 最多一个 hit；`py_cpp_binding` 和 `kernel_impl` 的 hits 顺序有语义。
 6. 不安装包、不编译、不启动服务、不修改任何源码仓。搜索和阅读必须是只读的。
 
@@ -55,7 +56,9 @@ KID semantic interface 本身最近、可读的 Python 定义或显式 Python re
 
 - 先验证 locate candidate 与 call-site import、qualified name 和函数体是否一致。
 - candidate 为 `resolved` 不代表必须接受；candidate 为 `ambiguous/not_found` 也不是终态。
-- `def_line` 指向实际 `def/async def` 行；显式 binary re-export 没有源码定义时可指向 import anchor。
+- `def_line` 指向可执行 concrete `def/async def` 行。存在 `@overload` 声明和 concrete implementation
+  时必须跳过 overload stub；只有源码中没有 concrete implementation 时才用 overload 声明兜底。
+- 本层不把普通 decorator 算入起始行；显式 binary re-export 没有源码定义时可指向 import anchor。
 - 本层只能是 `resolved`、`best_effort` 或 `missed`，不能是 `not_applicable`。
 
 ### `py_cpp_binding`
@@ -69,6 +72,9 @@ Python 到 native、FFI 或 JIT module 的桥接链，按 Python→native 顺序
 - TVM FFI export；
 - Python 侧 `load_jit/load_inline/build_and_load/gen_jit_spec` 与 native export 的组合。
 
+registration、export 和 loader hit 直接指向产生桥接语义的调用或宏起始行，例如 `m.def`、
+`TVM_FFI_DLL_EXPORT_*`、`load_jit`、`build_and_load` 或 `cute.compile`，不改写成外围函数的 `def` 行。
+
 纯 Python/Triton/CuTe DSL 且源码证明没有 native bridge 时才写 `not_applicable`。capture archetype
 本身不能证明不适用。
 
@@ -81,6 +87,9 @@ host entry → dtype/layout dispatch → launcher/template → core device kerne
 ```
 
 - `.h/.cuh/.hpp` 中如果包含实际模板、host dispatch、device helper 或 kernel 定义，属于本层。
+- Triton/CuTe DSL kernel 的 decorator 是可执行定义的一部分，`def_line` 指向最外层相关 decorator
+  （如 `@triton.autotune/@triton.jit/@cute.jit/@cute.kernel`），以保留编译和 launch 语义。
+- C++/CUDA 模板定义从与函数连续的首个 `template<...>` 行开始，而不是从下一行函数签名开始。
 - 同一文件的多个关键定义可以成为多个 hit，但不得重复同一个 `{file, def_line}`。
 - 只记录与该 semantic target 的真实执行路径有关的节点，不因名字相同而加入全仓 leaf-name 命中。
 - 找到核心链但动态分支、生成代码或模板实例无法穷尽时写 `best_effort`，并明确 gap。

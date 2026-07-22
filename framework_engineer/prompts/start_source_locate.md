@@ -61,6 +61,10 @@ python3 -m framework_engineer.source_location.agent_helper search \
 搜索结果只是候选。打开源码确认调用关系后，按照 Skill 的四层和状态规则重新生成
 `artifacts.decisions`。不得直接沿用未重新验证的旧 decisions。
 
+写 `def_line` 时严格使用 Skill 的统一 anchor 规则：interface 选择 concrete `def` 而非已有实现的
+overload stub；DSL kernel 包含语义 decorator；C++/CUDA template 包含模板前缀；桥接层使用真实
+registration/export/loader anchor。
+
 ## 4. Finalize Agent 结果
 
 ```bash
