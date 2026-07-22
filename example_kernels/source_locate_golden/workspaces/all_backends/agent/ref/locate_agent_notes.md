@@ -30,7 +30,7 @@
 - `interface_definition` — `resolved`: The definition matches the KID call-site import and semantic target.
   - `/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/srt/layers/attention/fla/wy_fast.py:111` `recompute_w_u_fwd` — This is the imported Python wrapper used by the call site.
 - `kernel_impl` — `resolved`: The wrapper launches this Triton JIT kernel directly.
-  - `/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/srt/layers/attention/fla/wy_fast.py:23` `recompute_w_u_fwd_kernel` — This Triton kernel performs the target computation.
+  - `/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/srt/layers/attention/fla/wy_fast.py:22` `recompute_w_u_fwd_kernel` — The @triton.jit decorator starts the executable Triton kernel definition that performs the target computation.
 - `py_cpp_binding` — `not_applicable`: The Python wrapper launches Triton directly and does not cross a Python/C++ binding.
 - `kernel_header` — `not_applicable`: The implementation is self-contained Triton code with no independent native declaration header.
 
@@ -94,8 +94,8 @@
 - `interface_definition` — `resolved`: This is the public JIT example function selected by KID.
   - `/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/add_constant.py:24` `add_constant` — The function allocates the result and invokes module.add_constant.
 - `kernel_impl` — `resolved`: The JIT-exported host wrapper launches the concrete CUDA kernel in this order.
-  - `/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/csrc/add_constant.cuh:59` `add_constant` — This templated TVM-FFI host function validates inputs and launches the kernel.
-  - `/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/csrc/add_constant.cuh:27` `add_constant_kernel` — This CUDA global function implements the scalar add.
+  - `/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/csrc/add_constant.cuh:58` `add_constant` — The function template starts the TVM-FFI host function that validates inputs and launches the kernel.
+  - `/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/csrc/add_constant.cuh:26` `add_constant_kernel` — The function template starts the CUDA global function that implements the scalar add.
 - `py_cpp_binding` — `resolved`: The load_jit call declares the CUDA source and generated wrapper exported as add_constant.
   - `/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/add_constant.py:16` `load_jit(add_constant)` — This loader configuration creates the Python-visible TVM-FFI module boundary.
 - `kernel_header` — `not_applicable`: The .cuh file contains executable host/device implementation rather than an independent declaration-only layer.
@@ -156,7 +156,7 @@
 ### Layer evidence
 
 - `interface_definition` — `resolved`: The class method is the fully qualified KID interface used for paged KV prefill.
-  - `/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/prefill.py:2198` `BatchPrefillWithPagedKVCacheWrapper.run` — This overload anchor identifies the public class method selected by KID.
+  - `/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/prefill.py:2238` `BatchPrefillWithPagedKVCacheWrapper.run` — This concrete method body is the executable class interface selected by KID; preceding overload stubs are declarations only.
 - `kernel_impl` — `resolved`: The order records native host entry, template dispatcher, and launched CUDA kernel.
   - `/Users/bytedance/Desktop/infra_agent/flashinfer/csrc/batch_prefill.cu:203` `BatchPrefillWithPagedKVCacheRun` — This TVM-FFI host function prepares parameters and dispatches paged prefill.
   - `/Users/bytedance/Desktop/infra_agent/flashinfer/include/flashinfer/attention/prefill.cuh:3605` `BatchPrefillWithPagedKVCacheDispatched` — This template selects launch traits and dispatches the paged implementation.

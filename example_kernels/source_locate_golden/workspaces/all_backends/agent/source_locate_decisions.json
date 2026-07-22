@@ -53,9 +53,9 @@
           "hits": [
             {
               "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/srt/layers/attention/fla/wy_fast.py",
-              "def_line": 23,
+              "def_line": 22,
               "symbol": "recompute_w_u_fwd_kernel",
-              "reason": "This Triton kernel performs the target computation."
+              "reason": "The @triton.jit decorator starts the executable Triton kernel definition that performs the target computation."
             }
           ]
         },
@@ -225,15 +225,15 @@
           "hits": [
             {
               "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/csrc/add_constant.cuh",
-              "def_line": 59,
+              "def_line": 58,
               "symbol": "add_constant",
-              "reason": "This templated TVM-FFI host function validates inputs and launches the kernel."
+              "reason": "The function template starts the TVM-FFI host function that validates inputs and launches the kernel."
             },
             {
               "file": "/Users/bytedance/Desktop/infra_agent/sglang/python/sglang/jit_kernel/csrc/add_constant.cuh",
-              "def_line": 27,
+              "def_line": 26,
               "symbol": "add_constant_kernel",
-              "reason": "This CUDA global function implements the scalar add."
+              "reason": "The function template starts the CUDA global function that implements the scalar add."
             }
           ]
         },
@@ -383,9 +383,9 @@
           "hits": [
             {
               "file": "/Users/bytedance/Desktop/infra_agent/flashinfer/flashinfer/prefill.py",
-              "def_line": 2198,
+              "def_line": 2238,
               "symbol": "BatchPrefillWithPagedKVCacheWrapper.run",
-              "reason": "This overload anchor identifies the public class method selected by KID."
+              "reason": "This concrete method body is the executable class interface selected by KID; preceding overload stubs are declarations only."
             }
           ]
         },

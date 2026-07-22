@@ -32,6 +32,11 @@ source\_locations 填写标准（历史源码案例参考）
    - 所以 `interface_definition` = **low\_level\_target 自己的定义**，不是它上面那个 launcher 函数。
 3. **Layer 3 不改 schema**。Layer 3（extract）只做两件事：把定位到的源码**拷贝**成物料文件、把行号范围**抄**进 `read_hints.txt`。它不修改 `source_locations`。
 
+这里的 `def_line` 更准确地说是“定位单元的阅读范围起点”：Python 普通 interface 指向 concrete
+`def/async def`，有 concrete implementation 时跳过 `@overload` stub；Triton/CuTe kernel 指向最外层
+相关 decorator；C++/CUDA template 指向连续模板前缀的首个 `template<...>`；注册、导出和 loader
+指向实际产生桥接语义的调用或宏。
+
 ***
 
 ## 2. 四层定版（语义 + 单文件/目录）

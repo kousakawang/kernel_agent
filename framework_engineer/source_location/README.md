@@ -180,6 +180,11 @@ Agent 对每个 target 调用私有 `inspect-target/search`，打开源码验证
 
 `provider/archetype` 只能提供阅读线索，不能用作分派或定位结论。
 
+`def_line` 统一表示定位单元的阅读范围起点：Python interface 选择 concrete `def` 并跳过已有实现的
+`@overload` stub；Triton/CuTe kernel 从最外层语义 decorator 开始；C++/CUDA template 从
+`template<...>` 开始；registration/export/loader 则指向对应调用或宏。extract 仍复制完整文件，
+这些行号主要决定 `read_hints.txt` 的聚焦范围。
+
 ### Finalize
 
 私有 `finalize` 校验 decisions、源码路径和行号，自动计算 `repo_hint`，删除临时 candidates，并生成：

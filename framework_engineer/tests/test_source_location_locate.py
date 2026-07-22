@@ -136,7 +136,7 @@ class TestResolution(LocateFixture):
         self.assertEqual(kid_projection(located), original)
         self.assertEqual(result.summary()["interface_resolved"], 1)
 
-    def test_qualified_reexported_class_method_collapses_overloads(self) -> None:
+    def test_qualified_reexported_class_method_prefers_concrete_over_overloads(self) -> None:
         package = self.third / "wrapper_pkg"
         package.mkdir()
         implementation = package / "wrapper.py"
@@ -173,7 +173,7 @@ class TestResolution(LocateFixture):
         self.assertEqual(candidate["evidence"], "interface_qualified_name")
         self.assertEqual(
             candidate["candidates"],
-            [{"file": str(implementation), "def_line": 3}],
+            [{"file": str(implementation), "def_line": 6}],
         )
 
     def test_binary_reexport_is_interface_definition(self) -> None:
