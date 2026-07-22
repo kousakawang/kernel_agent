@@ -29,6 +29,9 @@ _CAPTURE_COUNTER = 0
 _WRITER_PID = os.getpid()
 _ACTIVE_TARGET_FRAMES: dict[tuple[int, int], ContextManager[Any]] = {}
 _TORCH_MODE_CLASS: type[Any] | None = None
+_TARGET_MODULE_NAMES: frozenset[str] = frozenset()
+_TARGET_IMPORT_PATCH_ENABLED = False
+_TARGET_PROFILER_INSTALLED = False
 _CURRENT_HIGH: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
     "kid_current_high", default=None
 )
@@ -40,7 +43,7 @@ _CURRENT_CAPTURE: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 def install_from_env() -> None:
     """Install capture hooks from a sitecustomize-injected runtime config."""
 
-    global _INSTALLED, _CONFIG
+    global _INSTALLED, _CONFIG, _TARGET_IMPORT_PATCH_ENABLED, _TARGET_MODULE_NAMES
     if _INSTALLED or os.environ.get("KID_ENABLE") != "1":
         return
     config_path = os.environ.get("KID_RUNTIME_CONFIG")
@@ -50,9 +53,16 @@ def install_from_env() -> None:
     _INSTALLED = True
     if hasattr(os, "register_at_fork"):
         os.register_at_fork(after_in_child=_after_fork)
+    _TARGET_MODULE_NAMES = frozenset(_target_module_names())
+    _TARGET_IMPORT_PATCH_ENABLED = bool(
+        _TARGET_MODULE_NAMES and not _target_is_python_entrypoint(_TARGET_MODULE_NAMES)
+    )
     _install_import_hook()
     _patch_already_imported_modules()
-    _install_target_profiler()
+    if not _TARGET_IMPORT_PATCH_ENABLED:
+        _install_target_profiler_fallback(
+            "target is not safely addressable as an imported module"
+        )
 
 
 def _after_fork() -> None:
@@ -73,6 +83,58 @@ def _target() -> dict[str, Any]:
 
 def _target_file() -> Path:
     return Path(str(_target().get("file", ""))).expanduser().resolve()
+
+
+def _target_module_names() -> set[str]:
+    """Derive importable module names for the configured target source file."""
+
+    target = _target_file()
+    if target.suffix != ".py":
+        return set()
+    names: set[str] = set()
+    for raw_root in sys.path:
+        try:
+            root = Path(raw_root or os.getcwd()).expanduser().resolve()
+            relative = target.relative_to(root)
+        except (OSError, ValueError):
+            continue
+        parts = list(relative.parts)
+        if not parts:
+            continue
+        if parts[-1] == "__init__.py":
+            parts = parts[:-1]
+        else:
+            parts[-1] = Path(parts[-1]).stem
+        if not parts or not all(part.isidentifier() for part in parts):
+            continue
+        # Avoid treating arbitrary filesystem ancestors as Python packages.
+        package_parts = parts if target.name == "__init__.py" else parts[:-1]
+        if any(
+            not root.joinpath(*package_parts[:index], "__init__.py").is_file()
+            for index in range(1, len(package_parts) + 1)
+        ):
+            continue
+        names.add(".".join(parts))
+    return names
+
+
+def _target_is_python_entrypoint(module_names: frozenset[str]) -> bool:
+    """Return true when the target is executed as __main__, not imported."""
+
+    target = _target_file()
+    argv_zero = sys.argv[0] if sys.argv else ""
+    if argv_zero and argv_zero not in {"-c", "-m"}:
+        try:
+            if Path(argv_zero).expanduser().resolve() == target:
+                return True
+        except OSError:
+            pass
+    original = list(getattr(sys, "orig_argv", ()))
+    if "-m" in original:
+        index = original.index("-m")
+        if index + 1 < len(original) and original[index + 1] in module_names:
+            return True
+    return False
 
 
 def _events_dir() -> Path:
@@ -214,8 +276,12 @@ def _find_forward_mode(value: Any, depth: int = 0) -> Any:
 
 
 def _stage_from_frame(frame: FrameType) -> tuple[str, str | None]:
+    return _stage_from_values(frame.f_locals.values())
+
+
+def _stage_from_values(values: Any) -> tuple[str, str | None]:
     mode = None
-    for value in frame.f_locals.values():
+    for value in values:
         mode = _find_forward_mode(value)
         if mode is not None:
             break
@@ -241,16 +307,23 @@ def _high_capture_mode() -> ContextManager[Any]:
 
 
 @contextmanager
-def _high_scope(frame: FrameType, interface: str) -> Iterator[None]:
+def _high_scope_details(
+    *,
+    interface: str,
+    file: str,
+    definition_line: int,
+    boundary_code: Any,
+    stage: str,
+    forward_mode: str | None,
+) -> Iterator[None]:
     call_id = _next_id("high")
     active_marker = _active_marker(call_id)
-    stage, forward_mode = _stage_from_frame(frame)
     high = {
         "call_id": call_id,
         "interface": interface,
-        "file": frame.f_code.co_filename,
-        "definition_line": frame.f_code.co_firstlineno,
-        "boundary_code": frame.f_code,
+        "file": file,
+        "definition_line": definition_line,
+        "boundary_code": boundary_code,
         "stage": stage,
         "forward_mode": forward_mode,
     }
@@ -260,8 +333,8 @@ def _high_scope(frame: FrameType, interface: str) -> Iterator[None]:
             "high",
             call_id=call_id,
             interface=interface,
-            file=frame.f_code.co_filename,
-            line=frame.f_code.co_firstlineno,
+            file=file,
+            line=definition_line,
             stage=stage,
             forward_mode=forward_mode,
         )
@@ -276,31 +349,66 @@ def _high_scope(frame: FrameType, interface: str) -> Iterator[None]:
             active_marker.unlink(missing_ok=True)
 
 
+@contextmanager
+def _high_scope(frame: FrameType, interface: str) -> Iterator[None]:
+    stage, forward_mode = _stage_from_frame(frame)
+    with _high_scope_details(
+        interface=interface,
+        file=frame.f_code.co_filename,
+        definition_line=frame.f_code.co_firstlineno,
+        boundary_code=frame.f_code,
+        stage=stage,
+        forward_mode=forward_mode,
+    ):
+        yield
+
+
 def _install_target_profiler() -> None:
+    global _TARGET_PROFILER_INSTALLED
+    if _TARGET_PROFILER_INSTALLED:
+        return
     target_path = _target_file()
+    target_path_text = str(target_path)
     qualname, definition_line = _locate_target_definition()
     if not qualname:
         raise RuntimeError(f"cannot resolve target function at {target_path}:{_target().get('line')}")
     short_name = qualname.rsplit(".", 1)[-1]
     previous = sys.getprofile()
+    filename_matches: dict[str, bool] = {target_path_text: True}
+
+    def matches_target_file(filename: str) -> bool:
+        cached = filename_matches.get(filename)
+        if cached is not None:
+            return cached
+        try:
+            # Resolving a code filename may touch the filesystem. Cache the
+            # result so SGLang startup does not pay that cost on every Python
+            # call event across every spawned process.
+            matched = Path(filename).expanduser().resolve() == target_path
+        except Exception:
+            matched = False
+        filename_matches[filename] = matched
+        return matched
 
     def profile(frame: FrameType, event: str, arg: Any) -> Any:
-        key = (threading.get_ident(), id(frame))
         if event == "call":
-            try:
-                same_file = Path(frame.f_code.co_filename).resolve() == target_path
-            except Exception:
-                same_file = False
-            code_qualname = str(getattr(frame.f_code, "co_qualname", frame.f_code.co_name))
+            code = frame.f_code
+            code_qualname = str(getattr(code, "co_qualname", code.co_name))
             name_matches = code_qualname == qualname or code_qualname.endswith("." + qualname) or (
-                frame.f_code.co_name == short_name
-                and (definition_line is None or frame.f_code.co_firstlineno == definition_line)
+                code.co_name == short_name
+                and (definition_line is None or code.co_firstlineno == definition_line)
             )
-            if same_file and name_matches and _recording_enabled():
+            if (
+                name_matches
+                and matches_target_file(code.co_filename)
+                and _recording_enabled()
+            ):
+                key = (threading.get_ident(), id(frame))
                 scope = _high_scope(frame, qualname)
                 scope.__enter__()
                 _ACTIVE_TARGET_FRAMES[key] = scope
         elif event == "return":
+            key = (threading.get_ident(), id(frame))
             scope = _ACTIVE_TARGET_FRAMES.pop(key, None)
             if scope is not None:
                 scope.__exit__(None, None, None)
@@ -310,6 +418,137 @@ def _install_target_profiler() -> None:
 
     sys.setprofile(profile)
     threading.setprofile(profile)
+    _TARGET_PROFILER_INSTALLED = True
+
+
+def _install_target_profiler_fallback(reason: str) -> None:
+    global _TARGET_IMPORT_PATCH_ENABLED
+    _TARGET_IMPORT_PATCH_ENABLED = False
+    if _TARGET_PROFILER_INSTALLED:
+        return
+    # Keep the two strategies mutually exclusive. Otherwise a later module
+    # reload could add a wrapper while the profiler is still active and emit
+    # two nested high-level ranges for one invocation.
+    print(
+        f"[KID] high-level instrumentation fallback=sys_profile reason={reason}",
+        file=sys.stderr,
+        flush=True,
+    )
+    _install_target_profiler()
+
+
+def _module_matches_target(module: ModuleType) -> bool:
+    filename = getattr(module, "__file__", None)
+    if not filename:
+        return False
+    try:
+        return Path(str(filename)).expanduser().resolve() == _target_file()
+    except OSError:
+        return False
+
+
+def _target_qualname_parts(module: ModuleType) -> list[str]:
+    qualname = str(_target().get("qualified_name") or "")
+    if not qualname:
+        qualname, _ = _locate_target_definition()
+        qualname = str(qualname or "")
+    if not qualname or "<locals>" in qualname:
+        return []
+    parts = qualname.split(".")
+    module_parts = module.__name__.split(".")
+    if parts[: len(module_parts)] == module_parts:
+        parts = parts[len(module_parts) :]
+    return [part for part in parts if part]
+
+
+def _callable_code(value: Any) -> Any:
+    code = getattr(value, "__code__", None)
+    if code is not None:
+        return code
+    call = getattr(type(value), "__call__", None)
+    return getattr(call, "__code__", None)
+
+
+def _high_target_callable(
+    value: Callable[..., Any], interface: str
+) -> Callable[..., Any] | None:
+    if getattr(value, "_kid_high_target_wrapped", False):
+        return value
+    if (
+        inspect.iscoroutinefunction(value)
+        or inspect.isgeneratorfunction(value)
+        or inspect.isasyncgenfunction(value)
+    ):
+        return None
+    boundary_code = _callable_code(value)
+    if boundary_code is None:
+        return None
+    _, definition_line = _locate_target_definition()
+    definition_line = definition_line or int(_target().get("line", 0))
+    target_file = str(_target_file())
+
+    @functools.wraps(value)
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        if not _recording_enabled():
+            return value(*args, **kwargs)
+        stage, forward_mode = _stage_from_values((*args, *kwargs.values()))
+        with _high_scope_details(
+            interface=interface,
+            file=target_file,
+            definition_line=definition_line,
+            boundary_code=boundary_code,
+            stage=stage,
+            forward_mode=forward_mode,
+        ):
+            return value(*args, **kwargs)
+
+    setattr(wrapped, "_kid_high_target_wrapped", True)
+    return wrapped
+
+
+def _patch_high_target(module: ModuleType) -> bool:
+    """Wrap the configured high-level target after its module is imported."""
+
+    if not _module_matches_target(module):
+        return False
+    parts = _target_qualname_parts(module)
+    if not parts:
+        return False
+    owner: Any = module
+    try:
+        for part in parts[:-1]:
+            owner = getattr(owner, part)
+        attribute = parts[-1]
+        raw = inspect.getattr_static(owner, attribute)
+    except (AttributeError, TypeError):
+        return False
+
+    descriptor: type[Any] | None = None
+    value = raw
+    if isinstance(raw, classmethod):
+        descriptor = classmethod
+        value = raw.__func__
+    elif isinstance(raw, staticmethod):
+        descriptor = staticmethod
+        value = raw.__func__
+    if not callable(value):
+        return False
+    interface = str(_target().get("qualified_name") or ".".join(parts))
+    wrapped = _high_target_callable(value, interface)
+    if wrapped is None:
+        return False
+    replacement = descriptor(wrapped) if descriptor is not None else wrapped
+    try:
+        setattr(owner, attribute, replacement)
+    except (AttributeError, TypeError):
+        return False
+    print(
+        "[KID] high-level instrumentation=import_patch "
+        f"target={module.__name__}.{'.'.join(parts)}",
+        file=sys.stderr,
+        flush=True,
+    )
+    return True
 
 
 def _frame_record(frame: FrameType) -> dict[str, Any]:
@@ -742,6 +981,11 @@ def _patch_inductor(module: ModuleType) -> None:
 
 def _instrument_module(module: ModuleType) -> None:
     name = getattr(module, "__name__", "")
+    if _TARGET_IMPORT_PATCH_ENABLED and _module_matches_target(module):
+        if not _patch_high_target(module):
+            _install_target_profiler_fallback(
+                f"cannot wrap {name or '<unknown>'}.{_target().get('qualified_name')}"
+            )
     if name == "torch":
         _install_torch_dispatch(module)
     elif name in {"triton.runtime.jit", "triton.runtime.autotuner"}:
@@ -792,10 +1036,25 @@ class _InstrumentingLoader(importlib.abc.Loader):
 class _InstrumentingFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname: str, path: Any = None, target: Any = None) -> Any:
         del target
-        if fullname not in _WATCHED_MODULES:
+        target_module = (
+            _TARGET_IMPORT_PATCH_ENABLED and fullname in _TARGET_MODULE_NAMES
+        )
+        if fullname not in _WATCHED_MODULES and not target_module:
             return None
         spec = importlib.machinery.PathFinder.find_spec(fullname, path)
-        if spec is None or spec.loader is None or isinstance(spec.loader, _InstrumentingLoader):
+        if spec is None or spec.loader is None:
+            if target_module:
+                _install_target_profiler_fallback(
+                    f"target module {fullname} does not use a PathFinder loader"
+                )
+            return None
+        if not hasattr(spec.loader, "exec_module"):
+            if target_module:
+                _install_target_profiler_fallback(
+                    f"target module {fullname} loader cannot be wrapped"
+                )
+            return None
+        if isinstance(spec.loader, _InstrumentingLoader):
             return None
         spec.loader = _InstrumentingLoader(spec.loader)
         return spec
@@ -807,7 +1066,19 @@ def _install_import_hook() -> None:
 
 
 def _patch_already_imported_modules() -> None:
-    for name in _WATCHED_MODULES:
+    seen: set[int] = set()
+    target_names = _TARGET_MODULE_NAMES if _TARGET_IMPORT_PATCH_ENABLED else ()
+    for name in (*_WATCHED_MODULES, *target_names):
         module = sys.modules.get(name)
-        if isinstance(module, ModuleType):
+        if isinstance(module, ModuleType) and id(module) not in seen:
+            seen.add(id(module))
             _instrument_module(module)
+    if _TARGET_IMPORT_PATCH_ENABLED:
+        for module in tuple(sys.modules.values()):
+            if (
+                isinstance(module, ModuleType)
+                and id(module) not in seen
+                and _module_matches_target(module)
+            ):
+                seen.add(id(module))
+                _instrument_module(module)

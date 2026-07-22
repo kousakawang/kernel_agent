@@ -1,6 +1,6 @@
 # Source Locate Golden
 
-这个目录是 2026-07-20 基于最新 KID-v2 输出和当前 source-location 实现重放得到的完整样例。
+这个目录是 2026-07-21 基于最新 KID V3 输出和当前 source-location 实现重放得到的完整样例。
 
 本 golden 按 testcase 建立独立 workspace。当前 testcase ID 是 `all_backends`，它的 KID 输入是 `input/all_backends/decomposition.kid.schema.json`，所有运行产物都位于 `workspaces/all_backends/`。
 
@@ -30,7 +30,7 @@ source_locate_golden/
 │       └── third_party_manifest.json        # 允许成为正式 hit 的源码仓
 ├── input/
 │   └── all_backends/
-│       └── decomposition.kid.schema.json    # 此 testcase 的 KID-v2 输入
+│       └── decomposition.kid.schema.json    # 此 testcase 的 KID V3 输入
 └── workspaces/
     └── all_backends/
         ├── locate/

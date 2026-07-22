@@ -78,7 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     locate = subparsers.add_parser(
         "locate",
-        help="Add transient Python interface candidates to a KID v2 schema copy.",
+        help="Add transient Python interface candidates to a KID v3 schema copy.",
     )
     locate.add_argument("--schema", type=Path, required=True)
     locate.add_argument("--manifest", type=Path, required=True)

@@ -149,7 +149,7 @@ class AgentHelperFixture(unittest.TestCase):
 
     def _schema(self, *, provider: str | None = None) -> dict:
         return {
-            "schema_version": "kernel-interface-decomposition/v2",
+            "schema_version": "kernel-interface-decomposition/v3",
             "backend_name": "test",
             "opaque_kid_field": {"must": ["stay", "unchanged"]},
             "kernels": [

@@ -64,7 +64,7 @@ def _kernel(kid: str, layers: dict, *, rank: int = 1) -> dict:
 
 def _schema(kernels: list[dict]) -> dict:
     return {
-        "schema_version": "kernel-interface-decomposition/v2",
+        "schema_version": "kernel-interface-decomposition/v3",
         "backend_name": "test",
         "target": {"interface": "high", "file": "/tmp/high.py", "line": 1},
         "coverage_report": {
@@ -80,7 +80,7 @@ def _schema(kernels: list[dict]) -> dict:
 
 class ExtractFixture(unittest.TestCase):
     def setUp(self) -> None:
-        self.tempdir = tempfile.TemporaryDirectory(prefix="source_extract_v2_")
+        self.tempdir = tempfile.TemporaryDirectory(prefix="source_extract_v3_")
         self.tmp = Path(self.tempdir.name)
         self.py = self.tmp / "src_kernel.py"
         self.py.write_text(

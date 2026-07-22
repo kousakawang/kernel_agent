@@ -82,6 +82,8 @@ snapshot / problem_translate / task_pack
   `example_kernels/nsys_poc_kid_golden/`。
 - [x] 正式 CLI 已切换为 `capture/analyze`，不再调用 KID 内部 SourceResolver 或生成最终 semantic schema。
 - [x] 正式 high-level instrumentation、完整 Python 调用链、七类 adapter、nested capture 和 Runtime/Driver correlation 已接入。
+- [x] high-level instrumentation 默认改为 import-time function wrap；直接 `__main__` 或无法
+  安全定位 module/class attribute 时保留优化后的 `sys.setprofile` 兜底。
 - [x] 实现默认 `unique_decomposition` 收敛与 `all/last_n/single` 可扩展采样；JSONL
   保留全量 invocation，Runtime schema 每种拆分保留末次代表。
 - [x] 增加 repeat/softmax 双 invocation PoC、结构 golden、Runtime-only validator，以及
@@ -158,7 +160,7 @@ snapshot / problem_translate / task_pack
   - `python -m framework_engineer.source_location.cli locate`
   - `python -m framework_engineer.source_location.cli extract`
 - **实现文件**：
-  - `locator.py`：KID v2 schema 遍历、interface definition 候选定位、manifest/search-root
+  - `locator.py`：KID V3 schema 遍历、interface definition 候选定位、manifest/search-root
     处理和原子输出；
   - `extractor.py`：四层文件复制、range completion、`read_hints.txt`、占位和
     `kernel_sources_dir` 回填；
@@ -167,7 +169,7 @@ snapshot / problem_translate / task_pack
 
 ### 已完成能力
 
-- [x] KID v2 flat schema 遍历和 KID-owned field 原样保留。
+- [x] KID V3 flat schema 遍历和 KID-owned field 原样保留。
 - [x] 基于 callsite/import、module alias、relative import、re-export、
   class method/overload 和 binary re-export 的 interface definition 定位。
 - [x] locate candidate 的 `resolved/ambiguous/not_found` 与 Agent final 的
@@ -185,7 +187,7 @@ snapshot / problem_translate / task_pack
 - `extract` 在 Agent 写完四层 `source_locations` 后负责机械抽取；
 - `py_cpp_binding/kernel_impl/kernel_header` 的最终语义判断仍归自主 Agent。
 
-现有实现只接受最新 KID v2 和最小四层 contract；旧
+现有实现只接受最新 KID V3 和最小四层 contract；旧
 `archetype_code/binding_provider/needs_agent/source` 会被拒绝。
 
 ---

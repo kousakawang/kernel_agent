@@ -10,17 +10,69 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from .config import RuntimeCaptureConfig
 from .trace_parser import RuntimeTraceParser
 
 
 ENVIRONMENT_VERSION = "kid-runtime-environment/v1"
+
+
+def emit_progress(message: str) -> None:
+    """Write human-facing progress without contaminating the CLI JSON stdout."""
+
+    timestamp = time.strftime("%H:%M:%S")
+    try:
+        print(f"[KID {timestamp}] {message}", file=sys.stderr, flush=True)
+    except OSError:
+        # Progress is best-effort and must never make capture fail when stderr
+        # is closed by a parent process.
+        pass
+
+
+def _heartbeat_interval() -> float:
+    raw = os.environ.get("KID_PROGRESS_INTERVAL_SEC", "15")
+    try:
+        return max(1.0, float(raw))
+    except ValueError:
+        return 15.0
+
+
+@contextmanager
+def progress_stage(label: str) -> Iterator[None]:
+    """Report stage start/end and periodic heartbeats for quiet operations."""
+
+    started = time.monotonic()
+    stopped = threading.Event()
+    interval = _heartbeat_interval()
+
+    def heartbeat() -> None:
+        while not stopped.wait(interval):
+            elapsed = int(time.monotonic() - started)
+            emit_progress(f"{label}: still running ({elapsed}s elapsed)")
+
+    emit_progress(f"{label}: started")
+    thread = threading.Thread(target=heartbeat, daemon=True)
+    thread.start()
+    try:
+        yield
+    except BaseException:
+        elapsed = time.monotonic() - started
+        emit_progress(f"{label}: failed after {elapsed:.1f}s")
+        raise
+    else:
+        elapsed = time.monotonic() - started
+        emit_progress(f"{label}: completed in {elapsed:.1f}s")
+    finally:
+        stopped.set()
+        thread.join(timeout=1)
 
 
 def _prepare_layout(root: Path) -> None:
@@ -356,15 +408,17 @@ def _run_nsys_control(
 ) -> subprocess.CompletedProcess[str]:
     log.write("command: " + shlex.join(command) + "\n")
     log.flush()
-    return subprocess.run(
-        command,
-        cwd=config.workdir,
-        env=_base_env(config),
-        stdout=log,
-        stderr=subprocess.STDOUT,
-        text=True,
-        timeout=timeout,
-    )
+    action = command[1] if len(command) > 1 else "control"
+    with progress_stage(f"Nsight {action}"):
+        return subprocess.run(
+            command,
+            cwd=config.workdir,
+            env=_base_env(config),
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=timeout,
+        )
 
 
 def _run_profile(config: RuntimeCaptureConfig, root: Path, env: dict[str, str]) -> Path:
@@ -391,6 +445,11 @@ def _run_profile(config: RuntimeCaptureConfig, root: Path, env: dict[str, str]) 
         nsys_log.write("command: " + shlex.join(command) + "\n")
         nsys_log.flush()
         try:
+            emit_progress(
+                "Launching direct workload helper in a paused Nsight session"
+                if direct_mode
+                else "Launching service in a paused Nsight session"
+            )
             profiled_process = subprocess.Popen(
                 command,
                 cwd=config.workdir,
@@ -401,15 +460,18 @@ def _run_profile(config: RuntimeCaptureConfig, root: Path, env: dict[str, str]) 
                 start_new_session=True,
             )
             if direct_mode:
-                _wait_for_marker(
-                    root / "_inject" / "warmup.ready",
-                    profiled_process,
-                    timeout,
-                    "direct workload warmup",
-                    failure_marker=root / "_inject" / "test.done.json",
-                )
+                with progress_stage("Direct warmup (test_cmd run 1/2, not recorded)"):
+                    _wait_for_marker(
+                        root / "_inject" / "warmup.ready",
+                        profiled_process,
+                        timeout,
+                        "direct workload warmup",
+                        failure_marker=root / "_inject" / "test.done.json",
+                    )
             else:
-                _wait_ready(config, profiled_process)
+                ready_type = str((config.ready or {}).get("type", "none"))
+                with progress_stage(f"Waiting for service readiness ({ready_type})"):
+                    _wait_ready(config, profiled_process)
                 warmup_log_path.write_text(
                     "service startup/readiness completed outside Nsight collection\n",
                     encoding="utf-8",
@@ -427,15 +489,17 @@ def _run_profile(config: RuntimeCaptureConfig, root: Path, env: dict[str, str]) 
                 )
             collection_started = True
             gate_path.touch()
+            emit_progress("Nsight collection and KID Runtime recording are active")
 
             if direct_mode:
                 done_path = root / "_inject" / "test.done.json"
-                _wait_for_marker(
-                    done_path,
-                    profiled_process,
-                    timeout,
-                    "profiled direct workload",
-                )
+                with progress_stage("Profiled workload (test_cmd run 2/2)"):
+                    _wait_for_marker(
+                        done_path,
+                        profiled_process,
+                        timeout,
+                        "profiled direct workload",
+                    )
                 status = json.loads(done_path.read_text(encoding="utf-8"))
                 if status.get("phase") != "test" or status.get("returncode") != 0:
                     raise RuntimeError(
@@ -443,16 +507,17 @@ def _run_profile(config: RuntimeCaptureConfig, root: Path, env: dict[str, str]) 
                         f"exit code {status.get('returncode')}"
                     )
             else:
-                with test_log_path.open("w", encoding="utf-8") as test_log:
-                    test_result = subprocess.run(
-                        ["bash", "-lc", config.test_command],
-                        cwd=config.workdir,
-                        env=_base_env(config),
-                        stdout=test_log,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                        timeout=timeout,
-                    )
+                with progress_stage("Profiled service test_cmd"):
+                    with test_log_path.open("w", encoding="utf-8") as test_log:
+                        test_result = subprocess.run(
+                            ["bash", "-lc", config.test_command],
+                            cwd=config.workdir,
+                            env=_base_env(config),
+                            stdout=test_log,
+                            stderr=subprocess.STDOUT,
+                            text=True,
+                            timeout=timeout,
+                        )
                 if test_result.returncode != 0:
                     raise RuntimeError(
                         f"test command failed with exit code {test_result.returncode}"
@@ -461,9 +526,12 @@ def _run_profile(config: RuntimeCaptureConfig, root: Path, env: dict[str, str]) 
             failure = exc
         finally:
             gate_path.unlink(missing_ok=True)
+            if collection_started:
+                emit_progress("KID recording gate closed; draining active high-level calls")
             if collection_started and profiled_process is not None:
                 try:
-                    _wait_recording_drain(root, profiled_process, timeout)
+                    with progress_stage("Draining active high-level calls"):
+                        _wait_recording_drain(root, profiled_process, timeout)
                 except BaseException as exc:
                     if failure is None:
                         failure = exc
@@ -485,9 +553,11 @@ def _run_profile(config: RuntimeCaptureConfig, root: Path, env: dict[str, str]) 
             shutdown_path.touch()
             if profiled_process is not None:
                 if not direct_mode:
-                    _stop_process_group(profiled_process, config)
+                    with progress_stage("Stopping profiled service"):
+                        _stop_process_group(profiled_process, config)
                 try:
-                    profiled_process.wait(timeout=60)
+                    with progress_stage("Waiting for Nsight-owned process to exit"):
+                        profiled_process.wait(timeout=60)
                 except subprocess.TimeoutExpired:
                     _stop_process_group(profiled_process, config)
                     try:
@@ -522,13 +592,14 @@ def export_sqlite(
     with log_path.open("a", encoding="utf-8") as log:
         log.write("export: " + shlex.join(command) + "\n")
         log.flush()
-        result = subprocess.run(
-            command,
-            cwd=config.workdir,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
+        with progress_stage("Exporting Nsight report to SQLite"):
+            result = subprocess.run(
+                command,
+                cwd=config.workdir,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
     if result.returncode != 0 or not sqlite_path.exists():
         raise RuntimeError(f"nsys export failed with exit code {result.returncode}")
     return sqlite_path
@@ -624,10 +695,13 @@ def analyze_existing_trace(
     write_output: bool = True,
 ) -> dict[str, Any]:
     retain_sqlite = config.profiling["trace_retention"] == "always"
-    result = _add_artifact_metadata(
-        RuntimeTraceParser(config).parse(sqlite_path.resolve(), events_dir.resolve()),
-        sqlite_retained=retain_sqlite,
-    )
+    with progress_stage("Parsing Nsight SQLite and Runtime capture events"):
+        result = _add_artifact_metadata(
+            RuntimeTraceParser(config).parse(
+                sqlite_path.resolve(), events_dir.resolve()
+            ),
+            sqlite_retained=retain_sqlite,
+        )
     if write_output:
         destination = config.cli_dir()
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -673,7 +747,8 @@ def analyze_existing_trace(
                 format_summary(result), encoding="utf-8"
             )
             shutil.rmtree(staging / "_inject", ignore_errors=True)
-            _publish(staging, destination)
+            with progress_stage("Publishing Runtime Capture artifacts"):
+                _publish(staging, destination)
         except Exception:
             shutil.rmtree(staging, ignore_errors=True)
             raise
@@ -693,9 +768,15 @@ def capture_runtime(config: RuntimeCaptureConfig) -> dict[str, Any]:
     retention = str(config.profiling["trace_retention"])
     retain_on_success = retention == "always"
     try:
-        probe_environment(config, staging)
+        emit_progress(
+            f"Runtime Capture backend={config.backend_name!r} "
+            f"output={destination}"
+        )
+        with progress_stage("Probing Python, CUDA, GPU, Nsight, and adapters"):
+            probe_environment(config, staging)
         runtime_config_path = _write_injection(config, staging)
         env = _injected_env(config, staging, runtime_config_path)
+        emit_progress("Runtime instrumentation prepared")
         report = _run_profile(config, staging, env)
         try:
             sqlite_path = export_sqlite(
@@ -706,11 +787,14 @@ def capture_runtime(config: RuntimeCaptureConfig) -> dict[str, Any]:
             )
         finally:
             report.unlink(missing_ok=True)
-        result = _add_artifact_metadata(
-            RuntimeTraceParser(config).parse(sqlite_path, staging / "capture_events"),
-            created_at=created_at,
-            sqlite_retained=retain_on_success,
-        )
+        with progress_stage("Parsing and attributing Runtime Capture trace"):
+            result = _add_artifact_metadata(
+                RuntimeTraceParser(config).parse(
+                    sqlite_path, staging / "capture_events"
+                ),
+                created_at=created_at,
+                sqlite_retained=retain_on_success,
+            )
         (staging / "runtime_capture.schema.json").write_text(
             json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
@@ -719,11 +803,13 @@ def capture_runtime(config: RuntimeCaptureConfig) -> dict[str, Any]:
         )
         from .artifact_validator import RuntimeArtifactValidator
 
-        validator = RuntimeArtifactValidator(staging)
-        if not validator.validate():
-            raise RuntimeError(
-                "Runtime artifact validation failed: " + "; ".join(validator.errors)
-            )
+        with progress_stage("Validating Runtime Capture artifacts"):
+            validator = RuntimeArtifactValidator(staging)
+            if not validator.validate():
+                raise RuntimeError(
+                    "Runtime artifact validation failed: "
+                    + "; ".join(validator.errors)
+                )
         if not retain_on_success:
             sqlite_path.unlink(missing_ok=True)
             try:
@@ -737,7 +823,13 @@ def capture_runtime(config: RuntimeCaptureConfig) -> dict[str, Any]:
             stale_report.unlink(missing_ok=True)
         if retention == "never":
             shutil.rmtree(staging / "trace", ignore_errors=True)
+        emit_progress(f"Capture failed; diagnostic artifacts published to {destination}")
         _publish(staging, destination)
         raise
-    _publish(staging, destination)
+    with progress_stage("Publishing Runtime Capture artifacts"):
+        _publish(staging, destination)
+    emit_progress(
+        f"Runtime Capture complete: invocations={len(result.get('invocations', []))} "
+        f"kernels={len(result.get('kernels', []))}"
+    )
     return result

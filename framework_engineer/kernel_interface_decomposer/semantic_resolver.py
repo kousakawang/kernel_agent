@@ -26,7 +26,7 @@ except ImportError:  # pragma: no cover - direct script/tool fallback
 RESOLVER_CONFIG_VERSION = "kid-semantic-resolver-config/v3"
 CONTEXT_VERSION = "kid-semantic-context/v1"
 DECISIONS_VERSION = "kid-semantic-decisions/v1"
-FINAL_VERSION = "kernel-interface-decomposition/v2"
+FINAL_VERSION = "kernel-interface-decomposition/v3"
 RUNTIME_VERSION = "kid-runtime-capture/v1"
 SOURCE_SNAPSHOT_VERSION = "kid-source-snapshot/v1"
 ATTRIBUTION_METHOD = "python_stack+execution_capture+cuda_correlation_id"

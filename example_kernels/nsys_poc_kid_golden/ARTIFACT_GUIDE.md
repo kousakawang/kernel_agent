@@ -188,7 +188,7 @@
   - 候选列表、stack、execution capture id 和自由文本判断不得塞入最终 schema；
   - 不得输出 `implementation`、`source_files` 或 `symbols`。接口定义、Python/C++
     binding 和 kernel implementation 的源码定位全部由后续 `source_locate` 填写。
-- **格式**：固定，`kernel-interface-decomposition/v2`。
+- **格式**：固定，`kernel-interface-decomposition/v3`。
 - **谁消费**：`source_locate`、后续 problem translate 和任务打包流程。
 - **失败处理**：无法可靠消歧时 Agent 在 notes 说明阻塞点并请求人工判断；不得用 execution
   interface 冒充 semantic interface。finalizer/validator 不通过时不得手工修正聚合字段。

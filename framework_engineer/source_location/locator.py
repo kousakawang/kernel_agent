@@ -1,4 +1,4 @@
-"""Deterministic Python interface candidate locator for KID v2 schemas.
+"""Deterministic Python interface candidate locator for KID v3 schemas.
 
 The locator never decides the final four source layers.  It resolves imports,
 qualified Python interfaces, class methods, and explicit re-exports inside the
@@ -730,7 +730,7 @@ def locate_schema(
     sglang_repo_root: Path,
     output_path: Path,
 ) -> LocateRunResult:
-    """Locate interface candidates and write an enriched copy of KID v2."""
+    """Locate interface candidates and write an enriched copy of KID v3."""
 
     schema_path = _absolute(schema_path)
     output_path = _absolute(output_path)

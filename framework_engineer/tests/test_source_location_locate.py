@@ -1,4 +1,4 @@
-"""CPU-only tests for the KID v2 Python interface candidate locator."""
+"""CPU-only tests for the KID v3 Python interface candidate locator."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from framework_engineer.source_location.locator import LocateError, locate_schem
 
 class LocateFixture(unittest.TestCase):
     def setUp(self) -> None:
-        self.tempdir = tempfile.TemporaryDirectory(prefix="source_locate_v2_")
+        self.tempdir = tempfile.TemporaryDirectory(prefix="source_locate_v3_")
         self.tmp = Path(self.tempdir.name)
         self.sglang = self.tmp / "sglang"
         self.third = self.tmp / "third"
@@ -77,7 +77,7 @@ class LocateFixture(unittest.TestCase):
 
     def _schema(self, entries: list[dict]) -> dict:
         return {
-            "schema_version": "kernel-interface-decomposition/v2",
+            "schema_version": "kernel-interface-decomposition/v3",
             "backend_name": "test",
             "target": {"interface": "high", "file": "/tmp/high.py", "line": 1},
             "coverage_report": {
@@ -323,16 +323,21 @@ class TestContractsAndCli(LocateFixture):
         self.assertEqual(json.loads(stdout.getvalue())["interface_not_found"], 1)
         self.assertIn("skipped manifest repo missing", stderr.getvalue())
 
-    def test_invalid_v2_inputs_and_in_place_output_return_two(self) -> None:
+    def test_invalid_inputs_and_in_place_output_return_two(self) -> None:
         valid = self.tmp / "valid.json"
         valid.write_text(json.dumps(self._schema([self._entry("absent.api")])))
         legacy = self._schema([self._entry("absent.api")])
         legacy["kernels"][0]["binding_provider"] = "old"
         legacy_path = self.tmp / "legacy.json"
         legacy_path.write_text(json.dumps(legacy))
+        old_version = self._schema([self._entry("absent.api")])
+        old_version["schema_version"] = "kernel-interface-decomposition/v2"
+        old_version_path = self.tmp / "old_version.json"
+        old_version_path.write_text(json.dumps(old_version))
         cases = [
             (self.tmp / "missing.json", self.tmp / "out1.json"),
             (legacy_path, self.tmp / "out2.json"),
+            (old_version_path, self.tmp / "out3.json"),
             (valid, valid),
         ]
         for schema, output in cases:

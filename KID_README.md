@@ -2,7 +2,7 @@
 
 KID（Kernel Interface Decomposition）由 KID Agent 统一执行：Runtime Capture CLI
 收集 execution-level 事实，Semantic Resolver 再从调用链判断 semantic low-level target。
-最终 `kernel-interface-decomposition/v2` 交给 `source_locate`。
+最终 `kernel-interface-decomposition/v3` 交给 `source_locate`。
 
 ## 1. 配置与目录
 
@@ -67,6 +67,9 @@ Runtime 的 `output_dir` 是所有 backend 共用的一级产物根。KID 自动
   `cli_log`。
 - `target.file/line/qualified_name` 唯一标识 high-level Python 定义；pip 安装目录中的
   Python 函数同样支持。纯 C/pybind 接口需要可观测的 Python wrapper。
+  KID 默认在目标模块 import 完成后、返回调用方前直接 wrap 该函数，不修改源码；目标是
+  直接执行的 `__main__`、无法推导模块名或无法安全替换属性时，自动回退到轻量化的
+  `sys.setprofile` 捕获。普通 import-patch 路径不会检查每一次 Python 函数调用。
 - `cmd=null` 表示 direct 模式：同一 `test_cmd` 先在关闭采集时执行一次 warmup，再正式
   profile 一次，因此命令必须可重复且幂等。
 - `env` 注入 server/test；值必须是字符串且不能为 `null`。
@@ -178,6 +181,15 @@ python3 -m framework_engineer.kernel_interface_decomposer.semantic_resolver_tool
   finalize <config-dir>/semantic_resolver_config.json
 python3 -m framework_engineer.kernel_interface_decomposer.semantic_resolver_tools \
   validate <config-dir>/semantic_resolver_config.json
+```
+
+Runtime CLI 会把阶段进度和长任务 heartbeat 输出到 `stderr`，最终机器可读摘要仍单独写到
+`stdout`。默认每 15 秒报告一次长任务状态；需要调整时可设置：
+
+```bash
+KID_PROGRESS_INTERVAL_SEC=30 python -m \
+  framework_engineer.kernel_interface_decomposer capture \
+  <config-dir>/runtime_capture_config.json
 ```
 
 只有 Runtime 自校验、direct owner exact-once 分配和 Semantic `validate` 全部通过才算完成。

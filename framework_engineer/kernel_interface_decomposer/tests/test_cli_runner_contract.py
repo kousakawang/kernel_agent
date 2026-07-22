@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,6 +17,7 @@ from framework_engineer.kernel_interface_decomposer.cli import _build_parser
 from framework_engineer.kernel_interface_decomposer.runner import (
     _direct_launcher_command,
     _eager_command,
+    emit_progress,
     _nsys_launch_command,
     _nsys_start_command,
     _nsys_stop_command,
@@ -24,6 +25,15 @@ from framework_engineer.kernel_interface_decomposer.runner import (
 
 
 class TestCliRunnerContract(unittest.TestCase):
+    def test_progress_uses_stderr_and_keeps_stdout_machine_readable(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            emit_progress("testing progress")
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("[KID ", stderr.getvalue())
+        self.assertIn("testing progress", stderr.getvalue())
+
     def test_public_commands_are_capture_and_analyze_only(self) -> None:
         parser = _build_parser()
         capture = parser.parse_args(["capture", "config.json"])

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import inspect
 import json
 import sys
@@ -11,6 +12,17 @@ from pathlib import Path
 from unittest import mock
 
 from framework_engineer.kernel_interface_decomposer import runtime_instrumentation as ri
+
+
+def _import_patch_target(callback: object) -> object:
+    return callback()  # type: ignore[operator]
+
+
+class _ImportPatchOwner:
+    @classmethod
+    def target(cls, callback: object) -> object:
+        del cls
+        return callback()  # type: ignore[operator]
 
 
 class TestRuntimeInstrumentation(unittest.TestCase):
@@ -26,6 +38,9 @@ class TestRuntimeInstrumentation(unittest.TestCase):
         ri._CURRENT_HIGH.set(None)
         ri._CURRENT_CAPTURE.set(None)
         ri._ACTIVE_TARGET_FRAMES.clear()
+        ri._TARGET_IMPORT_PATCH_ENABLED = False
+        ri._TARGET_MODULE_NAMES = frozenset()
+        ri._TARGET_PROFILER_INSTALLED = False
         self.nvtx_push = mock.patch.object(ri, "_nvtx_push", lambda text: None)
         self.nvtx_pop = mock.patch.object(ri, "_nvtx_pop", lambda: None)
         self.nvtx_push.start()
@@ -179,6 +194,150 @@ class TestRuntimeInstrumentation(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]["execution_interface"], "profiled_kernel")
         self.assertTrue(events[0]["parent_call_id"])
+
+    def test_import_patch_wraps_module_target_without_global_profiler(self) -> None:
+        module = types.ModuleType("fake_target_module")
+        module.__file__ = __file__
+        module._import_patch_target = _import_patch_target
+        ri._CONFIG["target"] = {
+            "file": __file__,
+            "line": _import_patch_target.__code__.co_firstlineno,
+            "qualified_name": "_import_patch_target",
+        }
+
+        self.assertTrue(ri._patch_high_target(module))
+        self.assertIsNone(sys.getprofile())
+
+        def workload() -> None:
+            with ri.execution_capture(
+                archetype="triton_launch", execution_interface="patched_kernel"
+            ):
+                pass
+
+        module._import_patch_target(workload)
+        events = self.events()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["execution_interface"], "patched_kernel")
+        self.assertTrue(events[0]["parent_call_id"])
+
+    def test_import_patch_preserves_classmethod_descriptor(self) -> None:
+        module = types.ModuleType("fake_class_target_module")
+        module.__file__ = __file__
+        module._ImportPatchOwner = _ImportPatchOwner
+        ri._CONFIG["target"] = {
+            "file": __file__,
+            "line": _ImportPatchOwner.target.__func__.__code__.co_firstlineno,
+            "qualified_name": "_ImportPatchOwner.target",
+        }
+
+        self.assertTrue(ri._patch_high_target(module))
+
+        def workload() -> None:
+            with ri.execution_capture(
+                archetype="pytorch_dispatch", execution_interface="aten.add.Tensor"
+            ):
+                pass
+
+        module._ImportPatchOwner.target(workload)
+        self.assertEqual(len(self.events()), 1)
+
+    def test_target_module_patch_failure_uses_profiler_fallback(self) -> None:
+        module = types.ModuleType("fake_missing_target_module")
+        module.__file__ = __file__
+        ri._CONFIG["target"] = {
+            "file": __file__,
+            "line": _import_patch_target.__code__.co_firstlineno,
+            "qualified_name": "missing_target",
+        }
+        ri._TARGET_IMPORT_PATCH_ENABLED = True
+        with mock.patch.object(ri, "_install_target_profiler_fallback") as fallback:
+            ri._instrument_module(module)
+        fallback.assert_called_once()
+
+    def test_target_module_name_is_derived_from_source_path(self) -> None:
+        ri._CONFIG["target"] = {
+            "file": __file__,
+            "line": _import_patch_target.__code__.co_firstlineno,
+            "qualified_name": "_import_patch_target",
+        }
+        self.assertIn(
+            "framework_engineer.kernel_interface_decomposer.tests.test_instrumentation_capture",
+            ri._target_module_names(),
+        )
+
+    def test_direct_script_and_module_entrypoints_use_profiler_path(self) -> None:
+        ri._CONFIG["target"] = {
+            "file": __file__,
+            "line": _import_patch_target.__code__.co_firstlineno,
+            "qualified_name": "_import_patch_target",
+        }
+        module_names = frozenset(ri._target_module_names())
+        module_name = (
+            "framework_engineer.kernel_interface_decomposer.tests."
+            "test_instrumentation_capture"
+        )
+        with mock.patch.object(sys, "argv", [__file__]), mock.patch.object(
+            sys, "orig_argv", [sys.executable, __file__], create=True
+        ):
+            self.assertTrue(ri._target_is_python_entrypoint(module_names))
+        with mock.patch.object(sys, "argv", ["-m"]), mock.patch.object(
+            sys,
+            "orig_argv",
+            [sys.executable, "-m", module_name],
+            create=True,
+        ):
+            self.assertTrue(ri._target_is_python_entrypoint(module_names))
+
+    def test_import_hook_patches_target_before_import_returns(self) -> None:
+        package_root = Path(self.tempdir.name) / "packages"
+        package = package_root / "toy_target_package"
+        package.mkdir(parents=True)
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        target_file = package / "ops.py"
+        target_file.write_text(
+            "def high_level(value):\n"
+            "    return value + 1\n",
+            encoding="utf-8",
+        )
+        ri._CONFIG["target"] = {
+            "file": str(target_file),
+            "line": 1,
+            "qualified_name": "high_level",
+        }
+        original_meta_path = list(sys.meta_path)
+        sys.path.insert(0, str(package_root))
+        try:
+            ri._TARGET_MODULE_NAMES = frozenset(ri._target_module_names())
+            ri._TARGET_IMPORT_PATCH_ENABLED = True
+            ri._install_import_hook()
+            module = importlib.import_module("toy_target_package.ops")
+            self.assertTrue(module.high_level._kid_high_target_wrapped)
+            self.assertEqual(module.high_level(4), 5)
+            self.assertIsNone(sys.getprofile())
+        finally:
+            sys.meta_path[:] = original_meta_path
+            sys.path.remove(str(package_root))
+            sys.modules.pop("toy_target_package.ops", None)
+            sys.modules.pop("toy_target_package", None)
+
+    def test_target_profiler_does_not_resolve_paths_for_unrelated_calls(self) -> None:
+        function = type(self)._profile_target
+        ri._CONFIG["target"] = {
+            "file": function.__code__.co_filename,
+            "line": function.__code__.co_firstlineno,
+            "qualified_name": function.__qualname__,
+        }
+        ri._install_target_profiler()
+
+        def unrelated() -> int:
+            return 1
+
+        with mock.patch.object(
+            Path,
+            "resolve",
+            side_effect=AssertionError("unrelated calls must not resolve paths"),
+        ):
+            self.assertEqual(unrelated(), 1)
 
     def test_recording_gate_excludes_startup_target_calls(self) -> None:
         gate = Path(self.tempdir.name) / "recording.enabled"
