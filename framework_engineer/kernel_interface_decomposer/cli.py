@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from .config import ConfigError, RuntimeCaptureConfig
-from .runner import analyze_existing_trace, capture_runtime
+from .runner import analyze_existing_trace, capture_runtime, emit_progress
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -35,10 +35,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     try:
+        emit_progress(f"Loading Runtime Capture config: {args.config}")
         config = RuntimeCaptureConfig.load(args.config)
+        emit_progress(
+            f"Config accepted: backend={config.backend_name!r}, "
+            f"mode={'direct' if config.command is None else 'service'}"
+        )
         if args.command == "capture":
             result = capture_runtime(config)
         else:
+            emit_progress(
+                f"Offline analyze inputs: sqlite={args.sqlite}, events={args.events_dir}"
+            )
             result = analyze_existing_trace(
                 config,
                 sqlite_path=Path(args.sqlite).expanduser().resolve(),

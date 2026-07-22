@@ -24,7 +24,7 @@ framework_engineer/prompts/start_source_locate.md
 example_kernels/source_locate_golden/config/all_backends/source_locate_config.json
 ```
 
-它引用同目录的 `third_party_manifest.json`、KID v2 输入和独立 workspace。相对路径以配置文件所在
+它引用同目录的 `third_party_manifest.json`、KID V3 输入和独立 workspace。相对路径以配置文件所在
 目录解析。Agent 会自主运行 locate、四层源码搜索/finalize、extract 和最终 workspace 校验。
 
 `locate` 与 `extract` 仍是仅有的两个公开 CLI，但属于入口 Prompt 的内部执行步骤，不要求用户手工

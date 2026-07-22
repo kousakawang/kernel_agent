@@ -35,7 +35,7 @@ class AgentConfigFixture(unittest.TestCase):
         self.kid.write_text(
             json.dumps(
                 {
-                    "schema_version": "kernel-interface-decomposition/v2",
+                    "schema_version": "kernel-interface-decomposition/v3",
                     "kernels": [
                         {
                             "low_level_id": "demo",

@@ -1,6 +1,6 @@
 """Shared contracts for the source-locate tools.
 
-The tools consume only ``kernel-interface-decomposition/v2``.  ``locate`` adds
+The tools consume only ``kernel-interface-decomposition/v3``.  ``locate`` adds
 transient interface candidates; the source-locate Agent replaces those with the
 four-layer ``source_locations`` result; ``extract`` consumes that final result.
 Profiling metrics and coverage are deliberately opaque to this package.
@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-KID_SCHEMA_VERSION = "kernel-interface-decomposition/v2"
+KID_SCHEMA_VERSION = "kernel-interface-decomposition/v3"
 
 CAPTURE_ARCHETYPES: frozenset[str] = frozenset(
     {
@@ -173,7 +173,7 @@ def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
 
 
 def kernel_entries(schema: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return the flat v2 ``kernels`` list or raise a contract error."""
+    """Return the flat v3 ``kernels`` list or raise a contract error."""
 
     entries = schema.get("kernels")
     if not isinstance(entries, list) or not entries:
@@ -235,7 +235,7 @@ def validate_kid_schema(
             raise ContractError(f"{where}.interface must be a non-empty string")
         archetype = entry.get("archetype")
         if archetype not in CAPTURE_ARCHETYPES:
-            raise ContractError(f"{where}.archetype is not a v2 capture category")
+            raise ContractError(f"{where}.archetype is not a supported capture category")
         if "provider" not in entry or not (
             entry["provider"] is None or isinstance(entry["provider"], str)
         ):

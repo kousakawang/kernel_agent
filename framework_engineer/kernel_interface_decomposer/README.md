@@ -54,6 +54,15 @@ warms caches with collection and Runtime recording disabled, and the second is
 the formal test. A direct `test_cmd` must therefore be repeatable and idempotent.
 Only `cuda,nvtx` are traced; OS runtime tracing is intentionally disabled.
 
+High-level instrumentation normally derives an importable module from
+`target.file`. The `sitecustomize` bootstrap wraps the configured function as
+soon as that module finishes importing, before the import returns to callers.
+This patch is process-local and disappears with the process; it does not edit
+third-party source files. Direct `__main__` targets, non-importable source
+layouts, and targets that cannot be resolved as module/class attributes fall
+back to the existing optimized `sys.setprofile` implementation. Execution
+capture adapters continue to use their backend-specific common-entry wrappers.
+
 Sampling supports `unique_decomposition`, `all`, `last_n`, and `single`.
 `unique_decomposition` is the default: it groups invocations by kernel-owner
 execution boundaries, nesting, high→execution call paths, and unattributed
@@ -79,6 +88,9 @@ python3 -m framework_engineer.kernel_interface_decomposer analyze config.json \
 `capture` runs the service/test lifecycle and Nsight Systems. `analyze` only
 rebuilds normalized Runtime Capture data from existing evidence. The old `run`
 command and direct semantic/source resolution are intentionally unsupported.
+Both commands report stage progress and a 15-second heartbeat to stderr while
+keeping stdout as the final machine-readable JSON. Override the interval with
+`KID_PROGRESS_INTERVAL_SEC`.
 
 ## Output
 
@@ -169,7 +181,7 @@ python3 -m framework_engineer.kernel_interface_decomposer.semantic_resolver_tool
 
 `prepare` exposes only Runtime evidence and source snippets. Agent decisions
 must assign every direct kernel owner exactly once to a semantic interface.
-`finalize` computes all metrics and publishes `kernel-interface-decomposition/v2`
+`finalize` computes all metrics and publishes `kernel-interface-decomposition/v3`
 atomically. Context, decisions, and notes are internal evidence; source_locate
 consumes only the final decomposition.
 

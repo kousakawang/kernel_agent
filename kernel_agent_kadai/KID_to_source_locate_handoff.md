@@ -43,7 +43,7 @@ KID 也不提前填写源码文件、symbol 或四层定位结果。
 <output_dir>/<backend>/output/decomposition.schema.json
 ```
 
-文件是 `kernel-interface-decomposition/v2` 的数据实例，不是 JSON Schema 元文件。
+文件是 `kernel-interface-decomposition/v3` 的数据实例，不是 JSON Schema 元文件。
 `source_locate` 只把它作为正式 KID 输入；Runtime Capture 的 JSONL、SQLite、完整
 Python stack、Semantic Resolver context/decisions/notes 都不是稳定对接接口。
 
@@ -58,7 +58,7 @@ kernel_agent/example_kernels/nsys_poc_kid_golden/
 
 | 字段 | 类型 | 含义 |
 |---|---|---|
-| `schema_version` | string | 固定为 `kernel-interface-decomposition/v2`。 |
+| `schema_version` | string | 固定为 `kernel-interface-decomposition/v3`。 |
 | `backend_name` | string | 该文件对应的单个 backend/run 名称。 |
 | `target` | object | 用户指定的 high-level target：`interface/file/line`。 |
 | `coverage_report` | object | 所选 high-level invocation 的 GPU 时间覆盖情况。 |

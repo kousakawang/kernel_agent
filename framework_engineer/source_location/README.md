@@ -65,7 +65,7 @@ config/KID/源码根预检
 | --- | --- |
 | `schema_version` | 固定为 `source-locate-agent-config/v1` |
 | `testcase_id` | 当前 testcase 的安全目录名，只允许字母、数字、点、下划线和连字符 |
-| `kid_schema` | KID Semantic Resolver 的最终 v2 schema |
+| `kid_schema` | KID Semantic Resolver 的最终 V3 schema |
 | `third_party_manifest` | 允许读取并写成正式 hit 的第三方源码仓清单 |
 | `sglang_repo_root` | SGLang 完整源码根；其中的 `sgl-kernel/` 会自动加入搜索范围 |
 | `workspace` | 当前 testcase 独占的输出目录，不能位于任何被搜索源码仓内部 |
@@ -89,9 +89,9 @@ example_kernels/source_locate_golden/config/all_backends/source_locate_config.js
 
 不需要 GPU、SGLang 服务、编译环境，也不需要安装或修改被定位的 Python package。
 
-### KID v2 schema
+### KID V3 schema
 
-输入必须是 `kernel-interface-decomposition/v2`，每个 kernel 至少具有：
+输入必须是 `kernel-interface-decomposition/v3`，每个 kernel 至少具有：
 
 - 唯一、安全的 `low_level_id`；
 - 已确定的 semantic `interface`；

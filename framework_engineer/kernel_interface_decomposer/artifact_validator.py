@@ -24,7 +24,7 @@ except ImportError:  # pragma: no cover - direct script execution fallback
 
 
 RUNTIME_SCHEMA = "kid-runtime-capture/v1"
-FINAL_SCHEMA = "kernel-interface-decomposition/v2"
+FINAL_SCHEMA = "kernel-interface-decomposition/v3"
 CONFIG_RUNTIME_SCHEMA = "kid-runtime-config/v3"
 CONFIG_RESOLVER_SCHEMA = "kid-semantic-resolver-config/v3"
 ENVIRONMENT_SCHEMA = "kid-runtime-environment/v1"
