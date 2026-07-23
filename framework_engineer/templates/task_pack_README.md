@@ -21,6 +21,7 @@ Kernel Engineer should optimize only the candidate implementation under the ABI 
 - `scripts/run_benchmark.sh`: benchmark command.
 - `scripts/run_ncu.sh`: NCU command for hot cases.
 - `docs/original_capture_benchmark_summary.json`: advisory timing observed while capturing the original framework call.
+- `kernel_source_package/`: optional matched source-locate manifest and low-level kernel source reference.
 
 ## Allowed Edits
 
@@ -39,6 +40,7 @@ Kernel Engineer must not edit:
 - `original_source/`
 - `original_impl.py`
 - `reference_impl.py`
+- `kernel_source_package/`
 - `correctness_test.py`
 - `benchmark.py`
 - `task.yaml`, unless requesting a FrameworkChangeRequest

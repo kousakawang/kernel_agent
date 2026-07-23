@@ -220,6 +220,46 @@ class Phase1CliEndToEndTests(unittest.TestCase):
             extend_line = self._line_for(target_file, "def extend(*, values, state):")
             scale_line = self._line_for(target_file, "def scale(*, values):")
             boundary_line = self._line_for(target_file, "def forward_window(self, values):")
+            kernel_source_root = tmp_path / "extract"
+            source_dirs = kernel_source_root / "kernel_sources"
+            extend_source = source_dirs / "toy_extend_kernel"
+            scale_source = source_dirs / "toy_scale_kernel"
+            extend_source.mkdir(parents=True)
+            scale_source.mkdir(parents=True)
+            (extend_source / "kernel_impl.py").write_text("EXTEND_KERNEL = True\n", encoding="utf-8")
+            (scale_source / "kernel_impl.py").write_text("SCALE_KERNEL = True\n", encoding="utf-8")
+            source_manifest = kernel_source_root / "decomposition.extracted.schema.json"
+            source_manifest.write_text(
+                json.dumps(
+                    {
+                        "kernels": [
+                            {
+                                "low_level_id": "toy_extend_kernel",
+                                "source_locations": {
+                                    "layers": {
+                                        "interface_definition": {
+                                            "status": "resolved",
+                                            "hits": [{"file": str(target_file), "def_line": extend_line}],
+                                        }
+                                    }
+                                },
+                            },
+                            {
+                                "low_level_id": "toy_scale_kernel",
+                                "source_locations": {
+                                    "layers": {
+                                        "interface_definition": {
+                                            "status": "resolved",
+                                            "hits": [{"file": str(target_file), "def_line": scale_line}],
+                                        }
+                                    }
+                                },
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
             config_file.write_text(
                 textwrap.dedent(
                     f"""
@@ -227,6 +267,7 @@ class Phase1CliEndToEndTests(unittest.TestCase):
                     output_root = {str(output_root)!r}
                     service_cmd = {f"{sys.executable} {service_file}"!r}
                     workload_cmd = {f"{sys.executable} {workload_file}"!r}
+                    kernel_source_package_path = {str(kernel_source_root)!r}
                     forward_boundary_file = {str(target_file)!r}
                     forward_boundary_line = {boundary_line}
                     startup_timeout = 1
@@ -249,14 +290,30 @@ class Phase1CliEndToEndTests(unittest.TestCase):
             validated = self._run_cli("validate-config", "--config", str(config_file))
             self.assertTrue(validated["valid"], validated)
             self.assertEqual(len(validated["targets"]), 2)
+            self.assertEqual(validated["kernel_source_package_path"], str(kernel_source_root.resolve()))
 
             run = self._run_cli("run-phase1", "--config", str(config_file), timeout=240)
             self.assertEqual(run["task_group_id"], "toy_group")
             self.assertTrue((output_root / "multi_target_report.json").exists())
             self.assertEqual([item["status"] for item in run["targets"]], ["ok", "ok"])
-            for task_id in ("extend", "scale"):
+            expected_sources = {
+                "extend": ("toy_extend_kernel", "toy_scale_kernel"),
+                "scale": ("toy_scale_kernel", "toy_extend_kernel"),
+            }
+            for item in run["targets"]:
+                task_id = item["target"]["task_id"]
                 self.assertTrue((output_root / task_id / "correctness_test.py").exists())
                 self.assertTrue((output_root / task_id / "snapshots" / "manifest.json").exists())
+                selected_id, excluded_id = expected_sources[task_id]
+                package = output_root / task_id / "kernel_source_package"
+                self.assertTrue((package / source_manifest.name).is_file())
+                self.assertTrue((package / selected_id / "kernel_impl.py").is_file())
+                self.assertFalse((package / excluded_id).exists())
+                package_step = next(
+                    step for step in item["steps"] if step["step"] == "prepare-kernel-source-package"
+                )
+                self.assertEqual(package_step["returncode"], 0, package_step)
+                self.assertEqual(package_step["summary"]["low_level_id"], selected_id)
 
     def test_human_failure_output_renders_multiline_service_and_workload_logs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
