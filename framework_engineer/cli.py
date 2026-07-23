@@ -190,6 +190,7 @@ class Phase1Config:
     startup_timeout: int
     workload_timeout: int
     extra_env: dict[str, str]
+    kernel_source_package_path: Path | None
     run_baseline: bool
     run_probe_env: bool
     skip_env_check: bool
@@ -556,6 +557,9 @@ def cmd_validate_config(args: argparse.Namespace) -> int:
         "errors": errors,
         "task_group_id": cfg.task_group_id if cfg else None,
         "output_root": str(cfg.output_root) if cfg else None,
+        "kernel_source_package_path": (
+            str(cfg.kernel_source_package_path) if cfg and cfg.kernel_source_package_path else None
+        ),
         "targets": [_target_report(target) for target in cfg.targets] if cfg else [],
         "target_resolution_steps": resolution_steps,
     }
@@ -600,6 +604,9 @@ def cmd_run_phase1(args: argparse.Namespace) -> int:
         "task_group_id": cfg.task_group_id,
         "config": str(cfg.config_path),
         "output_root": str(cfg.output_root),
+        "kernel_source_package_path": (
+            str(cfg.kernel_source_package_path) if cfg.kernel_source_package_path else None
+        ),
         "targets": [],
         "baseline": {"status": "skipped"} if not cfg.run_baseline else None,
     }
@@ -628,7 +635,24 @@ def cmd_run_phase1(args: argparse.Namespace) -> int:
                     target.task_pack / "docs" / "target_definition_resolution.json",
                     target.target_resolution,
                 )
-                _write_task_contract(target.task_pack, cfg, target)
+                package_step = _run_step(
+                    "prepare-kernel-source-package",
+                    cmd_prepare_kernel_source_package,
+                    argparse.Namespace(
+                        task_pack=target.task_pack,
+                        kernel_source_package_path=cfg.kernel_source_package_path,
+                        target_file=target.configured_target_file,
+                        target_line=target.configured_target_line,
+                        output_format="json",
+                    ),
+                    context=target.task_id,
+                    progress=progress,
+                )
+                target_report["steps"].append(package_step)
+                if package_step["returncode"] != 0:
+                    target_report["status"] = "failed"
+                else:
+                    _write_task_contract(target.task_pack, cfg, target)
 
         if cfg.run_baseline and any(item["status"] != "failed" for item in report["targets"]):
             first_pack = next(target.task_pack for target, item in zip(cfg.targets, report["targets"]) if item["status"] != "failed")
@@ -1272,6 +1296,11 @@ def _load_phase1_config(path: Path) -> tuple[Phase1Config | None, list[str]]:
         startup_timeout=int(get("startup_timeout", 120)),
         workload_timeout=int(get("workload_timeout", 600)),
         extra_env={str(k): str(v) for k, v in dict(get("extra_env", {}) or {}).items()},
+        kernel_source_package_path=(
+            Path(str(get("kernel_source_package_path"))).expanduser().resolve()
+            if get("kernel_source_package_path", None)
+            else None
+        ),
         run_baseline=bool(get("run_baseline", True)),
         run_probe_env=bool(get("run_probe_env", False)),
         skip_env_check=bool(get("skip_env_check", True)),
@@ -1594,14 +1623,201 @@ def _validate_phase1_config(cfg: Phase1Config) -> list[str]:
         errors.extend(_validate_interface_ref(cfg.forward_boundary_file, cfg.forward_boundary_line, "forward boundary"))
     if cfg.output_root.exists() and not cfg.output_root.is_dir():
         errors.append(f"output_root exists but is not a directory: {cfg.output_root}")
+    kernel_source_root = cfg.kernel_source_package_path
+    if kernel_source_root is not None:
+        if not kernel_source_root.exists():
+            errors.append(f"kernel_source_package_path does not exist: {kernel_source_root}")
+        elif not kernel_source_root.is_dir():
+            errors.append(f"kernel_source_package_path is not a directory: {kernel_source_root}")
     for target in cfg.targets:
         if not target.target_file.exists():
             errors.append(f"{target.task_id}: target_file does not exist: {target.target_file}")
         else:
             errors.extend(_validate_interface_ref(target.target_file, target.target_line, f"{target.task_id} target"))
+        if kernel_source_root is not None and kernel_source_root.is_dir():
+            try:
+                _resolve_kernel_source_package_entry(
+                    kernel_source_root,
+                    target_file=target.configured_target_file,
+                    target_line=target.configured_target_line,
+                )
+            except ValueError as exc:
+                errors.append(f"{target.task_id}: {exc}")
         if target.task_pack.exists() and any(target.task_pack.iterdir()) and not cfg.force:
             errors.append(f"{target.task_id}: task_pack exists and is not empty; set force=True or choose a new path: {target.task_pack}")
     return errors
+
+
+def cmd_prepare_kernel_source_package(args: argparse.Namespace) -> int:
+    source_root: Path | None = args.kernel_source_package_path
+    if source_root is None:
+        report = {
+            "status": "skipped",
+            "reason": "kernel_source_package_path is not configured",
+            "destination": str(args.task_pack / "kernel_source_package"),
+        }
+        _emit_result(args, report, title="Kernel source package preparation")
+        return 0
+
+    try:
+        selection = _resolve_kernel_source_package_entry(
+            source_root,
+            target_file=args.target_file,
+            target_line=args.target_line,
+        )
+        destination = args.task_pack / "kernel_source_package"
+        if destination.exists():
+            shutil.rmtree(destination)
+        destination.mkdir(parents=True)
+
+        copied_json_files: list[str] = []
+        for json_file in selection["json_files"]:
+            source_json = Path(json_file)
+            shutil.copy2(source_json, destination / source_json.name)
+            copied_json_files.append(source_json.name)
+
+        source_dir = Path(selection["kernel_source_dir"])
+        copied_kernel_dir = destination / selection["low_level_id"]
+        shutil.copytree(source_dir, copied_kernel_dir)
+        report = {
+            "status": "ok",
+            "source_root": str(source_root),
+            "target_file": str(args.target_file),
+            "target_line": args.target_line,
+            "low_level_id": selection["low_level_id"],
+            "matched_json_files": selection["json_files"],
+            "destination": str(destination),
+            "copied_json_files": copied_json_files,
+            "copied_kernel_source_dir": str(copied_kernel_dir),
+        }
+    except ValueError as exc:
+        report = {
+            "status": "failed",
+            "errors": [str(exc)],
+            "source_root": str(source_root),
+            "target_file": str(args.target_file),
+            "target_line": args.target_line,
+        }
+        _emit_result(args, report, title="Kernel source package preparation")
+        return 1
+
+    _emit_result(args, report, title="Kernel source package preparation")
+    return 0
+
+
+def _resolve_kernel_source_package_entry(
+    source_root: Path,
+    *,
+    target_file: Path,
+    target_line: int,
+) -> dict[str, Any]:
+    source_root = source_root.expanduser().resolve()
+    json_files = sorted(source_root.glob("*.json"))
+    if not json_files:
+        raise ValueError(f"kernel source package has no top-level JSON files: {source_root}")
+
+    normalized_target = target_file.expanduser().resolve()
+    matches: list[dict[str, Any]] = []
+    for json_file in json_files:
+        try:
+            payload = json.loads(json_file.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise ValueError(f"failed to read kernel source JSON {json_file}: {exc!r}") from exc
+        kernels = payload.get("kernels", []) if isinstance(payload, dict) else []
+        for kernel in kernels:
+            if not isinstance(kernel, dict):
+                continue
+            low_level_id = kernel.get("low_level_id")
+            if not isinstance(low_level_id, str) or not low_level_id:
+                continue
+            for interface_definition in _interface_definition_records(kernel):
+                if interface_definition.get("status") != "resolved":
+                    continue
+                hits = interface_definition.get("hits", [])
+                if not isinstance(hits, list):
+                    continue
+                if any(
+                    _kernel_source_hit_matches(
+                        hit,
+                        target_file=normalized_target,
+                        target_line=target_line,
+                    )
+                    for hit in hits
+                ):
+                    matches.append(
+                        {
+                            "low_level_id": low_level_id,
+                            "json_file": json_file,
+                        }
+                    )
+                    break
+
+    if not matches:
+        raise ValueError(
+            "no resolved interface_definition hit matches configured target "
+            f"{normalized_target}:{target_line} under {source_root}"
+        )
+
+    low_level_ids = sorted({match["low_level_id"] for match in matches})
+    if len(low_level_ids) != 1:
+        raise ValueError(
+            "configured target matches multiple low_level_id values: "
+            f"target={normalized_target}:{target_line}, matches={low_level_ids}"
+        )
+    low_level_id = low_level_ids[0]
+    if Path(low_level_id).name != low_level_id or low_level_id in (".", ".."):
+        raise ValueError(f"invalid low_level_id in kernel source JSON: {low_level_id!r}")
+
+    kernel_source_dir = (source_root / "kernel_sources" / low_level_id).resolve()
+    expected_parent = (source_root / "kernel_sources").resolve()
+    if kernel_source_dir.parent != expected_parent:
+        raise ValueError(f"kernel source directory escapes package root: {kernel_source_dir}")
+    if not kernel_source_dir.is_dir():
+        raise ValueError(
+            f"matched low_level_id {low_level_id!r}, but source directory does not exist: {kernel_source_dir}"
+        )
+
+    matched_json_files = sorted({str(match["json_file"]) for match in matches})
+    return {
+        "low_level_id": low_level_id,
+        "json_files": matched_json_files,
+        "kernel_source_dir": str(kernel_source_dir),
+    }
+
+
+def _interface_definition_records(kernel: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    stack: list[Any] = [kernel.get("source_locations", {})]
+    while stack:
+        value = stack.pop()
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key == "interface_definition" and isinstance(child, dict):
+                    out.append(child)
+                elif isinstance(child, (dict, list)):
+                    stack.append(child)
+        elif isinstance(value, list):
+            stack.extend(value)
+    direct = kernel.get("interface_definition")
+    if isinstance(direct, dict):
+        out.append(direct)
+    return out
+
+
+def _kernel_source_hit_matches(
+    hit: Any,
+    *,
+    target_file: Path,
+    target_line: int,
+) -> bool:
+    if not isinstance(hit, dict) or hit.get("file") is None or hit.get("def_line") is None:
+        return False
+    try:
+        hit_file = Path(str(hit["file"])).expanduser().resolve()
+        hit_line = int(hit["def_line"])
+    except (OSError, TypeError, ValueError):
+        return False
+    return hit_file == target_file and hit_line == target_line
 
 
 def _validate_interface_ref(file: Path, line: int, role: str) -> list[str]:
@@ -1707,6 +1923,7 @@ source_entrypoints:
   target_file: "{target.target_file}"
   target_line: {target.target_line}
   target_resolution: "{target.target_resolution.get('status', 'unknown')}"
+  kernel_source_package: "{'kernel_source_package' if cfg.kernel_source_package_path else ''}"
   forward_boundary_file: "{cfg.forward_boundary_file}"
   forward_boundary_line: {cfg.forward_boundary_line}
 

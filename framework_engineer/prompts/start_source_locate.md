@@ -94,6 +94,11 @@ python3 -m framework_engineer.source_location.cli extract \
 其中 `<extract-dir>` 是 `artifacts.extracted_schema` 的父目录。不得把 located schema 本身传给
 extract，否则会丢失 extract 前的正式 Agent 产物。
 
+检查每个 target 的 `read_hints.txt` 是否保留完整的双路径映射：每个非占位 hit 都应采用
+`<复制文件的相对路径>: read lines X-Y  (from <原始源码绝对路径>)`。左侧供后续复制进 task pack 后
+读取打包源码，右侧保留 provenance，并供同一环境中的 Agent 继续查看原仓库上下文；不得用 task-pack
+内部路径覆盖或删除原始路径。
+
 ## 6. 验证完整 workspace
 
 ```bash

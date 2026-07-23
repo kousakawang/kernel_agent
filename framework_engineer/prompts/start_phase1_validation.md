@@ -21,6 +21,8 @@ Kernel Engineer 的 `task_pack/`。
 - `output_root`：推荐显式填写；使用 `targets = [...]` 形式时是必填项。
 - `drop_first_arg`：实例方法或其他第一个参数不应进入 kernel ABI 的 callable 通常设为
   `True`；free function 通常为 `False`。
+- 可选的 `kernel_source_package_path`：指向 source-locate 的 `extract/` 目录。配置后，目录
+  顶层必须有 JSON manifest，并包含 `kernel_sources/<low_level_id>/`。
 
 运行环境还必须满足：
 
@@ -97,7 +99,24 @@ extra_env = {
     "CUDA_VISIBLE_DEVICES": "0",
     "PYTHONPATH": "/absolute/path/to/framework/python",
 }
+
+# 可选：source-locate 的 extract 产物根目录。
+kernel_source_package_path = "/absolute/path/to/source_locate/workspace/extract"
 ```
+
+配置 `kernel_source_package_path` 后，CLI 对每个 target 使用配置原始的
+`target_file + target_line`（不是 third-party runtime 转换后的路径）匹配 JSON 中
+`interface_definition.status == "resolved"` 的 `hits[].file + hits[].def_line`。匹配结果必须唯一
+对应一个 `low_level_id`；随后只复制包含该匹配的 JSON manifest 和
+`kernel_sources/<low_level_id>/`。例如匹配到 `fla_recompute_w_u_fwd` 时生成：
+
+```text
+<task_pack>/kernel_source_package/
+├── decomposition.extracted.schema.json
+└── fla_recompute_w_u_fwd/
+```
+
+未配置时该步骤记为 `skipped`，不会创建 `kernel_source_package/`。
 
 `non_cudagraph_service_cmd` 为空时，当前实现会为 probe/capture 使用的 `service_cmd` 自动追加
 `--disable-cuda-graph`，并去掉重复的同名参数。baseline 始终使用原始 `service_cmd`。
@@ -172,47 +191,53 @@ human 模式下，进度写到 stderr，最终摘要写到 stdout；失败步骤
    - `force=True` 时先递归删除已有 target task pack。
    - 创建 scaffold，并写入配置化的 `task.yaml`、`env_manifest.yaml`，以及
      `docs/target_definition_resolution.json`。
-4. **可选 group-level baseline**
+4. **`prepare-kernel-source-package`**
+   - 未配置 `kernel_source_package_path` 时跳过。
+   - 扫描目录顶层 JSON，按 configured target 的 file/line 在
+     `interface_definition.hits` 中查找唯一 `low_level_id`。
+   - 将匹配 JSON 和 `kernel_sources/<low_level_id>/` 复制到当前 task pack 的
+     `kernel_source_package/`；不会复制其他 kernel 子目录。
+5. **可选 group-level baseline**
    - `run_baseline=True`（默认）时只在第一个成功 scaffold 的 task pack 上运行一次原始
      `service_cmd + workload_cmd`。
    - 把 `baseline_result.json` 和 `baseline_run_report.md` 复制到各 target。
    - 当前 baseline 的成功条件只看 workload return code 是否为 0；health 结果会记录，
      但不会单独决定返回码。报告包含 service 和 workload 的 stdout/stderr 尾部。
-5. **对当前 target 解析接口**
+6. **对当前 target 解析接口**
    - 依次执行内部步骤 `resolve-target` 和 `resolve-forward-boundary`。
    - 先按文件路径和 AST 得到用于插桩的静态接口；probe/capture 的 decorator 真正运行后，
      再以 callable 的 `__module__`/`__qualname__` 确定最终 qualified name。无需用户填写 import
      hint。
-6. **`probe-target-calls`**
+7. **`probe-target-calls`**
    - 用 non-cudagraph 服务再跑一次 workload。
    - 临时 instrument target 和 forward boundary，确认 workload return code 为 0 且
      `call_count > 0`。
    - 写入 `docs/target_call_probe.jsonl`、JSON/Markdown probe report。
-7. **`capture-snapshots`**
+8. **`capture-snapshots`**
    - 再启动一次 non-cudagraph 服务并运行 workload。
    - 保存真实 `pre_inputs.pt`、`post_inputs.pt`、`outputs.pt`，自动 diff 原地 mutation，
      并生成 `snapshots/raw_index.json` 和 capture timing/report。
    - 成功条件是 workload return code 为 0 且 `raw_sample_count > 0`。
-8. **`select-snapshots`**
+9. **`select-snapshots`**
    - 按 group 的 `total_hit_count` 降序选取有限个 group/sample。
    - 重建 `snapshots/selected/`，更新 `snapshots/manifest.json`、`shape_list.json` 和 selection
      report。
-9. **`generate-harness`**
+10. **`generate-harness`**
    - 生成 snapshot runtime、original/reference/candidate、correctness、benchmark 和脚本。
    - linked original 优先按 capture 得到的真实 module/qualname 导入；如果原实现或其运行依赖
      在验证环境不可用，初始 candidate 会退回 snapshot-golden，而不是让默认 correctness
      smoke 因 import 异常直接退出。
-10. **可选 `probe-env`**
+11. **可选 `probe-env`**
    - 仅当 `run_probe_env=True` 时执行，写入环境探测结果。
    - 单项工具不可用只会记录 `available=false`，不会让 `probe-env` 命令失败。
-11. **`validate-task-pack`**
+12. **`validate-task-pack`**
     - batch 总会运行 correctness smoke。
     - `run_benchmark_smoke=True` 时额外运行 benchmark smoke。
     - `skip_env_check=True`（默认）时跳过环境一致性；如果设为 `False`，必须同时先得到
       `docs/env_probe_result.json`，通常应设置 `run_probe_env=True`。
     - validation 期间自动应用 `DEVICE=validate_device`、`WARMUP=validate_warmup`、
       `REPEAT=validate_repeat` 和当前 `PYTHON`。
-12. **写总报告**
+13. **写总报告**
     - 所有 target 结束后写 `multi_target_report.json/md`。
 
 在默认 `run_baseline=True` 下，一个单 target 的完整成功流程通常会启动服务并跑 workload
@@ -225,6 +250,7 @@ human 模式下，进度写到 stderr，最终摘要写到 stdout；失败步骤
 | 配置 | 默认值 | 作用 |
 | --- | --- | --- |
 | `run_baseline` | `True` | 是否先跑 group-level baseline |
+| `kernel_source_package_path` | `None` | 可选 source-locate extract；配置后按 target 选择并复制 kernel source package |
 | `run_probe_env` | `False` | 是否生成环境探测结果 |
 | `skip_env_check` | `True` | 最终验证是否跳过环境一致性 |
 | `run_benchmark_smoke` | `False` | 最终验证是否运行 benchmark |
@@ -282,6 +308,7 @@ scripts/run_correctness.sh
 scripts/run_benchmark.sh
 scripts/run_ncu.sh
 docs/task_pack_validation_report.json
+kernel_source_package/  # 仅当配置了 kernel_source_package_path
 ```
 
 交付前确认 target 的状态为 `ok`，且其 validation report 中：
