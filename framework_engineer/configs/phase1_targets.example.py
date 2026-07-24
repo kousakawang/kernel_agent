@@ -41,7 +41,7 @@ extra_env = {
 # Optional source-locate extract directory. When set, run-phase1 matches each
 # configured target_file + target_line against interface_definition.hits, then
 # copies only the matched low_level_id directory and matching JSON manifest(s)
-# into <task_pack>/kernel_source_package/.
+# into <task_pack>/task/kernel_source_package/.
 kernel_source_package_path = None
 # kernel_source_package_path = "/path/to/source_locate/workspace/extract"
 

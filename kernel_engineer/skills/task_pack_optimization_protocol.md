@@ -4,90 +4,79 @@
 
 ## 输入目录
 
-Kernel Engineer 只以 task pack 为原始输入：
-
 ```text
 task_pack/
-  task.yaml
-  shape_list.json
-  env_manifest.yaml
-  snapshots/
-    manifest.json
-    selected/
-  original_source/
-    manifest.json
-    <copied_target_source>
-  original_impl.py
-  reference_impl.py
-  candidate_impl.py
-  correctness_test.py
-  benchmark.py
-  scripts/
+  README.md
+  validate_task_pack.py
+  task/
+    task.yaml
+    shape_list.json
+    env_manifest.yaml
+    snapshots/
+    kernel_source_package/
+    kernel_translate/
+    kernel_engineer_ws/
+    original_impl.py
+    reference_impl.py
+    candidate_impl.py
+    correctness_test.py
+    benchmark.py
+    scripts/
 ```
 
 ## 第一动作
 
-1. 读 `task.yaml`，确认 ABI、目标、禁止修改项。
-2. 读 `shape_list.json`，确认 required/hot shape。
-3. 读 `snapshots/manifest.json`，确认 selected group/sample。
-4. 读 `original_source/manifest.json` 和原始源码参考。
-5. 读 `env_manifest.yaml`，确认可用实现路径。
-6. 运行 `bash scripts/run_correctness.sh`。
-7. 运行 `bash scripts/run_benchmark.sh`。
+1. 从外层目录运行 `python validate_task_pack.py`。
+2. 读 `task/task.yaml`，确认 ABI、目标和写权限合同。
+3. 读 `task/shape_list.json` 与 `task/snapshots/manifest.json`。
+4. 只读参考 `task/kernel_translate/` 和 `task/kernel_source_package/`。
+5. 读 `task/env_manifest.yaml`。
+6. 运行 `python task/scripts/run_correctness.py`。
+7. 运行 `python task/scripts/run_benchmark.py`。
 
-如果 linked original 不可用，`run_benchmark.sh` 可能记录 reference unavailable；
-Kernel Engineer 替换 candidate 后可以用 `TARGET=candidate bash scripts/run_benchmark.sh`。
-如果 correctness 或 candidate-only benchmark smoke 不能运行，不要修 benchmark、snapshot 或 shape list；
-输出 `task_acceptance_review.md` 给 Framework Engineer。
+linked original 不可用时，可以执行：
 
-## 允许修改
+```bash
+python task/scripts/run_benchmark.py --target candidate
+```
 
-可以修改：
+若 correctness 或 candidate-only benchmark 不能运行，不得修改 harness、snapshot 或
+shape list；输出 task acceptance review 给 Framework Engineer。
 
-- `candidate_impl.py`
-- `kernel_sources/`
-- `docs/iteration_log.md`
-- 自己生成的报告
+## 写权限
 
-不能修改：
+Kernel Engineer 可以：
 
-- `snapshots/`
-- `shape_list.json`
-- `snapshot_runtime.py`
-- `original_source/`
-- `original_impl.py`
-- `reference_impl.py`
-- `correctness_test.py`
-- `benchmark.py`
-- tolerance
-- timing rules
+- 修改 `task/candidate_impl.py`；
+- 在 `task/kernel_engineer_ws/` 内创建、修改、删除实现和构建产物；
+- 在 `task/kernel_engineer_ws/iteration_log.md` 记录迭代。
+
+Kernel Engineer 不得修改：
+
+- `task/kernel_translate/`、`task/kernel_source_package/`；
+- `task/snapshots/`、`task/shape_list.json`、`task/snapshot_runtime.py`；
+- `task/original_impl.py`、`task/reference_impl.py`；
+- `task/correctness_test.py`、`task/benchmark.py`、`task/scripts/`；
+- `task/env_probe/`、`task/task.yaml`、根目录 README 和验证器；
+- `task/docs/` 下的 Framework Engineer 交付证据；
+- tolerance 或 timing rules。
 
 ## 迭代规则
 
 每轮只做一个明确方向：
 
-- 实现或修改 candidate。
+- 修改 candidate 或 `kernel_engineer_ws/` 中的实现。
 - 跑 correctness。
-- correctness 过后跑 benchmark。
-- 对 hot case 跑 NCU，若 ncu 可用。
-- 记录假设、改动、结果、下一步。
+- correctness 通过后跑 benchmark。
+- 对 hot group 跑 NCU。
+- 把假设、改动、结果和下一步追加到 iteration log。
 
-## 收敛规则
+## 收敛与交付
 
-允许停止的条件：
+允许在达标、平台期、接近硬件上限或需要 FrameworkChangeRequest 时停止。最终交付：
 
-- 达到 `task.yaml` 的 performance target。
-- 最近 3 个有效迭代提升小于 3%，且重新 profile 后没有新的可行方向。
-- 至少尝试 3 类不同优化方向仍无收益。
-- 证明瓶颈接近硬件上限或 launch/timing 下限。
-- 需要 FrameworkChangeRequest 才能继续。
-
-## 交付
-
-最终交付：
-
-- 修改后的 candidate 实现。
-- `benchmark_report.md`
-- `kernel_constraints.md`
-- `kernel_delivery_package.md`
-- 如需要，`framework_change_request.yaml`
+- 修改后的 candidate 和 `kernel_engineer_ws/`；
+- `benchmark_report.md`；
+- `kernel_constraints.md`；
+- `kernel_delivery_package.md`；
+- 如需要，`framework_change_request.yaml`。

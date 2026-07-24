@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from ..task_pack_layout import task_dir
 from .models import SCHEMA_VERSION, SnapshotSample
 from .store import SnapshotStore
 
@@ -140,7 +141,10 @@ def write_shape_list_summary(task_pack: Path, manifest: dict[str, Any]) -> None:
         "shape_groups": shape_groups,
         "shape_cases": shape_groups,
     }
-    (task_pack / "shape_list.json").write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    (task_dir(task_pack) / "shape_list.json").write_text(
+        json.dumps(payload, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
 
 
 def _collect_tensors(tree: Any, prefix: str) -> list[dict[str, Any]]:

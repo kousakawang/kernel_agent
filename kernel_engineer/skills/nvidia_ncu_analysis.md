@@ -7,7 +7,7 @@
 模板命令：
 
 ```bash
-bash scripts/run_ncu.sh <case_id>
+python task/scripts/run_ncu.py <group_id> [sample_id]
 ```
 
 必要时缩小 section：

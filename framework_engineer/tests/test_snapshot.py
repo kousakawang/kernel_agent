@@ -90,19 +90,18 @@ class SnapshotTests(unittest.TestCase):
     def test_select_and_generated_harness_passes_without_torch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             task_pack = Path(tmp) / "task_pack"
-            (task_pack / "snapshots" / "raw").mkdir(parents=True)
-            (task_pack / "snapshots" / "selected").mkdir(parents=True)
-            store = SnapshotStore(task_pack / "snapshots")
+            payload = task_pack / "task"
+            (payload / "snapshots" / "raw").mkdir(parents=True)
+            (payload / "snapshots" / "selected").mkdir(parents=True)
+            store = SnapshotStore(payload / "snapshots")
             self._capture_primitive_calls(store, task_id=task_pack.name)
             manifest = SnapshotSelector(store).select(max_groups=1, max_samples_per_group=4)
             write_shape_list_summary(task_pack, manifest)
             SnapshotHarnessBuilder(task_pack).generate()
-            original_manifest = json.loads((task_pack / "original_source" / "manifest.json").read_text(encoding="utf-8"))
-            self.assertFalse(original_manifest["source_available"])
-            self.assertFalse(original_manifest["executable"])
+            self.assertFalse((payload / "original_source").exists())
             proc = subprocess.run(
                 [sys.executable, "correctness_test.py", "--device", "cpu"],
-                cwd=task_pack,
+                cwd=payload,
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -110,6 +109,12 @@ class SnapshotTests(unittest.TestCase):
             )
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertIn('"status": "PASS"', proc.stdout)
+            correctness_row = json.loads(proc.stdout.splitlines()[0])
+            self.assertIn("case_shape", correctness_row)
+            self.assertIn("[correctness] RUN", proc.stderr)
+            self.assertIn("inputs=[<no tensor inputs>]", proc.stderr)
+            self.assertIn("[correctness] PASS", proc.stderr)
+            self.assertIn("[correctness] DONE passed=4", proc.stderr)
             bench = subprocess.run(
                 [
                     sys.executable,
@@ -123,7 +128,7 @@ class SnapshotTests(unittest.TestCase):
                     "--repeat",
                     "2",
                 ],
-                cwd=task_pack,
+                cwd=payload,
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -131,6 +136,13 @@ class SnapshotTests(unittest.TestCase):
             )
             self.assertEqual(bench.returncode, 0, bench.stderr)
             self.assertIn('"candidate"', bench.stdout)
+            benchmark_row = json.loads(bench.stdout.splitlines()[0])
+            self.assertIn("case_shape", benchmark_row)
+            self.assertIn("[benchmark] RUN", bench.stderr)
+            self.assertIn("inputs=[<no tensor inputs>]", bench.stderr)
+            self.assertIn("[benchmark] DONE", bench.stderr)
+            self.assertIn("candidate_median_us=", bench.stderr)
+            self.assertIn("[benchmark] COMPLETE cases=4 groups=1", bench.stderr)
             both = subprocess.run(
                 [
                     sys.executable,
@@ -144,7 +156,7 @@ class SnapshotTests(unittest.TestCase):
                     "--repeat",
                     "2",
                 ],
-                cwd=task_pack,
+                cwd=payload,
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -153,13 +165,90 @@ class SnapshotTests(unittest.TestCase):
             self.assertEqual(both.returncode, 0, both.stderr)
             self.assertIn('"reference": {"available": false', both.stdout)
 
+    def test_generated_runtime_formats_tensor_case_shapes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task_pack = Path(tmp) / "task_pack"
+            payload = task_pack / "task"
+            (payload / "snapshots" / "raw").mkdir(parents=True)
+            (payload / "snapshots" / "selected").mkdir(parents=True)
+            store = SnapshotStore(payload / "snapshots")
+            self._capture_primitive_calls(store, task_id=task_pack.name)
+            manifest = SnapshotSelector(store).select(max_groups=1, max_samples_per_group=1)
+            write_shape_list_summary(task_pack, manifest)
+            SnapshotHarnessBuilder(task_pack).generate()
+
+            group = {
+                "interface": {
+                    "args_tree": {
+                        "kind": "tuple",
+                        "items": [
+                            {
+                                "kind": "tensor",
+                                "meta": {
+                                    "path": "args.0",
+                                    "shape": [2, 3],
+                                    "dtype": "float16",
+                                    "stride": [3, 1],
+                                },
+                            }
+                        ],
+                    },
+                    "kwargs_tree": {
+                        "kind": "dict",
+                        "items": {
+                            "state": {
+                                "kind": "tensor",
+                                "meta": {
+                                    "path": "kwargs.state",
+                                    "shape": [2, 4, 8],
+                                    "dtype": "float32",
+                                    "stride": [32, 8, 1],
+                                },
+                            }
+                        },
+                    },
+                }
+            }
+            code = (
+                "import json, snapshot_runtime\n"
+                f"group = json.loads({json.dumps(json.dumps(group))})\n"
+                "print(json.dumps(snapshot_runtime.case_shape_info(group), sort_keys=True))\n"
+                "print(snapshot_runtime.format_case_shape(group))\n"
+            )
+            proc = subprocess.run(
+                [sys.executable, "-B", "-c", code],
+                cwd=payload,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            lines = proc.stdout.splitlines()
+            shape_info = json.loads(lines[0])
+            self.assertEqual(
+                shape_info,
+                [
+                    {"path": "args.0", "shape": [2, 3], "dtype": "float16", "stride": [3, 1]},
+                    {
+                        "path": "kwargs.state",
+                        "shape": [2, 4, 8],
+                        "dtype": "float32",
+                        "stride": [32, 8, 1],
+                    },
+                ],
+            )
+            self.assertIn("args.0 shape=[2, 3] dtype=float16 stride=[3, 1]", lines[1])
+            self.assertIn("kwargs.state shape=[2, 4, 8] dtype=float32 stride=[32, 8, 1]", lines[1])
+
     def test_generated_candidate_falls_back_when_source_relative_import_cannot_be_resolved(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             task_pack = tmp_path / "task_pack"
-            (task_pack / "snapshots" / "raw").mkdir(parents=True)
-            (task_pack / "snapshots" / "selected").mkdir(parents=True)
-            store = SnapshotStore(task_pack / "snapshots")
+            payload = task_pack / "task"
+            (payload / "snapshots" / "raw").mkdir(parents=True)
+            (payload / "snapshots" / "selected").mkdir(parents=True)
+            store = SnapshotStore(payload / "snapshots")
             self._capture_primitive_calls(store, task_id=task_pack.name)
             manifest = SnapshotSelector(store).select(max_groups=1, max_samples_per_group=4)
             write_shape_list_summary(task_pack, manifest)
@@ -174,7 +263,7 @@ class SnapshotTests(unittest.TestCase):
                 "    return value + OFFSET\n",
                 encoding="utf-8",
             )
-            docs = task_pack / "docs"
+            docs = payload / "docs"
             docs.mkdir(parents=True)
             (docs / "snapshot_capture_report.json").write_text(
                 json.dumps(
@@ -194,14 +283,11 @@ class SnapshotTests(unittest.TestCase):
             )
 
             SnapshotHarnessBuilder(task_pack).generate()
-            original_manifest = json.loads(
-                (task_pack / "original_source" / "manifest.json").read_text(encoding="utf-8")
-            )
-            self.assertFalse(original_manifest["executable"], original_manifest)
+            self.assertFalse((payload / "original_source").exists())
 
             proc = subprocess.run(
                 [sys.executable, "correctness_test.py", "--device", "cpu"],
-                cwd=task_pack,
+                cwd=payload,
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

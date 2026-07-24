@@ -256,7 +256,7 @@ class RealSGLangPhase1CliTests(unittest.TestCase):
                 )
                 self.assertTrue(validate["valid"], validate)
 
-            manifest_path = task_pack / "snapshots" / "manifest.json"
+            manifest_path = task_pack / "task" / "snapshots" / "manifest.json"
             if manifest_path.exists():
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                 if cfg.should_run_cli("select-snapshots"):

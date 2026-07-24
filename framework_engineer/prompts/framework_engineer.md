@@ -50,7 +50,9 @@ python -m framework_engineer.cli run-phase1 --config <config.py>
 - 验证 target/forward boundary 可解析且 target 被调用。
 - 捕获真实 workload 的 `pre_inputs`、`post_inputs`、`outputs`。
 - 自动检测被原地修改的输入，并把需要比较的 post-state path 写入 sample metadata。
-- 生成自包含 `task_pack/`：selected snapshots、snapshot runtime、original source reference、reference/candidate、correctness、benchmark、NCU 命令、env manifest。
+- 生成自包含 `task_pack/`：selected snapshots、snapshot runtime、kernel source package、
+  reference/candidate、correctness、benchmark、Python NCU runner、env manifest，以及
+  `kernel_translate/`、`kernel_engineer_ws/` 两个隔离 workspace。
 - 执行 `validate-task-pack`，确认 task pack 文件、snapshot、correctness smoke 和可选环境/benchmark 检查通过。
 
 待实现职责：
@@ -75,10 +77,11 @@ python -m framework_engineer.cli run-phase1 --config <config.py>
 `validate-task-pack` 至少确认：
 
 - task pack 必需文件存在。
-- `snapshots/manifest.json` 和 selected snapshot 文件完整。
-- `original_source/manifest.json` 存在。
+- `task/snapshots/manifest.json` 和 selected snapshot 文件完整。
+- 根目录、workspace 权限合同和纯 Python runner 符合交付结构。
 - correctness smoke 通过。
 - env check 被执行或明确标记 skipped。
 - benchmark smoke 被执行或明确标记 skipped。
 
-linked original 不可用不等于 task pack 无效；正式性能验证可在 Kernel Engineer 替换 candidate 后使用 `TARGET=candidate bash scripts/run_benchmark.sh`。
+linked original 不可用不等于 task pack 无效；正式性能验证可在 Kernel Engineer 替换
+candidate 后使用 `python task/scripts/run_benchmark.py --target candidate`。

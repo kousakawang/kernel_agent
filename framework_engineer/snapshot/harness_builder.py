@@ -4,13 +4,10 @@ from __future__ import annotations
 
 import json
 import shutil
-import hashlib
-import importlib
-import inspect
-import sys
 from pathlib import Path
 from typing import Any
 
+from ..task_pack_layout import task_dir
 from .selector import write_shape_list_summary
 from .store import SnapshotStore
 
@@ -18,13 +15,13 @@ from .store import SnapshotStore
 class SnapshotHarnessBuilder:
     def __init__(self, task_pack: Path | str):
         self.task_pack = Path(task_pack)
-        self.store = SnapshotStore(self.task_pack / "snapshots")
+        self.payload = task_dir(self.task_pack)
+        self.store = SnapshotStore(self.payload / "snapshots")
 
     def generate(self, *, candidate_function: str = "candidate") -> None:
         manifest = self.store.read_manifest()
         target_info = self._target_info(manifest)
         self._write_runtime()
-        self._write_original_source(target_info)
         self._write_original_impl(target_info)
         self._write_reference_impl(candidate_function)
         self._write_candidate_impl(candidate_function)
@@ -34,137 +31,49 @@ class SnapshotHarnessBuilder:
         write_shape_list_summary(self.task_pack, manifest)
 
     def _write_runtime(self) -> None:
-        (self.task_pack / "snapshot_runtime.py").write_text(SNAPSHOT_RUNTIME, encoding="utf-8")
+        (self.payload / "snapshot_runtime.py").write_text(SNAPSHOT_RUNTIME, encoding="utf-8")
 
     def _write_original_impl(self, target_info: dict[str, Any]) -> None:
-        (self.task_pack / "original_impl.py").write_text(
+        (self.payload / "original_impl.py").write_text(
             ORIGINAL_IMPL.replace("__TARGET_INFO_JSON__", json.dumps(target_info, indent=2, sort_keys=True)),
             encoding="utf-8",
         )
 
-    def _write_original_source(self, target_info: dict[str, Any]) -> None:
-        out = self.task_pack / "original_source"
-        out.mkdir(parents=True, exist_ok=True)
-
-        source_file = target_info.get("file")
-        copied_file: str | None = None
-        source_sha256: str | None = None
-        source_available = False
-        source_error: str | None = None
-
-        if source_file:
-            src = Path(source_file)
-            if src.exists():
-                dst = out / src.name
-                shutil.copy2(src, dst)
-                copied_file = str(dst.relative_to(self.task_pack))
-                source_sha256 = _sha256_file(dst)
-                source_available = True
-            else:
-                source_error = f"source file does not exist in current environment: {source_file}"
-        else:
-            source_error = "target_info has no source file"
-
-        linked_status = self._probe_linked_original(target_info)
-        manifest = {
-            "schema_version": "kernel_agent.original_source.v1",
-            "purpose": "source reference only; executable replay uses linked original_impl.py against the framework environment",
-            "target_info": target_info,
-            "source_available": source_available,
-            "source_file": source_file,
-            "copied_file": copied_file,
-            "source_sha256": source_sha256,
-            "source_error": source_error,
-            "linked_original": linked_status,
-            "executable": bool(linked_status.get("executable")),
-        }
-        (out / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
-
-    def _probe_linked_original(self, target_info: dict[str, Any]) -> dict[str, Any]:
-        status: dict[str, Any] = {
-            "mode": "linked",
-            "checked": "generate-harness import/callable probe",
-            "importable": False,
-            "callable_resolved": False,
-            "executable": False,
-            "reason": None,
-        }
-        module_name = target_info.get("module_name")
-        source_file = target_info.get("file")
-        function_name = target_info.get("function_name")
-        class_path = target_info.get("class_path") or []
-        if source_file:
-            _ensure_python_root(Path(source_file), module_name=module_name)
-        try:
-            if module_name:
-                module = importlib.import_module(module_name)
-            elif source_file:
-                module = _load_module_from_file(Path(source_file), "_kernel_agent_probe_original_target")
-            else:
-                status["reason"] = "target_info has neither module_name nor source file"
-                return status
-            status["importable"] = True
-            obj: Any = module
-            for part in class_path:
-                obj = getattr(obj, part)
-            if function_name:
-                obj = getattr(obj, function_name)
-            else:
-                status["reason"] = "target_info has no function_name"
-                return status
-            status["callable_resolved"] = callable(obj)
-            if not callable(obj):
-                status["reason"] = "resolved object is not callable"
-                return status
-            if _looks_like_unbound_instance_method(obj, class_path):
-                status["reason"] = "resolved target appears to be an unbound instance method and task pack does not own self"
-                return status
-            status["executable"] = True
-            status["reason"] = "linked callable resolved; sample replay is verified by correctness/benchmark"
-            return status
-        except Exception as exc:
-            status["reason"] = repr(exc)
-            return status
-
     def _write_reference_impl(self, candidate_function: str) -> None:
-        (self.task_pack / "reference_impl.py").write_text(
+        (self.payload / "reference_impl.py").write_text(
             REFERENCE_IMPL.replace("__CANDIDATE_FUNCTION__", candidate_function),
             encoding="utf-8",
         )
 
     def _write_candidate_impl(self, candidate_function: str) -> None:
-        (self.task_pack / "candidate_impl.py").write_text(
+        (self.payload / "candidate_impl.py").write_text(
             CANDIDATE_IMPL.replace("__CANDIDATE_FUNCTION__", candidate_function),
             encoding="utf-8",
         )
 
     def _write_correctness(self, candidate_function: str) -> None:
-        (self.task_pack / "correctness_test.py").write_text(
+        (self.payload / "correctness_test.py").write_text(
             CORRECTNESS_TEST.replace("__CANDIDATE_FUNCTION__", candidate_function),
             encoding="utf-8",
         )
 
     def _write_benchmark(self, candidate_function: str) -> None:
-        (self.task_pack / "benchmark.py").write_text(
+        (self.payload / "benchmark.py").write_text(
             BENCHMARK.replace("__CANDIDATE_FUNCTION__", candidate_function),
             encoding="utf-8",
         )
 
     def _write_scripts(self) -> None:
-        scripts = self.task_pack / "scripts"
+        scripts = self.payload / "scripts"
         scripts.mkdir(parents=True, exist_ok=True)
-        files = {
-            "run_correctness.sh": RUN_CORRECTNESS,
-            "run_benchmark.sh": RUN_BENCHMARK,
-            "run_ncu.sh": RUN_NCU,
-        }
-        for name, text in files.items():
+        template_dir = Path(__file__).resolve().parents[1] / "templates"
+        for name in ("run_correctness.py", "run_benchmark.py", "run_ncu.py"):
             path = scripts / name
-            path.write_text(text, encoding="utf-8")
+            shutil.copy2(template_dir / name, path)
             path.chmod(0o755)
 
     def _target_info(self, manifest: dict[str, Any]) -> dict[str, Any]:
-        capture_report = self.task_pack / "docs" / "snapshot_capture_report.json"
+        capture_report = self.payload / "docs" / "snapshot_capture_report.json"
         if capture_report.exists():
             data = json.loads(capture_report.read_text(encoding="utf-8"))
             target = data.get("target_interface")
@@ -197,69 +106,13 @@ class SnapshotHarnessBuilder:
 
 
 def copy_probe_templates(template_dir: Path, task_pack: Path) -> None:
-    env_probe = task_pack / "env_probe"
+    env_probe = task_dir(task_pack) / "env_probe"
     env_probe.mkdir(parents=True, exist_ok=True)
-    for name in ("probe_triton.py", "probe_cutedsl.py", "probe_cuda_extension.py", "probe_ncu.sh"):
+    for name in ("probe_triton.py", "probe_cutedsl.py", "probe_cuda_extension.py", "probe_ncu.py"):
         src = template_dir / name
         if src.exists():
             dst = env_probe / name
             shutil.copy2(src, dst)
-            if dst.suffix == ".sh":
-                dst.chmod(0o755)
-
-
-def _sha256_file(path: Path) -> str:
-    hasher = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            hasher.update(chunk)
-    return hasher.hexdigest()
-
-
-def _ensure_python_root(path: Path, *, module_name: str | None = None) -> None:
-    try:
-        resolved = path.resolve()
-    except Exception:
-        resolved = path
-    if module_name:
-        root = resolved.parent
-        for _ in module_name.split(".")[:-1]:
-            root = root.parent
-    else:
-        parts = list(resolved.parts)
-        if "python" in parts:
-            idx = len(parts) - 1 - list(reversed(parts)).index("python")
-            root = Path(*parts[: idx + 1])
-        else:
-            root = resolved.parent
-    root_str = str(root)
-    if root_str and root_str not in sys.path:
-        sys.path.insert(0, root_str)
-
-
-def _load_module_from_file(path: Path, name: str):
-    import importlib.util
-
-    if not path.exists():
-        raise FileNotFoundError(path)
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Cannot create import spec for {path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def _looks_like_unbound_instance_method(obj: Any, class_path: list[str]) -> bool:
-    if not class_path:
-        return False
-    try:
-        signature = inspect.signature(obj)
-    except (TypeError, ValueError):
-        return False
-    params = list(signature.parameters.values())
-    return bool(params and params[0].name == "self")
 
 
 SNAPSHOT_RUNTIME = r'''"""Standalone snapshot replay runtime copied into task packs."""
@@ -281,13 +134,15 @@ def _torch():
 
 
 CURRENT_SAMPLE = None
+DEFAULT_SNAPSHOT_ROOT = Path(__file__).resolve().parent / "snapshots"
 
 
-def load_manifest(root: Path = Path("snapshots")) -> dict[str, Any]:
+def load_manifest(root: Path | None = None) -> dict[str, Any]:
+    root = DEFAULT_SNAPSHOT_ROOT if root is None else root
     return json.loads((root / "manifest.json").read_text())
 
 
-def list_groups(root: Path = Path("snapshots"), priority: str | None = "required") -> list[dict[str, Any]]:
+def list_groups(root: Path | None = None, priority: str | None = "required") -> list[dict[str, Any]]:
     manifest = load_manifest(root)
     groups = manifest.get("case_groups", [])
     if priority is None:
@@ -296,12 +151,13 @@ def list_groups(root: Path = Path("snapshots"), priority: str | None = "required
 
 
 def list_samples(
-    root: Path = Path("snapshots"),
+    root: Path | None = None,
     *,
     group_id: str | None = None,
     sample_id: str | None = None,
     priority: str | None = "required",
 ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    root = DEFAULT_SNAPSHOT_ROOT if root is None else root
     out = []
     for group in list_groups(root, priority=priority):
         if group_id is not None and group["group_id"] != group_id:
@@ -313,7 +169,52 @@ def list_samples(
     return out
 
 
-def load_sample(group_id: str, sample_id: str, root: Path = Path("snapshots"), device: str = "cuda") -> dict[str, Any]:
+def case_shape_info(group_meta: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return stable, JSON-serializable input tensor metadata for one case group."""
+    interface = group_meta.get("interface", {})
+    tensors: list[dict[str, Any]] = []
+    _collect_tensor_shapes(interface.get("args_tree"), tensors)
+    _collect_tensor_shapes(interface.get("kwargs_tree"), tensors)
+    return tensors
+
+
+def format_case_shape(group_meta: dict[str, Any]) -> str:
+    """Format input tensor shapes for concise human-readable progress logs."""
+    tensors = case_shape_info(group_meta)
+    if not tensors:
+        return "<no tensor inputs>"
+    return "; ".join(
+        f"{tensor['path']} shape={tensor['shape']} dtype={tensor['dtype']} stride={tensor['stride']}"
+        for tensor in tensors
+    )
+
+
+def _collect_tensor_shapes(tree: Any, out: list[dict[str, Any]]) -> None:
+    if not isinstance(tree, dict):
+        return
+    kind = tree.get("kind")
+    if kind == "tensor":
+        meta = tree.get("meta", {})
+        out.append(
+            {
+                "path": str(meta.get("path", "")),
+                "shape": list(meta.get("shape", [])),
+                "dtype": str(meta.get("dtype", "unknown")),
+                "stride": list(meta.get("stride", [])),
+            }
+        )
+        return
+    items = tree.get("items", [])
+    if kind == "dict" and isinstance(items, dict):
+        for key in sorted(items):
+            _collect_tensor_shapes(items[key], out)
+    elif kind in ("tuple", "list") and isinstance(items, list):
+        for item in items:
+            _collect_tensor_shapes(item, out)
+
+
+def load_sample(group_id: str, sample_id: str, root: Path | None = None, device: str = "cuda") -> dict[str, Any]:
+    root = DEFAULT_SNAPSHOT_ROOT if root is None else root
     group_dir = root / "selected" / group_id
     sample_dir = group_dir / "samples" / sample_id
     group_meta = json.loads((group_dir / "group_meta.json").read_text())
@@ -472,10 +373,9 @@ def assert_tree_close(actual: Any, expected: Any, *, atol: float, rtol: float, p
 
 ORIGINAL_IMPL = '''"""Original target replay generated by Framework Engineer.
 
-This module tries to call the captured framework target on replayed snapshot
-inputs through the original framework environment. The copied source under
-original_source/ is reference material only; execution stays linked to the
-framework path captured by Framework Engineer.
+This module calls the captured framework target on replayed snapshot inputs
+through the original framework environment. Target identity is embedded below;
+execution stays linked to the runtime path captured by Framework Engineer.
 """
 
 from __future__ import annotations
@@ -663,6 +563,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 
 import candidate_impl
 import reference_impl
@@ -709,6 +610,7 @@ def run_sample(group_meta, sample_meta, *, device: str, mode: str) -> dict:
     return {
         "group_id": group_meta["group_id"],
         "sample_id": sample_meta["sample_id"],
+        "case_shape": snapshot_runtime.case_shape_info(group_meta),
         "status": "PASS",
         "mode": mode,
     }
@@ -725,8 +627,15 @@ def main() -> None:
 
     priority = None if args.all_priorities else "required"
     selected = snapshot_runtime.list_samples(group_id=args.group_id, sample_id=args.sample_id, priority=priority)
-    for group, sample in selected:
-        print(json.dumps(run_sample(group, sample, device=args.device, mode=args.mode), sort_keys=True))
+    total = len(selected)
+    for index, (group, sample) in enumerate(selected, start=1):
+        case = f"case={index}/{total} group={group['group_id']} sample={sample['sample_id']}"
+        shapes = snapshot_runtime.format_case_shape(group)
+        print(f"[correctness] RUN  {case} inputs=[{shapes}]", file=sys.stderr, flush=True)
+        result = run_sample(group, sample, device=args.device, mode=args.mode)
+        print(json.dumps(result, sort_keys=True), flush=True)
+        print(f"[correctness] PASS {case}", file=sys.stderr, flush=True)
+    print(f"[correctness] DONE passed={total}", file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":
@@ -741,6 +650,7 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+import sys
 import time
 from collections import defaultdict
 
@@ -816,6 +726,7 @@ def benchmark_sample(group_meta, sample_meta, *, device: str, target: str, warmu
         "record_type": "sample",
         "group_id": group_meta["group_id"],
         "sample_id": sample_meta["sample_id"],
+        "case_shape": snapshot_runtime.case_shape_info(group_meta),
         "warmup": warmup,
         "repeat": repeat,
     }
@@ -855,10 +766,23 @@ def main() -> None:
     priority = None if args.all_priorities else "required"
     selected = snapshot_runtime.list_samples(group_id=args.group_id, sample_id=args.sample_id, priority=priority)
     by_group = defaultdict(list)
-    for group, sample in selected:
+    total = len(selected)
+    for index, (group, sample) in enumerate(selected, start=1):
+        case = f"case={index}/{total} group={group['group_id']} sample={sample['sample_id']}"
+        shapes = snapshot_runtime.format_case_shape(group)
+        print(f"[benchmark] RUN  {case} inputs=[{shapes}]", file=sys.stderr, flush=True)
         result = benchmark_sample(group, sample, device=args.device, target=args.target, warmup=args.warmup, repeat=args.repeat)
         by_group[group["group_id"]].append(result)
-        print(json.dumps(result, sort_keys=True))
+        print(json.dumps(result, sort_keys=True), flush=True)
+        timings = []
+        for target_name in ("reference", "candidate"):
+            metrics = result.get(target_name)
+            if isinstance(metrics, dict) and "median_us" in metrics:
+                timings.append(f"{target_name}_median_us={metrics['median_us']:.3f}")
+            elif isinstance(metrics, dict) and metrics.get("available") is False:
+                timings.append(f"{target_name}=unavailable")
+        timing_text = " ".join(timings)
+        print(f"[benchmark] DONE {case} {timing_text}".rstrip(), file=sys.stderr, flush=True)
 
     for group_id, rows in sorted(by_group.items()):
         summary = {"record_type": "group_summary", "group_id": group_id, "sample_count": len(rows)}
@@ -882,45 +806,10 @@ def main() -> None:
             ]
             if unavailable:
                 summary[f"{target_name}_unavailable_count"] = len(unavailable)
-        print(json.dumps(summary, sort_keys=True))
+        print(json.dumps(summary, sort_keys=True), flush=True)
+    print(f"[benchmark] COMPLETE cases={total} groups={len(by_group)}", file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":
     main()
-'''
-
-
-RUN_CORRECTNESS = '''#!/usr/bin/env bash
-set -euo pipefail
-cd "$(dirname "$0")/.."
-
-"${PYTHON:-python3}" correctness_test.py --device "${DEVICE:-cuda}" --mode "${CORRECTNESS_MODE:-snapshot-golden}"
-'''
-
-
-RUN_BENCHMARK = '''#!/usr/bin/env bash
-set -euo pipefail
-cd "$(dirname "$0")/.."
-
-"${PYTHON:-python3}" benchmark.py --device "${DEVICE:-cuda}" --target "${TARGET:-both}" --warmup "${WARMUP:-20}" --repeat "${REPEAT:-100}"
-'''
-
-
-RUN_NCU = '''#!/usr/bin/env bash
-set -euo pipefail
-cd "$(dirname "$0")/.."
-
-GROUP_ID="${1:-}"
-SAMPLE_ID="${2:-}"
-if [ -z "$GROUP_ID" ]; then
-  echo "usage: bash scripts/run_ncu.sh <group_id> [sample_id]" >&2
-  exit 2
-fi
-
-args=(benchmark.py --group-id "$GROUP_ID" --device "${DEVICE:-cuda}" --target "${TARGET:-candidate}" --warmup "${WARMUP:-5}" --repeat "${REPEAT:-20}")
-if [ -n "$SAMPLE_ID" ]; then
-  args+=(--sample-id "$SAMPLE_ID")
-fi
-
-ncu --set full --target-processes all "${PYTHON:-python3}" "${args[@]}"
 '''

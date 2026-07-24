@@ -12,8 +12,12 @@ objective: |
   snapshots, snapshot_runtime.py, or benchmark measurement logic.
 
 source_entrypoints:
+  configured_target_file: ""
+  configured_target_line: null
   target_file: ""
   target_line: null
+  target_resolution: "unknown"
+  kernel_source_package: ""
   forward_boundary_file: ""
   forward_boundary_line: null
 
@@ -23,24 +27,54 @@ kernel_abi:
     candidate(*args, **kwargs)
   required_semantics: |
     Match captured snapshot-golden behavior on all required selected samples
-    in snapshots/manifest.json.
+    in task/snapshots/manifest.json.
   forbidden_changes:
-    - "Do not change snapshots/"
-    - "Do not change snapshot_runtime.py"
-    - "Do not change shape_list.json except via Framework Engineer snapshot selection"
-    - "Do not change original_source/"
-    - "Do not change original_impl.py"
-    - "Do not change reference_impl.py"
-    - "Do not relax tolerance in correctness_test.py"
-    - "Do not change benchmark timing/reset rules"
+    - "Do not change task/snapshots/"
+    - "Do not change task/snapshot_runtime.py"
+    - "Do not change task/shape_list.json except via Framework Engineer snapshot selection"
+    - "Do not change task/original_impl.py"
+    - "Do not change task/reference_impl.py"
+    - "Do not relax tolerance in task/correctness_test.py"
+    - "Do not change task/benchmark.py timing/reset rules"
 
 inputs_are_framework_owned: true
 input_construction_policy: |
   Framework Engineer owns input construction. Kernel Engineer may inspect
   selected snapshots, but must not replace them with unrelated random inputs.
-  selected snapshots are the replay source; shape_list.json is only a summary.
+  Selected snapshots are the replay source; shape_list.json is only a summary.
 
 commands:
-  correctness: "bash scripts/run_correctness.sh"
-  benchmark: "bash scripts/run_benchmark.sh"
-  profile: "bash scripts/run_ncu.sh"
+  correctness: "python task/scripts/run_correctness.py"
+  benchmark: "python task/scripts/run_benchmark.py"
+  profile: "python task/scripts/run_ncu.py <group_id> [sample_id]"
+
+kernel_translate_scope:
+  writable_paths:
+    - "task/kernel_translate/"
+  read_only_paths:
+    - "task/candidate_impl.py"
+    - "task/kernel_source_package/"
+    - "task/snapshots/"
+    - "task/correctness_test.py"
+    - "task/benchmark.py"
+    - "task/task.yaml"
+
+kernel_engineer_scope:
+  writable_paths:
+    - "task/candidate_impl.py"
+    - "task/kernel_engineer_ws/"
+  read_only_paths:
+    - "task/kernel_translate/"
+    - "task/kernel_source_package/"
+    - "task/snapshots/"
+    - "task/snapshot_runtime.py"
+    - "task/original_impl.py"
+    - "task/reference_impl.py"
+    - "task/correctness_test.py"
+    - "task/benchmark.py"
+    - "task/scripts/"
+    - "task/env_probe/"
+    - "task/docs/"
+    - "task/task.yaml"
+    - "README.md"
+    - "validate_task_pack.py"
