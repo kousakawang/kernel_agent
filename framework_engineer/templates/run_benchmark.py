@@ -26,6 +26,11 @@ def main() -> int:
     parser.add_argument("--group-id", default=None)
     parser.add_argument("--sample-id", default=None)
     parser.add_argument("--all-priorities", action="store_true")
+    parser.add_argument(
+        "--output-format",
+        choices=["human", "json"],
+        default=os.environ.get("OUTPUT_FORMAT", "human"),
+    )
     args = parser.parse_args()
 
     python = os.environ.get("PYTHON") or sys.executable
@@ -41,6 +46,8 @@ def main() -> int:
         str(args.warmup),
         "--repeat",
         str(args.repeat),
+        "--output-format",
+        args.output_format,
     ]
     if args.group_id:
         command.extend(["--group-id", args.group_id])

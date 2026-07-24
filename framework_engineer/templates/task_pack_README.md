@@ -116,9 +116,10 @@ Run the following commands from the outer task-pack directory.
 This command replays the selected snapshots, runs `candidate_impl.py`, and
 compares its outputs and mutated inputs with the captured golden results. Run it
 after every implementation change. For each testcase, the terminal prints a
-`[correctness] RUN` line with every input tensor's path, shape, dtype, and
-stride, followed by `[correctness] PASS` when the case succeeds. Each JSON
-result line also contains the same structured information in `case_shape`.
+separate, clearly delimited block. Input tensors are listed one per line with
+their path, shape, dtype, and stride. The block ends with `[correctness] PASS`
+when the case succeeds. Raw Python or JSON data structures are not printed in
+the default human-readable mode.
 
 ```bash
 python task/scripts/run_correctness.py
@@ -132,9 +133,9 @@ Use `--device cpu|cuda`, `--mode snapshot-golden|reference-replay`,
 This command benchmarks the selected snapshots. By default it attempts both the
 linked original implementation and the candidate so that it can report
 speedup. A `[benchmark] RUN` line identifies each testcase and prints its input
-tensor shapes before measurement. The matching `[benchmark] DONE` line reports
-the measured median time for each available implementation. The machine-readable
-JSON result includes the input metadata in `case_shape`.
+tensor shapes one per line before measurement. The matching result block reports
+median, mean, minimum, and maximum time for each available implementation.
+Separate delimiters make the boundary between testcases explicit.
 
 ```bash
 python task/scripts/run_benchmark.py
@@ -143,6 +144,10 @@ python task/scripts/run_benchmark.py
 Use `--target candidate` when only the candidate is executable, or
 `--target reference|both` to select the comparison target. `--warmup`,
 `--repeat`, `--group-id`, and `--sample-id` control the benchmark run.
+
+Both commands default to clean human-readable logs. Machine consumers may
+explicitly request JSONL with `--output-format json`; this is the only mode that
+prints the structured `case_shape` field.
 
 ### Profile one snapshot group with NCU
 
@@ -155,8 +160,8 @@ python task/scripts/run_ncu.py <group_id> [sample_id]
 
 These three files under `task/scripts/` are the task pack's stable command
 entries. In addition to the command-line options above, they accept `DEVICE`,
-`CORRECTNESS_MODE`, `TARGET`, `WARMUP`, `REPEAT`, and `PYTHON` as optional
-environment-variable overrides.
+`CORRECTNESS_MODE`, `TARGET`, `WARMUP`, `REPEAT`, `OUTPUT_FORMAT`, and `PYTHON`
+as optional environment-variable overrides.
 
 `task/docs/original_capture_benchmark_summary.json` contains advisory timing
 observed during capture and excludes snapshot serialization. When linked

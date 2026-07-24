@@ -108,13 +108,33 @@ class SnapshotTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(proc.returncode, 0, proc.stderr)
-            self.assertIn('"status": "PASS"', proc.stdout)
-            correctness_row = json.loads(proc.stdout.splitlines()[0])
+            self.assertIn("[correctness] CASE 1/4", proc.stdout)
+            self.assertIn("  inputs :\n    - <no tensor inputs>", proc.stdout)
+            self.assertEqual(proc.stdout.count("[correctness] PASS"), 4)
+            self.assertIn("[correctness] COMPLETE: 4/4 cases passed", proc.stdout)
+            self.assertNotIn('{"case_shape"', proc.stdout)
+            self.assertEqual(proc.stderr, "")
+
+            correctness_json = subprocess.run(
+                [
+                    sys.executable,
+                    "correctness_test.py",
+                    "--device",
+                    "cpu",
+                    "--output-format",
+                    "json",
+                ],
+                cwd=payload,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(correctness_json.returncode, 0, correctness_json.stderr)
+            correctness_row = json.loads(correctness_json.stdout.splitlines()[0])
+            self.assertEqual(correctness_row["status"], "PASS")
             self.assertIn("case_shape", correctness_row)
-            self.assertIn("[correctness] RUN", proc.stderr)
-            self.assertIn("inputs=[<no tensor inputs>]", proc.stderr)
-            self.assertIn("[correctness] PASS", proc.stderr)
-            self.assertIn("[correctness] DONE passed=4", proc.stderr)
+            self.assertNotIn("[correctness] CASE", correctness_json.stdout)
             bench = subprocess.run(
                 [
                     sys.executable,
@@ -135,14 +155,15 @@ class SnapshotTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(bench.returncode, 0, bench.stderr)
-            self.assertIn('"candidate"', bench.stdout)
-            benchmark_row = json.loads(bench.stdout.splitlines()[0])
-            self.assertIn("case_shape", benchmark_row)
-            self.assertIn("[benchmark] RUN", bench.stderr)
-            self.assertIn("inputs=[<no tensor inputs>]", bench.stderr)
-            self.assertIn("[benchmark] DONE", bench.stderr)
-            self.assertIn("candidate_median_us=", bench.stderr)
-            self.assertIn("[benchmark] COMPLETE cases=4 groups=1", bench.stderr)
+            self.assertIn("[benchmark] CASE 1/4", bench.stdout)
+            self.assertIn("  inputs :\n    - <no tensor inputs>", bench.stdout)
+            self.assertIn("[benchmark] RESULT", bench.stdout)
+            self.assertIn("  candidate: median=", bench.stdout)
+            self.assertEqual(bench.stdout.count("[benchmark] DONE"), 4)
+            self.assertIn("[benchmark] GROUP SUMMARY:", bench.stdout)
+            self.assertIn("[benchmark] COMPLETE: 4 cases across 1 group(s)", bench.stdout)
+            self.assertNotIn('{"case_shape"', bench.stdout)
+            self.assertEqual(bench.stderr, "")
             both = subprocess.run(
                 [
                     sys.executable,
@@ -155,6 +176,8 @@ class SnapshotTests(unittest.TestCase):
                     "1",
                     "--repeat",
                     "2",
+                    "--output-format",
+                    "json",
                 ],
                 cwd=payload,
                 text=True,
@@ -164,6 +187,9 @@ class SnapshotTests(unittest.TestCase):
             )
             self.assertEqual(both.returncode, 0, both.stderr)
             self.assertIn('"reference": {"available": false', both.stdout)
+            benchmark_row = json.loads(both.stdout.splitlines()[0])
+            self.assertIn("case_shape", benchmark_row)
+            self.assertNotIn("[benchmark] CASE", both.stdout)
 
     def test_generated_runtime_formats_tensor_case_shapes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -213,7 +239,7 @@ class SnapshotTests(unittest.TestCase):
                 "import json, snapshot_runtime\n"
                 f"group = json.loads({json.dumps(json.dumps(group))})\n"
                 "print(json.dumps(snapshot_runtime.case_shape_info(group), sort_keys=True))\n"
-                "print(snapshot_runtime.format_case_shape(group))\n"
+                "print('\\n'.join(snapshot_runtime.format_case_shape_lines(group)))\n"
             )
             proc = subprocess.run(
                 [sys.executable, "-B", "-c", code],
@@ -238,8 +264,14 @@ class SnapshotTests(unittest.TestCase):
                     },
                 ],
             )
-            self.assertIn("args.0 shape=[2, 3] dtype=float16 stride=[3, 1]", lines[1])
-            self.assertIn("kwargs.state shape=[2, 4, 8] dtype=float32 stride=[32, 8, 1]", lines[1])
+            self.assertEqual(
+                lines[1],
+                "    - args.0: shape=[2, 3], dtype=float16, stride=[3, 1]",
+            )
+            self.assertEqual(
+                lines[2],
+                "    - kwargs.state: shape=[2, 4, 8], dtype=float32, stride=[32, 8, 1]",
+            )
 
     def test_generated_candidate_falls_back_when_source_relative_import_cannot_be_resolved(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -294,7 +326,8 @@ class SnapshotTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(proc.returncode, 0, proc.stderr)
-            self.assertIn('"status": "PASS"', proc.stdout)
+            self.assertIn("[correctness] COMPLETE: 4/4 cases passed", proc.stdout)
+            self.assertNotIn('{"case_shape"', proc.stdout)
 
 
 if __name__ == "__main__":

@@ -178,15 +178,16 @@ def case_shape_info(group_meta: dict[str, Any]) -> list[dict[str, Any]]:
     return tensors
 
 
-def format_case_shape(group_meta: dict[str, Any]) -> str:
-    """Format input tensor shapes for concise human-readable progress logs."""
+def format_case_shape_lines(group_meta: dict[str, Any]) -> list[str]:
+    """Format one input tensor per line for human-readable case logs."""
     tensors = case_shape_info(group_meta)
     if not tensors:
-        return "<no tensor inputs>"
-    return "; ".join(
-        f"{tensor['path']} shape={tensor['shape']} dtype={tensor['dtype']} stride={tensor['stride']}"
+        return ["    - <no tensor inputs>"]
+    return [
+        f"    - {tensor['path']}: "
+        f"shape={tensor['shape']}, dtype={tensor['dtype']}, stride={tensor['stride']}"
         for tensor in tensors
-    )
+    ]
 
 
 def _collect_tensor_shapes(tree: Any, out: list[dict[str, Any]]) -> None:
@@ -563,7 +564,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 
 import candidate_impl
 import reference_impl
@@ -571,6 +571,8 @@ import snapshot_runtime
 
 
 CANDIDATE_FUNCTION = "__CANDIDATE_FUNCTION__"
+CASE_SEPARATOR = "=" * 88
+DETAIL_SEPARATOR = "-" * 88
 
 
 def _call(fn, call_tree):
@@ -616,6 +618,20 @@ def run_sample(group_meta, sample_meta, *, device: str, mode: str) -> dict:
     }
 
 
+def print_case_header(*, index: int, total: int, group: dict, sample: dict, device: str, mode: str) -> None:
+    print(CASE_SEPARATOR)
+    print(f"[correctness] CASE {index}/{total}")
+    print(f"  group  : {group['group_id']}")
+    print(f"  sample : {sample['sample_id']}")
+    print(f"  mode   : {mode}")
+    print(f"  device : {device}")
+    print("  inputs :")
+    for line in snapshot_runtime.format_case_shape_lines(group):
+        print(line)
+    print(DETAIL_SEPARATOR)
+    print("[correctness] RUN", flush=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--group-id", default=None)
@@ -623,19 +639,37 @@ def main() -> None:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--mode", choices=["reference-replay", "snapshot-golden"], default="snapshot-golden")
     parser.add_argument("--all-priorities", action="store_true")
+    parser.add_argument("--output-format", choices=["human", "json"], default="human")
     args = parser.parse_args()
 
     priority = None if args.all_priorities else "required"
     selected = snapshot_runtime.list_samples(group_id=args.group_id, sample_id=args.sample_id, priority=priority)
     total = len(selected)
     for index, (group, sample) in enumerate(selected, start=1):
-        case = f"case={index}/{total} group={group['group_id']} sample={sample['sample_id']}"
-        shapes = snapshot_runtime.format_case_shape(group)
-        print(f"[correctness] RUN  {case} inputs=[{shapes}]", file=sys.stderr, flush=True)
-        result = run_sample(group, sample, device=args.device, mode=args.mode)
-        print(json.dumps(result, sort_keys=True), flush=True)
-        print(f"[correctness] PASS {case}", file=sys.stderr, flush=True)
-    print(f"[correctness] DONE passed={total}", file=sys.stderr, flush=True)
+        if args.output_format == "human":
+            print_case_header(
+                index=index,
+                total=total,
+                group=group,
+                sample=sample,
+                device=args.device,
+                mode=args.mode,
+            )
+        try:
+            result = run_sample(group, sample, device=args.device, mode=args.mode)
+        except Exception:
+            if args.output_format == "human":
+                print("[correctness] FAIL")
+                print(CASE_SEPARATOR, flush=True)
+            raise
+        if args.output_format == "json":
+            print(json.dumps(result, sort_keys=True), flush=True)
+        else:
+            print("[correctness] PASS")
+            print(CASE_SEPARATOR)
+            print()
+    if args.output_format == "human":
+        print(f"[correctness] COMPLETE: {total}/{total} cases passed", flush=True)
 
 
 if __name__ == "__main__":
@@ -650,7 +684,6 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
-import sys
 import time
 from collections import defaultdict
 
@@ -660,6 +693,8 @@ import snapshot_runtime
 
 
 CANDIDATE_FUNCTION = "__CANDIDATE_FUNCTION__"
+CASE_SEPARATOR = "=" * 88
+DETAIL_SEPARATOR = "-" * 88
 
 
 def _torch():
@@ -752,6 +787,70 @@ def benchmark_sample(group_meta, sample_meta, *, device: str, target: str, warmu
     return result
 
 
+def print_case_header(
+    *,
+    index: int,
+    total: int,
+    group: dict,
+    sample: dict,
+    device: str,
+    target: str,
+    warmup: int,
+    repeat: int,
+) -> None:
+    print(CASE_SEPARATOR)
+    print(f"[benchmark] CASE {index}/{total}")
+    print(f"  group  : {group['group_id']}")
+    print(f"  sample : {sample['sample_id']}")
+    print(f"  target : {target}")
+    print(f"  device : {device}")
+    print(f"  timing : warmup={warmup}, repeat={repeat}")
+    print("  inputs :")
+    for line in snapshot_runtime.format_case_shape_lines(group):
+        print(line)
+    print(DETAIL_SEPARATOR)
+    print("[benchmark] RUN", flush=True)
+
+
+def print_case_result(result: dict) -> None:
+    print("[benchmark] RESULT")
+    for target_name in ("reference", "candidate"):
+        metrics = result.get(target_name)
+        if isinstance(metrics, dict) and "median_us" in metrics:
+            print(
+                f"  {target_name:<9}: median={metrics['median_us']:.3f} us, "
+                f"mean={metrics['mean_us']:.3f} us, "
+                f"min={metrics['min_us']:.3f} us, "
+                f"max={metrics['max_us']:.3f} us"
+            )
+        elif isinstance(metrics, dict) and metrics.get("available") is False:
+            print(f"  {target_name:<9}: unavailable")
+    if "speedup_median" in result:
+        print(f"  speedup  : {result['speedup_median']:.4f}x")
+    print("[benchmark] DONE")
+    print(CASE_SEPARATOR)
+    print()
+
+
+def print_group_summary(summary: dict) -> None:
+    print(DETAIL_SEPARATOR)
+    print(f"[benchmark] GROUP SUMMARY: {summary['group_id']}")
+    print(f"  samples  : {summary['sample_count']}")
+    for target_name in ("reference", "candidate"):
+        metrics = summary.get(target_name)
+        if isinstance(metrics, dict):
+            print(
+                f"  {target_name:<9}: "
+                f"median-of-medians={metrics['median_of_sample_medians_us']:.3f} us, "
+                f"mean-of-medians={metrics['mean_of_sample_medians_us']:.3f} us"
+            )
+        unavailable = summary.get(f"{target_name}_unavailable_count")
+        if unavailable:
+            print(f"  {target_name:<9}: unavailable for {unavailable} sample(s)")
+    print(DETAIL_SEPARATOR)
+    print()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--group-id", default=None)
@@ -761,6 +860,7 @@ def main() -> None:
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--repeat", type=int, default=100)
     parser.add_argument("--all-priorities", action="store_true")
+    parser.add_argument("--output-format", choices=["human", "json"], default="human")
     args = parser.parse_args()
 
     priority = None if args.all_priorities else "required"
@@ -768,21 +868,36 @@ def main() -> None:
     by_group = defaultdict(list)
     total = len(selected)
     for index, (group, sample) in enumerate(selected, start=1):
-        case = f"case={index}/{total} group={group['group_id']} sample={sample['sample_id']}"
-        shapes = snapshot_runtime.format_case_shape(group)
-        print(f"[benchmark] RUN  {case} inputs=[{shapes}]", file=sys.stderr, flush=True)
-        result = benchmark_sample(group, sample, device=args.device, target=args.target, warmup=args.warmup, repeat=args.repeat)
+        if args.output_format == "human":
+            print_case_header(
+                index=index,
+                total=total,
+                group=group,
+                sample=sample,
+                device=args.device,
+                target=args.target,
+                warmup=args.warmup,
+                repeat=args.repeat,
+            )
+        try:
+            result = benchmark_sample(
+                group,
+                sample,
+                device=args.device,
+                target=args.target,
+                warmup=args.warmup,
+                repeat=args.repeat,
+            )
+        except Exception:
+            if args.output_format == "human":
+                print("[benchmark] FAIL")
+                print(CASE_SEPARATOR, flush=True)
+            raise
         by_group[group["group_id"]].append(result)
-        print(json.dumps(result, sort_keys=True), flush=True)
-        timings = []
-        for target_name in ("reference", "candidate"):
-            metrics = result.get(target_name)
-            if isinstance(metrics, dict) and "median_us" in metrics:
-                timings.append(f"{target_name}_median_us={metrics['median_us']:.3f}")
-            elif isinstance(metrics, dict) and metrics.get("available") is False:
-                timings.append(f"{target_name}=unavailable")
-        timing_text = " ".join(timings)
-        print(f"[benchmark] DONE {case} {timing_text}".rstrip(), file=sys.stderr, flush=True)
+        if args.output_format == "json":
+            print(json.dumps(result, sort_keys=True), flush=True)
+        else:
+            print_case_result(result)
 
     for group_id, rows in sorted(by_group.items()):
         summary = {"record_type": "group_summary", "group_id": group_id, "sample_count": len(rows)}
@@ -806,8 +921,12 @@ def main() -> None:
             ]
             if unavailable:
                 summary[f"{target_name}_unavailable_count"] = len(unavailable)
-        print(json.dumps(summary, sort_keys=True), flush=True)
-    print(f"[benchmark] COMPLETE cases={total} groups={len(by_group)}", file=sys.stderr, flush=True)
+        if args.output_format == "json":
+            print(json.dumps(summary, sort_keys=True), flush=True)
+        else:
+            print_group_summary(summary)
+    if args.output_format == "human":
+        print(f"[benchmark] COMPLETE: {total} cases across {len(by_group)} group(s)", flush=True)
 
 
 if __name__ == "__main__":
