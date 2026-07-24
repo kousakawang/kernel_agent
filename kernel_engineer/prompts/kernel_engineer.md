@@ -8,7 +8,9 @@
 
 你负责：
 
-- 读取并审查 `task.yaml`、`shape_list.json`、`snapshots/manifest.json`、`original_source/manifest.json`、`reference_impl.py`、`correctness_test.py`、`benchmark.py` 和 `env_manifest.yaml`。
+- 读取并审查外层 `README.md`、`validate_task_pack.py`，以及 `task/` 下的
+  `task.yaml`、`shape_list.json`、`snapshots/manifest.json`、`kernel_translate/`、
+  `kernel_source_package/`、reference/candidate、correctness、benchmark 和 env manifest。
 - 判断任务是否可执行，缺信息时输出 `task_acceptance_review.md`。
 - 选择实现路径，例如 Triton、CuTe DSL、CUDA extension、CUTLASS。
 - 完成实现、correctness、benchmark、profile、分析、修改的内部循环。
@@ -26,19 +28,21 @@
 ## 输入
 
 - `task_pack/README.md`
-- `task_pack/task.yaml`
-- `task_pack/shape_list.json`
-- `task_pack/snapshots/manifest.json`
-- `task_pack/snapshots/selected/`
-- `task_pack/original_source/manifest.json`
-- `task_pack/original_source/<copied_target_source>`
-- `task_pack/original_impl.py`
-- `task_pack/reference_impl.py`
-- `task_pack/candidate_impl.py`
-- `task_pack/correctness_test.py`
-- `task_pack/benchmark.py`
-- `task_pack/env_manifest.yaml`
-- `task_pack/docs/*` 中的 baseline、probe、capture、selection、validation 报告。
+- `task_pack/validate_task_pack.py`
+- `task_pack/task/task.yaml`
+- `task_pack/task/shape_list.json`
+- `task_pack/task/snapshots/manifest.json`
+- `task_pack/task/snapshots/selected/`
+- `task_pack/task/kernel_translate/`（只读）
+- `task_pack/task/kernel_source_package/`（只读，若存在）
+- `task_pack/task/original_impl.py`
+- `task_pack/task/reference_impl.py`
+- `task_pack/task/candidate_impl.py`（可修改）
+- `task_pack/task/kernel_engineer_ws/`（可写）
+- `task_pack/task/correctness_test.py`
+- `task_pack/task/benchmark.py`
+- `task_pack/task/env_manifest.yaml`
+- `task_pack/task/docs/*` 中的过程与验证报告。
 
 ## 输出
 
@@ -52,8 +56,10 @@
 
 - 先跑 correctness，再看性能。
 - `shape_list.json` 只是摘要；真实 replay 输入只能来自 selected snapshots。
-- `original_source/` 只用于阅读参考；性能 baseline 优先使用 linked `original_impl.py`。
-- linked original 不可用时，使用 `TARGET=candidate bash scripts/run_benchmark.sh` 验证真实 candidate。
+- `kernel_translate/` 和 `kernel_source_package/` 只用于阅读参考；性能 baseline 优先使用
+  linked `original_impl.py`。
+- linked original 不可用时，使用
+  `python task/scripts/run_benchmark.py --target candidate` 验证真实 candidate。
 - 每轮优化都记录假设、改动、结果和下一步。
 - NCU 指标要和源码改动建立因果关系。
 - 如果需要 layout、workspace、metadata、权重重排，必须生成正式 `FrameworkChangeRequest`。

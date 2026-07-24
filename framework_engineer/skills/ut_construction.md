@@ -4,12 +4,12 @@ Snapshot harness 用来把真实框架接口调用变成可独立验证的 kerne
 
 ## 输入
 
-- `snapshots/manifest.json`
-- `snapshots/selected/<group_id>/group_meta.json`
-- `snapshots/selected/<group_id>/samples/<sample_id>/meta.json`
-- `snapshots/selected/<group_id>/samples/<sample_id>/pre_inputs.pt`
-- `snapshots/selected/<group_id>/samples/<sample_id>/post_inputs.pt`
-- `snapshots/selected/<group_id>/samples/<sample_id>/outputs.pt`
+- `task/snapshots/manifest.json`
+- `task/snapshots/selected/<group_id>/group_meta.json`
+- `task/snapshots/selected/<group_id>/samples/<sample_id>/meta.json`
+- `task/snapshots/selected/<group_id>/samples/<sample_id>/pre_inputs.pt`
+- `task/snapshots/selected/<group_id>/samples/<sample_id>/post_inputs.pt`
+- `task/snapshots/selected/<group_id>/samples/<sample_id>/outputs.pt`
 - 目标候选接口签名默认为：
 
 ```python
@@ -37,14 +37,14 @@ warning。correctness 只按 sample meta 中的自动检测结果比较 candidat
 
 `generate-harness` 必须生成两类 reference：
 
-- `original_source/`：复制 capture 时目标接口所在源码，作为 Kernel Engineer 阅读参考。
 - `original_impl.py`：尝试通过原框架环境 linked import 并调用 capture 时的原始 target，用作 benchmark baseline。
 - `reference_impl.snapshot_reference(...)`：只返回 captured outputs，用作 snapshot-golden correctness fallback。
 
 `reference_impl.reference(...)` 默认调用 `original_impl.original(...)`。如果原始 target
 是 instance method 且 task pack 无法重建 framework-owned `self`，或当前环境缺少 SGLang/vLLM
 等框架依赖，benchmark 的 reference 分支会标记 unavailable。此时 task pack 仍然有效，
-Kernel Engineer 可以阅读 `original_source/`，并使用 candidate-only benchmark。
+Kernel Engineer 可以阅读 `kernel_source_package/` 与 `kernel_translate/`，并使用
+candidate-only benchmark。
 
 ## Benchmark 规则
 
@@ -66,19 +66,22 @@ Kernel Engineer 可以阅读 `original_source/`，并使用 candidate-only bench
 
 ## 交付给 Kernel Agent 的内容
 
-- `task.yaml`
-- `shape_list.json`
-- `snapshot_runtime.py`
-- `snapshots/manifest.json`
-- `snapshots/selected/<group_id>/samples/<sample_id>`
-- `original_source/manifest.json`
-- `original_source/<copied_target_source>`
-- `original_impl.py`
-- `reference_impl.py`
-- `candidate_impl.py`
-- `correctness_test.py`
-- `benchmark.py`
-- `scripts/run_correctness.sh`
-- `scripts/run_benchmark.sh`
-- `scripts/run_ncu.sh`
-- `env_manifest.yaml`
+- `README.md`
+- `validate_task_pack.py`
+- `task/task.yaml`
+- `task/shape_list.json`
+- `task/snapshot_runtime.py`
+- `task/snapshots/manifest.json`
+- `task/snapshots/selected/<group_id>/samples/<sample_id>`
+- `task/kernel_source_package/`（配置时）
+- `task/kernel_translate/`
+- `task/kernel_engineer_ws/`
+- `task/original_impl.py`
+- `task/reference_impl.py`
+- `task/candidate_impl.py`
+- `task/correctness_test.py`
+- `task/benchmark.py`
+- `task/scripts/run_correctness.py`
+- `task/scripts/run_benchmark.py`
+- `task/scripts/run_ncu.py`
+- `task/env_manifest.yaml`

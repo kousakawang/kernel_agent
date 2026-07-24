@@ -11,7 +11,9 @@ Phase 1.2 保留双角色边界：
 
 Framework Engineer 不实现高性能 kernel。它负责真实输入、snapshot、UT、benchmark、环境合同和 task pack 验证。
 
-Kernel Engineer 不构造框架输入。它只修改 `candidate_impl.py` / `kernel_sources/`，运行 task pack 内置 correctness、benchmark 和 profile 命令。
+Kernel Engineer 不构造框架输入。它只修改 `task/candidate_impl.py`、
+`task/kernel_engineer_ws/` 和 iteration log，运行 task pack 内置的 Python correctness、
+benchmark 和 profile 命令。
 
 双方唯一交互物是：
 
@@ -172,26 +174,29 @@ correctness 会比较 outputs，并按 sample meta 比较 candidate 运行后的
 
 ```text
 README.md
-task.yaml
-shape_list.json
-env_manifest.yaml
-snapshot_runtime.py
-snapshots/
-  manifest.json
-  selected/
-original_source/
-  manifest.json
-original_impl.py
-reference_impl.py
-candidate_impl.py
-correctness_test.py
-benchmark.py
-scripts/
-  run_correctness.sh
-  run_benchmark.sh
-  run_ncu.sh
-docs/
-  task_pack_validation_report.json
+validate_task_pack.py
+task/
+  task.yaml
+  shape_list.json
+  env_manifest.yaml
+  snapshot_runtime.py
+  snapshots/
+    manifest.json
+    selected/
+  kernel_source_package/
+  kernel_translate/
+  kernel_engineer_ws/
+  original_impl.py
+  reference_impl.py
+  candidate_impl.py
+  correctness_test.py
+  benchmark.py
+  scripts/
+    run_correctness.py
+    run_benchmark.py
+    run_ncu.py
+  docs/
+    task_pack_validation_report.json
 ```
 
 关键含义：
@@ -199,7 +204,7 @@ docs/
 - `snapshots/selected/` 是唯一 replay 来源。
 - `shape_list.json` 只是摘要索引，不用于随机造输入。
 - `snapshot_runtime.py` 是 task pack 内复制的最小 replay runtime。
-- `original_source/` 是源码参考。
+- `kernel_source_package/` 和 `kernel_translate/` 是只读源码/翻译参考。
 - `original_impl.py` 尝试 linked import 原框架接口，能跑则作为 benchmark reference。
 - `reference_impl.py` 提供 linked reference 和 snapshot-golden fallback。
 - `candidate_impl.py` 是 Kernel Engineer 的实现入口。
@@ -213,33 +218,34 @@ Kernel Engineer 接收到某个 task pack 后：
 
 ```bash
 cd <task_pack>
-bash scripts/run_correctness.sh
-bash scripts/run_benchmark.sh
+python validate_task_pack.py
+python task/scripts/run_correctness.py
+python task/scripts/run_benchmark.py
 ```
 
 如果 linked original 不可用：
 
 ```bash
-TARGET=candidate bash scripts/run_benchmark.sh
+python task/scripts/run_benchmark.py --target candidate
 ```
 
 允许修改：
 
-- `candidate_impl.py`
-- `kernel_sources/`
-- 新增 profiler/benchmark 报告
-- 迭代日志
+- `task/candidate_impl.py`
+- `task/kernel_engineer_ws/`
+- `task/kernel_engineer_ws/iteration_log.md`
 
 禁止修改：
 
-- `snapshots/`
-- `snapshot_runtime.py`
-- `shape_list.json`
-- `original_source/`
-- `original_impl.py`
-- `reference_impl.py`
-- `correctness_test.py`
-- `benchmark.py`
+- `task/snapshots/`
+- `task/snapshot_runtime.py`
+- `task/shape_list.json`
+- `task/kernel_translate/`
+- `task/kernel_source_package/`
+- `task/original_impl.py`
+- `task/reference_impl.py`
+- `task/correctness_test.py`
+- `task/benchmark.py`
 - correctness tolerance
 - benchmark timing/reset rules
 
@@ -255,7 +261,7 @@ Framework Engineer 交付完成的标准是：
 
 - 必需文件存在。
 - selected snapshot 完整。
-- `original_source/manifest.json` 存在。
+- workspace 目录和读写权限合同完整。
 - correctness smoke 通过。
 - env check 执行或明确 skipped。
 - benchmark smoke 执行或明确 skipped。

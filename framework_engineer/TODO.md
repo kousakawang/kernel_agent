@@ -22,7 +22,7 @@ Planned work:
 - After `generate-harness`, run a reference benchmark when possible:
 
   ```bash
-  TARGET=reference bash scripts/run_benchmark.sh
+  python task/scripts/run_benchmark.py --target reference
   ```
 
 - Persist outputs into task pack docs:
@@ -124,7 +124,8 @@ Notes:
 Current state:
 
 - Framework Engineer can generate task packs for Kernel Engineer.
-- Kernel Engineer is expected to modify `candidate_impl.py` / `kernel_sources/` and eventually deliver a `KernelDeliveryPackage`.
+- Kernel Engineer is expected to modify `task/candidate_impl.py` and
+  `task/kernel_engineer_ws/`, then eventually deliver a `KernelDeliveryPackage`.
 - Phase 1.2 does not yet consume the optimized delivery or patch the original framework.
 
 Problem:

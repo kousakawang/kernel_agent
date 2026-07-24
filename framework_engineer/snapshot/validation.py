@@ -4,26 +4,31 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
+
+from ..task_pack_layout import task_dir
 
 
 REQUIRED_TASK_PACK_FILES = [
     "README.md",
-    "task.yaml",
-    "shape_list.json",
-    "env_manifest.yaml",
-    "snapshot_runtime.py",
-    "original_source/manifest.json",
-    "snapshots/manifest.json",
-    "original_impl.py",
-    "reference_impl.py",
-    "candidate_impl.py",
-    "correctness_test.py",
-    "benchmark.py",
-    "scripts/run_correctness.sh",
-    "scripts/run_benchmark.sh",
-    "scripts/run_ncu.sh",
+    "validate_task_pack.py",
+    "task/task.yaml",
+    "task/shape_list.json",
+    "task/env_manifest.yaml",
+    "task/snapshot_runtime.py",
+    "task/snapshots/manifest.json",
+    "task/original_impl.py",
+    "task/reference_impl.py",
+    "task/candidate_impl.py",
+    "task/correctness_test.py",
+    "task/benchmark.py",
+    "task/scripts/run_correctness.py",
+    "task/scripts/run_benchmark.py",
+    "task/scripts/run_ncu.py",
+    "task/kernel_translate/README.md",
+    "task/kernel_engineer_ws/README.md",
 ]
 
 
@@ -44,13 +49,14 @@ def validate_structure(task_pack: Path) -> dict[str, Any]:
             missing.append(rel)
         else:
             present.append(rel)
-    manifest = task_pack / "snapshots" / "manifest.json"
+    payload = task_dir(task_pack)
+    manifest = payload / "snapshots" / "manifest.json"
     if manifest.exists():
         data = json.loads(manifest.read_text(encoding="utf-8"))
         if not data.get("case_groups"):
             snapshot_errors.append("snapshots/manifest.json has no selected case_groups")
         for group in data.get("case_groups", []):
-            group_dir = task_pack / "snapshots" / "selected" / group["group_id"]
+            group_dir = payload / "snapshots" / "selected" / group["group_id"]
             if not (group_dir / "group_meta.json").exists():
                 snapshot_errors.append(f"missing group_meta.json for {group['group_id']}")
             for sample in group.get("samples", []):
@@ -79,9 +85,9 @@ def run_smoke(task_pack: Path, *, correctness: bool, benchmark: bool, timeout: i
     results = []
     commands = []
     if correctness:
-        commands.append(["bash", "scripts/run_correctness.sh"])
+        commands.append([sys.executable, "-B", "task/scripts/run_correctness.py"])
     if benchmark:
-        commands.append(["bash", "scripts/run_benchmark.sh"])
+        commands.append([sys.executable, "-B", "task/scripts/run_benchmark.py"])
     for cmd in commands:
         proc = subprocess.run(
             cmd,

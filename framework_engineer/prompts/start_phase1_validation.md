@@ -111,12 +111,12 @@ kernel_source_package_path = "/absolute/path/to/source_locate/workspace/extract"
 `kernel_sources/<low_level_id>/`。例如匹配到 `fla_recompute_w_u_fwd` 时生成：
 
 ```text
-<task_pack>/kernel_source_package/
+<task_pack>/task/kernel_source_package/
 ├── decomposition.extracted.schema.json
 └── fla_recompute_w_u_fwd/
 ```
 
-未配置时该步骤记为 `skipped`，不会创建 `kernel_source_package/`。
+未配置时该步骤记为 `skipped`，不会创建 `task/kernel_source_package/`。
 
 `non_cudagraph_service_cmd` 为空时，当前实现会为 probe/capture 使用的 `service_cmd` 自动追加
 `--disable-cuda-graph`，并去掉重复的同名参数。baseline 始终使用原始 `service_cmd`。
@@ -189,14 +189,17 @@ human 模式下，进度写到 stderr，最终摘要写到 stdout；失败步骤
      前失败。若 service 依靠额外的 `PYTHONPATH`，必须把它也写入 `extra_env` 供预处理使用。
 3. **为所有 target 初始化 task pack**
    - `force=True` 时先递归删除已有 target task pack。
-   - 创建 scaffold，并写入配置化的 `task.yaml`、`env_manifest.yaml`，以及
-     `docs/target_definition_resolution.json`。
+   - 创建外层 README、独立 `validate_task_pack.py` 和 `task/` payload；写入配置化的
+     `task/task.yaml`、`task/env_manifest.yaml`，以及
+     `task/docs/target_definition_resolution.json`。
+   - 创建 `task/kernel_translate/` 与 `task/kernel_engineer_ws/` 两个有明确写权限边界的
+     workspace；不创建 `original_source/` 或空的 `kernel_sources/`。
 4. **`prepare-kernel-source-package`**
    - 未配置 `kernel_source_package_path` 时跳过。
    - 扫描目录顶层 JSON，按 configured target 的 file/line 在
      `interface_definition.hits` 中查找唯一 `low_level_id`。
    - 将匹配 JSON 和 `kernel_sources/<low_level_id>/` 复制到当前 task pack 的
-     `kernel_source_package/`；不会复制其他 kernel 子目录。
+     `task/kernel_source_package/`；不会复制其他 kernel 子目录。
 5. **可选 group-level baseline**
    - `run_baseline=True`（默认）时只在第一个成功 scaffold 的 task pack 上运行一次原始
      `service_cmd + workload_cmd`。
@@ -212,18 +215,19 @@ human 模式下，进度写到 stderr，最终摘要写到 stdout；失败步骤
    - 用 non-cudagraph 服务再跑一次 workload。
    - 临时 instrument target 和 forward boundary，确认 workload return code 为 0 且
      `call_count > 0`。
-   - 写入 `docs/target_call_probe.jsonl`、JSON/Markdown probe report。
+   - 写入 `task/docs/target_call_probe.jsonl`、JSON/Markdown probe report。
 8. **`capture-snapshots`**
    - 再启动一次 non-cudagraph 服务并运行 workload。
    - 保存真实 `pre_inputs.pt`、`post_inputs.pt`、`outputs.pt`，自动 diff 原地 mutation，
-     并生成 `snapshots/raw_index.json` 和 capture timing/report。
+     并生成 `task/snapshots/raw_index.json` 和 capture timing/report。
    - 成功条件是 workload return code 为 0 且 `raw_sample_count > 0`。
 9. **`select-snapshots`**
    - 按 group 的 `total_hit_count` 降序选取有限个 group/sample。
-   - 重建 `snapshots/selected/`，更新 `snapshots/manifest.json`、`shape_list.json` 和 selection
-     report。
+   - 重建 `task/snapshots/selected/`，更新 `task/snapshots/manifest.json`、
+     `task/shape_list.json` 和 selection report。
 10. **`generate-harness`**
-   - 生成 snapshot runtime、original/reference/candidate、correctness、benchmark 和脚本。
+   - 在 `task/` 下生成 snapshot runtime、original/reference/candidate、correctness、
+     benchmark，以及纯 Python correctness/benchmark/NCU runner。
    - linked original 优先按 capture 得到的真实 module/qualname 导入；如果原实现或其运行依赖
      在验证环境不可用，初始 candidate 会退回 snapshot-golden，而不是让默认 correctness
      smoke 因 import 异常直接退出。
@@ -234,7 +238,7 @@ human 模式下，进度写到 stderr，最终摘要写到 stdout；失败步骤
     - batch 总会运行 correctness smoke。
     - `run_benchmark_smoke=True` 时额外运行 benchmark smoke。
     - `skip_env_check=True`（默认）时跳过环境一致性；如果设为 `False`，必须同时先得到
-      `docs/env_probe_result.json`，通常应设置 `run_probe_env=True`。
+      `task/docs/env_probe_result.json`，通常应设置 `run_probe_env=True`。
     - validation 期间自动应用 `DEVICE=validate_device`、`WARMUP=validate_warmup`、
       `REPEAT=validate_repeat` 和当前 `PYTHON`。
 13. **写总报告**
@@ -292,23 +296,25 @@ batch 输出为：
 
 ```text
 README.md
-task.yaml
-shape_list.json
-env_manifest.yaml
-snapshot_runtime.py
-snapshots/manifest.json
-snapshots/selected/
-original_source/manifest.json
-original_impl.py
-reference_impl.py
-candidate_impl.py
-correctness_test.py
-benchmark.py
-scripts/run_correctness.sh
-scripts/run_benchmark.sh
-scripts/run_ncu.sh
-docs/task_pack_validation_report.json
-kernel_source_package/  # 仅当配置了 kernel_source_package_path
+validate_task_pack.py
+task/task.yaml
+task/shape_list.json
+task/env_manifest.yaml
+task/snapshot_runtime.py
+task/snapshots/manifest.json
+task/snapshots/selected/
+task/original_impl.py
+task/reference_impl.py
+task/candidate_impl.py
+task/correctness_test.py
+task/benchmark.py
+task/kernel_translate/README.md
+task/kernel_engineer_ws/README.md
+task/scripts/run_correctness.py
+task/scripts/run_benchmark.py
+task/scripts/run_ncu.py
+task/docs/task_pack_validation_report.json
+task/kernel_source_package/  # 仅当配置了 kernel_source_package_path
 ```
 
 交付前确认 target 的状态为 `ok`，且其 validation report 中：
@@ -449,14 +455,14 @@ python3 -m framework_engineer.cli generate-harness \
 raw sample 路径为：
 
 ```text
-snapshots/raw/<group_id>/<sample_id>/{meta.json,pre_inputs.pt,post_inputs.pt,outputs.pt}
+task/snapshots/raw/<group_id>/<sample_id>/{meta.json,pre_inputs.pt,post_inputs.pt,outputs.pt}
 ```
 
 selected sample 路径为：
 
 ```text
-snapshots/selected/<group_id>/group_meta.json
-snapshots/selected/<group_id>/samples/<sample_id>/{meta.json,pre_inputs.pt,post_inputs.pt,outputs.pt}
+task/snapshots/selected/<group_id>/group_meta.json
+task/snapshots/selected/<group_id>/samples/<sample_id>/{meta.json,pre_inputs.pt,post_inputs.pt,outputs.pt}
 ```
 
 ### 5. 环境探测和最终验证
@@ -472,8 +478,14 @@ python3 -m framework_engineer.cli validate-task-pack \
 ```
 
 要检查环境一致性，先运行 `probe-env`，然后移除 `--skip-env-check`。要运行 benchmark smoke，
-追加 `--run-benchmark`。最终必须检查 `docs/task_pack_validation_report.json`，不能只检查文件
+追加 `--run-benchmark`。最终必须检查 `task/docs/task_pack_validation_report.json`，不能只检查文件
 是否生成。
+
+交付后的首选入口是 task pack 自带的完整验证器：
+
+```bash
+python <task_pack>/validate_task_pack.py
+```
 
 ## 最终回复格式
 

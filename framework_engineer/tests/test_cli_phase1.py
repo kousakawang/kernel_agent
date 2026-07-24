@@ -73,7 +73,9 @@ class Phase1CliEndToEndTests(unittest.TestCase):
             self.assertEqual(probe["forward_boundary_interface"]["qualified_name"], "toy_kernel.Worker.forward_window")
             probe_rows = [
                 json.loads(line)
-                for line in (task_pack / "docs" / "target_call_probe.jsonl").read_text(encoding="utf-8").splitlines()
+                for line in (task_pack / "task" / "docs" / "target_call_probe.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
                 if line.strip()
             ]
             self.assertEqual(probe_rows[0]["positional_arg_count"], 0)
@@ -130,15 +132,45 @@ class Phase1CliEndToEndTests(unittest.TestCase):
 
             self._run_cli("generate-harness", "--task-pack", str(task_pack))
 
-            original_source_manifest = json.loads(
-                (task_pack / "original_source" / "manifest.json").read_text(encoding="utf-8")
+            readme = (task_pack / "README.md").read_text(encoding="utf-8")
+            self.assertIn("task/kernel_translate/", readme)
+            self.assertIn("task/kernel_engineer_ws/", readme)
+            self.assertIn("python validate_task_pack.py", readme)
+            self.assertIn("python task/scripts/run_correctness.py", readme)
+            self.assertFalse((task_pack / "task" / "original_source").exists())
+            self.assertFalse((task_pack / "task" / "kernel_sources").exists())
+            self.assertFalse(any(task_pack.rglob("*.sh")))
+            original_impl = (task_pack / "task" / "original_impl.py").read_text(encoding="utf-8")
+            self.assertIn('"qualified_name": "toy_kernel.extend"', original_impl)
+
+            direct_validation = subprocess.run(
+                [
+                    sys.executable,
+                    str(task_pack / "validate_task_pack.py"),
+                    "--skip-env-check",
+                    "--device",
+                    "cpu",
+                    "--output-format",
+                    "json",
+                ],
+                cwd=tmp_path,
+                env={
+                    **os.environ,
+                    "PYTHONDONTWRITEBYTECODE": "1",
+                    "PYTHON": sys.executable,
+                },
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=60,
             )
-            self.assertTrue(original_source_manifest["source_available"])
-            self.assertTrue(original_source_manifest["executable"])
-            self.assertEqual(original_source_manifest["target_info"]["qualified_name"], "toy_kernel.extend")
-            copied_source = task_pack / original_source_manifest["copied_file"]
-            self.assertTrue(copied_source.exists())
-            self.assertIn("def extend", copied_source.read_text(encoding="utf-8"))
+            self.assertEqual(direct_validation.returncode, 0, direct_validation.stderr)
+            direct_report = json.loads(direct_validation.stdout.splitlines()[-1])
+            self.assertEqual(direct_report["structure_check"]["status"], "passed")
+            self.assertEqual(direct_report["workspace_policy_check"]["status"], "passed")
+            self.assertEqual(direct_report["syntax_check"]["status"], "passed")
+            self.assertEqual(direct_report["correctness_smoke"]["status"], "passed")
 
             validate = self._run_cli(
                 "validate-task-pack",
@@ -159,13 +191,16 @@ class Phase1CliEndToEndTests(unittest.TestCase):
             self.assertEqual(validate["original_capture_benchmark_check"]["status"], "present")
             self.assertFalse(validate["original_capture_benchmark_check"]["speedup_baseline"])
 
-            manifest = json.loads((task_pack / "snapshots" / "manifest.json").read_text(encoding="utf-8"))
+            manifest = json.loads(
+                (task_pack / "task" / "snapshots" / "manifest.json").read_text(encoding="utf-8")
+            )
             self.assertEqual(manifest["selected_group_count"], 1)
             self.assertEqual(manifest["selected_sample_count"], 4)
             self.assertIn("original_call_timing_summary", manifest["case_groups"][0])
             first_sample = manifest["case_groups"][0]["samples"][0]
             sample_meta_path = (
                 task_pack
+                / "task"
                 / "snapshots"
                 / "selected"
                 / manifest["case_groups"][0]["group_id"]
@@ -183,13 +218,17 @@ class Phase1CliEndToEndTests(unittest.TestCase):
             self.assertGreaterEqual(timing["elapsed_us"], 0)
 
             capture_benchmark = json.loads(
-                (task_pack / "docs" / "original_capture_benchmark_summary.json").read_text(encoding="utf-8")
+                (task_pack / "task" / "docs" / "original_capture_benchmark_summary.json").read_text(
+                    encoding="utf-8"
+                )
             )
             self.assertEqual(capture_benchmark["status"], "present")
             self.assertFalse(capture_benchmark["speedup_baseline"])
             self.assertEqual(capture_benchmark["overall"]["count"], 4)
 
-            shape_list = json.loads((task_pack / "shape_list.json").read_text(encoding="utf-8"))
+            shape_list = json.loads(
+                (task_pack / "task" / "shape_list.json").read_text(encoding="utf-8")
+            )
             self.assertEqual(shape_list["source"], "snapshots/manifest.json")
             self.assertEqual(len(shape_list["shape_groups"]), 1)
             self.assertIn("original_call_timing_summary", shape_list["shape_groups"][0])
@@ -302,10 +341,18 @@ class Phase1CliEndToEndTests(unittest.TestCase):
             }
             for item in run["targets"]:
                 task_id = item["target"]["task_id"]
-                self.assertTrue((output_root / task_id / "correctness_test.py").exists())
-                self.assertTrue((output_root / task_id / "snapshots" / "manifest.json").exists())
+                root = output_root / task_id
+                self.assertEqual(
+                    {path.name for path in root.iterdir()},
+                    {"README.md", "validate_task_pack.py", "task"},
+                )
+                self.assertTrue((root / "task" / "correctness_test.py").exists())
+                self.assertTrue((root / "task" / "snapshots" / "manifest.json").exists())
+                self.assertTrue((root / "task" / "kernel_translate" / "README.md").exists())
+                self.assertTrue((root / "task" / "kernel_engineer_ws" / "README.md").exists())
+                self.assertFalse(any(root.rglob("*.sh")))
                 selected_id, excluded_id = expected_sources[task_id]
-                package = output_root / task_id / "kernel_source_package"
+                package = root / "task" / "kernel_source_package"
                 self.assertTrue((package / source_manifest.name).is_file())
                 self.assertTrue((package / selected_id / "kernel_impl.py").is_file())
                 self.assertFalse((package / excluded_id).exists())
@@ -372,7 +419,9 @@ class Phase1CliEndToEndTests(unittest.TestCase):
             self.assertIn("| workload stderr line 2", proc.stdout)
             self.assertNotIn(r"\n", proc.stdout)
 
-            report = json.loads((task_pack / "docs" / "baseline_result.json").read_text(encoding="utf-8"))
+            report = json.loads(
+                (task_pack / "task" / "docs" / "baseline_result.json").read_text(encoding="utf-8")
+            )
             self.assertIn("service stdout line 1", report["service"]["stdout"])
             self.assertIn("service stderr line 2", report["service"]["stderr"])
             self.assertEqual(report["workload"]["returncode"], 7)
@@ -482,18 +531,17 @@ class Phase1CliEndToEndTests(unittest.TestCase):
 
             task_pack = output_root / "external"
             capture_report = json.loads(
-                (task_pack / "docs" / "snapshot_capture_report.json").read_text(encoding="utf-8")
+                (task_pack / "task" / "docs" / "snapshot_capture_report.json").read_text(
+                    encoding="utf-8"
+                )
             )
             target_info = capture_report["target_interface"]
             self.assertEqual(target_info["module_name"], "external_ns.ops")
             self.assertEqual(target_info["qualified_name"], "external_ns.ops.external_target")
             self.assertEqual(target_info["identity_source"], "runtime_decorated_callable")
 
-            original_manifest = json.loads(
-                (task_pack / "original_source" / "manifest.json").read_text(encoding="utf-8")
-            )
-            self.assertTrue(original_manifest["executable"], original_manifest)
-            self.assertEqual(original_manifest["target_info"]["module_name"], "external_ns.ops")
+            original_impl = (task_pack / "task" / "original_impl.py").read_text(encoding="utf-8")
+            self.assertIn('"module_name": "external_ns.ops"', original_impl)
 
     def test_run_phase1_maps_local_package_definition_to_installed_runtime_copy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -572,9 +620,13 @@ class Phase1CliEndToEndTests(unittest.TestCase):
             self.assertTrue(target_report["target_resolution"]["mapping_applied"])
 
             resolution = json.loads(
-                (output_root / "external" / "docs" / "target_definition_resolution.json").read_text(
-                    encoding="utf-8"
-                )
+                (
+                    output_root
+                    / "external"
+                    / "task"
+                    / "docs"
+                    / "target_definition_resolution.json"
+                ).read_text(encoding="utf-8")
             )
             self.assertEqual(resolution["identity"]["module_name"], f"{package_name}.ops")
             self.assertEqual(resolution["runtime"]["file"], str(runtime_target.resolve()))

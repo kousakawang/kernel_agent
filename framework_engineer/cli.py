@@ -30,7 +30,7 @@ from urllib.request import urlopen
 from .snapshot.harness_builder import SnapshotHarnessBuilder, copy_probe_templates
 from .snapshot.selector import SnapshotSelector, write_shape_list_summary
 from .snapshot.store import SnapshotStore
-from .snapshot.validation import run_smoke, validate_files, validate_structure
+from .task_pack_layout import task_dir, task_path
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
@@ -632,7 +632,7 @@ def cmd_run_phase1(args: argparse.Namespace) -> int:
                 target_report["status"] = "failed"
             else:
                 _write_json(
-                    target.task_pack / "docs" / "target_definition_resolution.json",
+                    task_path(target.task_pack, "docs", "target_definition_resolution.json"),
                     target.target_resolution,
                 )
                 package_step = _run_step(
@@ -697,16 +697,33 @@ def cmd_run_phase1(args: argparse.Namespace) -> int:
 
 def cmd_scaffold_task_pack(args: argparse.Namespace) -> int:
     out: Path = args.out
-    if out.exists() and any(out.iterdir()) and not args.force:
-        raise SystemExit(f"{out} already exists and is not empty; pass --force to overwrite scaffold files.")
+    if out.exists() and any(out.iterdir()):
+        if not args.force:
+            raise SystemExit(
+                f"{out} already exists and is not empty; pass --force to overwrite scaffold files."
+            )
+        shutil.rmtree(out)
     out.mkdir(parents=True, exist_ok=True)
-    for rel in ("docs", "scripts", "snapshots/raw", "snapshots/selected", "env_probe", "kernel_sources", "original_source"):
-        (out / rel).mkdir(parents=True, exist_ok=True)
+    payload = task_dir(out)
+    for rel in (
+        "docs",
+        "scripts",
+        "snapshots/raw",
+        "snapshots/selected",
+        "env_probe",
+        "kernel_translate",
+        "kernel_engineer_ws",
+    ):
+        (payload / rel).mkdir(parents=True, exist_ok=True)
 
     _copy_template("task_pack_README.md", out / "README.md")
-    _copy_template("task_pack_manifest.yaml", out / "task.yaml")
-    _copy_template("env_manifest.yaml", out / "env_manifest.yaml")
-    (out / "snapshots" / "manifest.json").write_text(
+    _copy_template("validate_task_pack.py", out / "validate_task_pack.py")
+    (out / "validate_task_pack.py").chmod(0o755)
+    _copy_template("task_pack_manifest.yaml", payload / "task.yaml")
+    _copy_template("env_manifest.yaml", payload / "env_manifest.yaml")
+    _copy_template("kernel_translate_README.md", payload / "kernel_translate" / "README.md")
+    _copy_template("kernel_engineer_ws_README.md", payload / "kernel_engineer_ws" / "README.md")
+    (payload / "snapshots" / "manifest.json").write_text(
         json.dumps(
             {
                 "schema_version": "phase1.snapshot.v1",
@@ -722,7 +739,7 @@ def cmd_scaffold_task_pack(args: argparse.Namespace) -> int:
         ),
         encoding="utf-8",
     )
-    (out / "shape_list.json").write_text(
+    (payload / "shape_list.json").write_text(
         json.dumps(
             {
                 "schema_version": "phase1.shape_summary.v1",
@@ -736,7 +753,7 @@ def cmd_scaffold_task_pack(args: argparse.Namespace) -> int:
         ),
         encoding="utf-8",
     )
-    (out / "snapshots" / "raw_index.json").write_text(
+    (payload / "snapshots" / "raw_index.json").write_text(
         json.dumps(
             {
                 "schema_version": "phase1.snapshot.v1",
@@ -752,7 +769,10 @@ def cmd_scaffold_task_pack(args: argparse.Namespace) -> int:
         encoding="utf-8",
     )
     copy_probe_templates(TEMPLATE_DIR, out)
-    _write_json(out / "docs" / "scaffold_result.json", {"task_id": args.task_id, "task_pack": str(out)})
+    _write_json(
+        payload / "docs" / "scaffold_result.json",
+        {"task_id": args.task_id, "task_pack": str(out)},
+    )
     _emit_result(args, {"status": "ok", "task_pack": str(out)}, title="Task pack scaffold")
     return 0
 
@@ -765,7 +785,7 @@ def cmd_run_baseline(args: argparse.Namespace) -> int:
         startup_timeout=args.startup_timeout,
         workload_timeout=args.workload_timeout,
     )
-    docs = args.task_pack / "docs"
+    docs = task_path(args.task_pack, "docs")
     docs.mkdir(parents=True, exist_ok=True)
     _write_json(docs / "baseline_result.json", result)
     _write_baseline_report(docs / "baseline_run_report.md", args, result)
@@ -798,7 +818,7 @@ def cmd_resolve_interface(args: argparse.Namespace) -> int:
 
 
 def cmd_probe_target_calls(args: argparse.Namespace) -> int:
-    docs = args.task_pack / "docs"
+    docs = task_path(args.task_pack, "docs")
     docs.mkdir(parents=True, exist_ok=True)
     log_path = docs / "target_call_probe.jsonl"
     target = _resolve_target_interface(args)
@@ -852,7 +872,7 @@ def cmd_probe_target_calls(args: argparse.Namespace) -> int:
 
 
 def cmd_capture_snapshots(args: argparse.Namespace) -> int:
-    snapshot_root = args.task_pack / "snapshots"
+    snapshot_root = task_path(args.task_pack, "snapshots")
     mutable_paths = ",".join(args.mutable_arg_path)
     max_capture_groups = args.max_raw_cases if args.max_raw_cases is not None else args.max_capture_groups
     target = _resolve_target_interface(args)
@@ -906,7 +926,7 @@ def cmd_capture_snapshots(args: argparse.Namespace) -> int:
         "workload_stdout_tail": result["workload"].get("stdout", "")[-2000:],
         "workload_stderr_tail": result["workload"].get("stderr", "")[-2000:],
     }
-    docs = args.task_pack / "docs"
+    docs = task_path(args.task_pack, "docs")
     docs.mkdir(parents=True, exist_ok=True)
     _write_json(docs / "snapshot_capture_report.json", report)
     _write_json(docs / "original_capture_timing_raw_summary.json", raw_timing_summary)
@@ -915,14 +935,14 @@ def cmd_capture_snapshots(args: argparse.Namespace) -> int:
 
 
 def cmd_select_snapshots(args: argparse.Namespace) -> int:
-    store = SnapshotStore(args.task_pack / "snapshots")
+    store = SnapshotStore(task_path(args.task_pack, "snapshots"))
     max_groups = args.max_groups if args.max_groups is not None else args.max_cases
     manifest = SnapshotSelector(store).select(
         max_groups=max_groups,
         max_samples_per_group=args.max_selected_samples_per_group,
     )
     write_shape_list_summary(args.task_pack, manifest)
-    docs = args.task_pack / "docs"
+    docs = task_path(args.task_pack, "docs")
     docs.mkdir(parents=True, exist_ok=True)
     capture_benchmark_summary = _original_capture_benchmark_summary_from_manifest(manifest)
     _write_json(docs / "snapshot_selection_report.json", manifest)
@@ -959,64 +979,72 @@ def cmd_generate_harness(args: argparse.Namespace) -> int:
 
 def cmd_probe_env(args: argparse.Namespace) -> int:
     result = probe_environment(args.task_pack)
-    (args.task_pack / "env_manifest.yaml").write_text(_env_to_yaml(result), encoding="utf-8")
-    _write_json(args.task_pack / "docs" / "env_probe_result.json", result)
+    payload = task_dir(args.task_pack)
+    (payload / "env_manifest.yaml").write_text(_env_to_yaml(result), encoding="utf-8")
+    _write_json(payload / "docs" / "env_probe_result.json", result)
     _emit_result(
         args,
-        {"status": "ok", "env_manifest": str(args.task_pack / "env_manifest.yaml")},
+        {"status": "ok", "env_manifest": str(payload / "env_manifest.yaml")},
         title="Environment probe",
     )
     return 0
 
 
 def cmd_validate_task_pack(args: argparse.Namespace) -> int:
-    structure = validate_structure(args.task_pack)
-    errors = list(structure["errors"])
-    env_check: dict[str, Any] | None = None
-    env_status = "skipped" if args.skip_env_check else "passed"
-    if not args.skip_env_check:
-        expected_path = args.task_pack / "docs" / "env_probe_result.json"
-        if not expected_path.exists():
-            errors.append("missing docs/env_probe_result.json; run probe-env before validate-task-pack or pass --skip-env-check")
-            env_status = "failed"
-        else:
-            expected = json.loads(expected_path.read_text(encoding="utf-8"))
-            current = probe_environment(args.task_pack)
-            mismatches = _compare_availability(expected, current)
-            env_check = {"status": "failed" if mismatches else "passed", "mismatches": mismatches}
-            env_status = env_check["status"]
-            errors.extend(f"env availability mismatch: {item}" for item in mismatches)
-    smoke = run_smoke(
-        args.task_pack,
-        correctness=args.run_correctness,
-        benchmark=args.run_benchmark,
-        timeout=args.timeout,
+    validator = args.task_pack / "validate_task_pack.py"
+    if not validator.is_file():
+        report = {
+            "valid": False,
+            "errors": [f"missing task-pack validator: {validator}"],
+            "smoke": [],
+        }
+        _emit_result(args, report, title="Task pack validation")
+        return 1
+
+    command = [
+        sys.executable,
+        "-B",
+        str(validator),
+        "--output-format",
+        "json",
+        "--timeout",
+        str(args.timeout),
+    ]
+    if args.skip_env_check:
+        command.append("--skip-env-check")
+    if not args.run_correctness:
+        command.append("--skip-correctness")
+    if args.run_benchmark:
+        command.append("--run-benchmark")
+    env = os.environ.copy()
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    proc = subprocess.run(
+        command,
+        cwd=args.task_pack,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=args.timeout + 30,
+        check=False,
     )
-    correctness_status = "skipped"
-    benchmark_status = "skipped"
-    for item in smoke:
-        if "run_correctness" in item["command"]:
-            correctness_status = "passed" if item["returncode"] == 0 else "failed"
-        if "run_benchmark" in item["command"]:
-            benchmark_status = "passed" if item["returncode"] == 0 else "failed"
-        if item["returncode"] != 0:
-            errors.append(f"command failed: {item['command']}")
-    report = {
-        "valid": not errors,
-        "errors": errors,
-        "file_check": structure["file_check"],
-        "snapshot_check": structure["snapshot_check"],
-        "original_capture_benchmark_check": _original_capture_benchmark_check(args.task_pack),
-        "env_check": env_check or {"status": env_status},
-        "correctness_smoke": {"status": correctness_status},
-        "benchmark_smoke": {"status": benchmark_status},
-        "smoke": smoke,
+    report = _last_json_line(proc.stdout) or {
+        "valid": False,
+        "errors": ["task-pack validator did not emit a JSON report"],
+        "command": " ".join(command),
+        "stdout": proc.stdout[-8000:],
+        "stderr": proc.stderr[-8000:],
+        "smoke": [],
     }
-    docs = args.task_pack / "docs"
-    docs.mkdir(parents=True, exist_ok=True)
-    _write_json(docs / "task_pack_validation_report.json", report)
+    if proc.returncode != 0 and report.get("valid"):
+        report["valid"] = False
+        report.setdefault("errors", []).append(
+            f"task-pack validator exited with return code {proc.returncode}"
+        )
+    if proc.stderr.strip():
+        report["validator_stderr"] = proc.stderr[-8000:]
     _emit_result(args, report, title="Task pack validation")
-    return 0 if not errors else 1
+    return 0 if proc.returncode == 0 and report.get("valid") else 1
 
 
 def _run_phase1_target(
@@ -1654,7 +1682,7 @@ def cmd_prepare_kernel_source_package(args: argparse.Namespace) -> int:
         report = {
             "status": "skipped",
             "reason": "kernel_source_package_path is not configured",
-            "destination": str(args.task_pack / "kernel_source_package"),
+            "destination": str(task_path(args.task_pack, "kernel_source_package")),
         }
         _emit_result(args, report, title="Kernel source package preparation")
         return 0
@@ -1665,7 +1693,7 @@ def cmd_prepare_kernel_source_package(args: argparse.Namespace) -> int:
             target_file=args.target_file,
             target_line=args.target_line,
         )
-        destination = args.task_pack / "kernel_source_package"
+        destination = task_path(args.task_pack, "kernel_source_package")
         if destination.exists():
             shutil.rmtree(destination)
         destination.mkdir(parents=True)
@@ -1875,9 +1903,9 @@ def _runtime_target_interface_from_raw_index(raw_index: dict[str, Any]) -> dict[
 
 
 def _copy_baseline_to_targets(source_pack: Path, task_packs: list[Path]) -> None:
-    source_docs = source_pack / "docs"
+    source_docs = task_path(source_pack, "docs")
     for task_pack in task_packs:
-        docs = task_pack / "docs"
+        docs = task_path(task_pack, "docs")
         docs.mkdir(parents=True, exist_ok=True)
         for name in ("baseline_result.json", "baseline_run_report.md"):
             src = source_docs / name
@@ -1905,7 +1933,8 @@ def _write_phase1_reports(output_root: Path, report: dict[str, Any]) -> None:
 
 
 def _write_task_contract(task_pack: Path, cfg: Phase1Config, target: TargetConfig) -> None:
-    task_pack.mkdir(parents=True, exist_ok=True)
+    payload = task_dir(task_pack)
+    payload.mkdir(parents=True, exist_ok=True)
     task_yaml = f'''task_id: "{target.task_id}"
 task_group_id: "{cfg.task_group_id}"
 task_type: "core_kernel_optimization"
@@ -1923,7 +1952,7 @@ source_entrypoints:
   target_file: "{target.target_file}"
   target_line: {target.target_line}
   target_resolution: "{target.target_resolution.get('status', 'unknown')}"
-  kernel_source_package: "{'kernel_source_package' if cfg.kernel_source_package_path else ''}"
+  kernel_source_package: "{'task/kernel_source_package' if cfg.kernel_source_package_path else ''}"
   forward_boundary_file: "{cfg.forward_boundary_file}"
   forward_boundary_line: {cfg.forward_boundary_line}
 
@@ -1932,28 +1961,58 @@ kernel_abi:
   signature: |
     {target.signature}
   required_semantics: |
-    Match captured snapshot-golden behavior on all required selected samples in snapshots/manifest.json.
+    Match captured snapshot-golden behavior on all required selected samples in task/snapshots/manifest.json.
   forbidden_changes:
-    - "Do not change snapshots/"
-    - "Do not change snapshot_runtime.py"
-    - "Do not change shape_list.json except via Framework Engineer snapshot selection"
-    - "Do not change original_source/"
-    - "Do not change original_impl.py"
-    - "Do not change reference_impl.py"
-    - "Do not relax tolerance in correctness_test.py"
-    - "Do not change benchmark timing/reset rules"
+    - "Do not change task/snapshots/"
+    - "Do not change task/snapshot_runtime.py"
+    - "Do not change task/shape_list.json except via Framework Engineer snapshot selection"
+    - "Do not change task/original_impl.py"
+    - "Do not change task/reference_impl.py"
+    - "Do not relax tolerance in task/correctness_test.py"
+    - "Do not change task/benchmark.py timing/reset rules"
 
 inputs_are_framework_owned: true
 input_construction_policy: |
   Framework Engineer owns input construction. Kernel Engineer may inspect selected snapshots,
-  but must not replace them with unrelated random inputs. selected snapshots are the replay source.
+  but must not replace them with unrelated random inputs. task/snapshots/selected is the replay source.
 
 commands:
-  correctness: "bash scripts/run_correctness.sh"
-  benchmark: "bash scripts/run_benchmark.sh"
-  profile: "bash scripts/run_ncu.sh"
+  correctness: "python task/scripts/run_correctness.py"
+  benchmark: "python task/scripts/run_benchmark.py"
+  profile: "python task/scripts/run_ncu.py <group_id> [sample_id]"
+
+kernel_translate_scope:
+  writable_paths:
+    - "task/kernel_translate/"
+  read_only_paths:
+    - "task/candidate_impl.py"
+    - "task/kernel_source_package/"
+    - "task/snapshots/"
+    - "task/correctness_test.py"
+    - "task/benchmark.py"
+    - "task/task.yaml"
+
+kernel_engineer_scope:
+  writable_paths:
+    - "task/candidate_impl.py"
+    - "task/kernel_engineer_ws/"
+  read_only_paths:
+    - "task/kernel_translate/"
+    - "task/kernel_source_package/"
+    - "task/snapshots/"
+    - "task/snapshot_runtime.py"
+    - "task/original_impl.py"
+    - "task/reference_impl.py"
+    - "task/correctness_test.py"
+    - "task/benchmark.py"
+    - "task/scripts/"
+    - "task/env_probe/"
+    - "task/docs/"
+    - "task/task.yaml"
+    - "README.md"
+    - "validate_task_pack.py"
 '''
-    (task_pack / "task.yaml").write_text(task_yaml, encoding="utf-8")
+    (payload / "task.yaml").write_text(task_yaml, encoding="utf-8")
     env_manifest = f'''task_id: "{target.task_id}"
 generated_by: "framework_engineer"
 target_framework: "{cfg.target_framework}"
@@ -1968,7 +2027,7 @@ dependency_policy:
   allowed_paths_only: true
   notes: "Run probe-env to populate concrete toolchain availability."
 '''
-    (task_pack / "env_manifest.yaml").write_text(env_manifest, encoding="utf-8")
+    (payload / "env_manifest.yaml").write_text(env_manifest, encoding="utf-8")
 
 
 @contextlib.contextmanager
@@ -1988,7 +2047,8 @@ def _temporary_env(values: dict[str, str]):
 
 
 def probe_environment(task_pack: Path) -> dict[str, Any]:
-    env_probe = task_pack / "env_probe"
+    payload = task_dir(task_pack)
+    env_probe = payload / "env_probe"
     env_probe.mkdir(parents=True, exist_ok=True)
     copy_probe_templates(TEMPLATE_DIR, task_pack)
     return {
@@ -2007,10 +2067,13 @@ def probe_environment(task_pack: Path) -> dict[str, Any]:
             "print('' if p is None else f'{p.major}.{p.minor}')\n"
             "print('' if p is None else p.total_memory)"
         ),
-        "triton": _run_command([sys.executable, "env_probe/probe_triton.py"], cwd=task_pack),
-        "cutedsl": _run_command([sys.executable, "env_probe/probe_cutedsl.py"], cwd=task_pack),
-        "cuda_extension": _run_command([sys.executable, "env_probe/probe_cuda_extension.py"], cwd=task_pack),
-        "ncu": _run_command(["bash", "env_probe/probe_ncu.sh"], cwd=task_pack),
+        "triton": _run_command([sys.executable, "-B", "env_probe/probe_triton.py"], cwd=payload),
+        "cutedsl": _run_command([sys.executable, "-B", "env_probe/probe_cutedsl.py"], cwd=payload),
+        "cuda_extension": _run_command(
+            [sys.executable, "-B", "env_probe/probe_cuda_extension.py"],
+            cwd=payload,
+        ),
+        "ncu": _run_command([sys.executable, "-B", "env_probe/probe_ncu.py"], cwd=payload),
         "dependency_policy": {
             "kernel_engineer_may_install_packages": False,
             "allowed_paths_only": True,
@@ -2572,7 +2635,7 @@ def _write_original_capture_benchmark_report(path: Path, summary: dict[str, Any]
 
 
 def _original_capture_benchmark_check(task_pack: Path) -> dict[str, Any]:
-    path = task_pack / "docs" / "original_capture_benchmark_summary.json"
+    path = task_path(task_pack, "docs", "original_capture_benchmark_summary.json")
     if not path.exists():
         return {
             "status": "missing",
